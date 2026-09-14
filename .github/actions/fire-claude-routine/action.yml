@@ -1,0 +1,92 @@
+# .github/actions/fire-claude-routine/action.yml
+#
+# Fires a Claude Code routine's API trigger and returns the cloud session
+# it started.
+#
+#   https://code.claude.com/docs/en/routines#trigger-a-routine
+#
+# Both workflows in this harness dispatch to a routine, and the risky part
+# of doing that — handling issue text that Sentry and Notion can write —
+# is identical in both. It lives here once so it cannot drift between them.
+#
+# The `text` input is untrusted. It is passed to the script through the
+# environment, never through ${{ }} interpolation inside `run:`, so a
+# backtick or $(...) in an issue title cannot execute on the runner.
+# Claude receives it wrapped in a <routine-fire-payload> block marked as
+# data rather than instructions, which is why each routine's prompt has to
+# explicitly opt in to acting on it.
+
+name: Fire Claude Code routine
+description: POST to a routine's API trigger and return the cloud session id and URL.
+
+inputs:
+  routine-id:
+    description: Routine id to fire, e.g. trig_01ABC...
+    required: true
+  routine-token:
+    description: The routine's API trigger bearer token (sk-ant-oat01-...).
+    required: true
+  text:
+    description: Run-specific context. Treated as untrusted data by the routine.
+    required: true
+
+outputs:
+  session-id:
+    description: The cloud session that was started.
+    value: ${{ steps.fire.outputs.session-id }}
+  session-url:
+    description: claude.ai URL for the cloud session.
+    value: ${{ steps.fire.outputs.session-url }}
+
+runs:
+  using: composite
+  steps:
+    - id: fire
+      shell: bash
+      env:
+        ROUTINE_ID: ${{ inputs.routine-id }}
+        ROUTINE_TOKEN: ${{ inputs.routine-token }}
+        TEXT: ${{ inputs.text }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "${ROUTINE_ID:-}" ] || [ -z "${ROUTINE_TOKEN:-}" ]; then
+          echo "::error::Routine id or token is empty. Check the repo variable and secret."
+          exit 1
+        fi
+
+        response="$RUNNER_TEMP/routine-fire.json"
+
+        http_status=$(curl -sS -o "$response" -w '%{http_code}' \
+          --retry 3 --retry-connrefused --max-time 60 \
+          -X POST "https://api.anthropic.com/v1/claude_code/routines/${ROUTINE_ID}/fire" \
+          -H "Authorization: Bearer ${ROUTINE_TOKEN}" \
+          -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+          -H "anthropic-version: 2023-06-01" \
+          -H "Content-Type: application/json" \
+          -d "$(jq -n --arg text "$TEXT" '{text: $text}')")
+
+        if [ "$http_status" -ge 300 ]; then
+          echo "::error::Routine fire failed with HTTP $http_status"
+          # Error bodies name the reason (bad token, revoked trigger, daily
+          # routine cap reached) and contain no secrets.
+          jq . "$response" 2>/dev/null || cat "$response"
+          exit 1
+        fi
+
+        session_url=$(jq -r '.claude_code_session_url // empty' "$response")
+        session_id=$(jq -r '.claude_code_session_id // empty' "$response")
+
+        if [ -z "$session_url" ]; then
+          echo "::error::Routine fire returned no session URL"
+          cat "$response"
+          exit 1
+        fi
+
+        {
+          echo "session-id=$session_id"
+          echo "session-url=$session_url"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "Started cloud session $session_id"
+        echo "$session_url"
