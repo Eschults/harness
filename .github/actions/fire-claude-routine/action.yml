@@ -31,9 +31,6 @@ inputs:
     required: true
 
 outputs:
-  session-id:
-    description: The cloud session that was started.
-    value: ${{ steps.fire.outputs.session-id }}
   session-url:
     description: claude.ai URL for the cloud session.
     value: ${{ steps.fire.outputs.session-url }}
@@ -75,7 +72,6 @@ runs:
         fi
 
         session_url=$(jq -r '.claude_code_session_url // empty' "$response")
-        session_id=$(jq -r '.claude_code_session_id // empty' "$response")
 
         if [ -z "$session_url" ]; then
           echo "::error::Routine fire returned no session URL"
@@ -83,10 +79,5 @@ runs:
           exit 1
         fi
 
-        {
-          echo "session-id=$session_id"
-          echo "session-url=$session_url"
-        } >> "$GITHUB_OUTPUT"
-
-        echo "Started cloud session $session_id"
-        echo "$session_url"
+        echo "session-url=$session_url" >> "$GITHUB_OUTPUT"
+        echo "Started cloud session: $session_url"
