@@ -18,6 +18,10 @@
 import { Client } from "@notionhq/client";
 import { Octokit } from "@octokit/rest";
 
+// Written to the GitHub Issue property to claim a card before its issue
+// exists. Any non-empty value excludes the card from the query filter.
+const CLAIM_MARKER = "https://github.com/pending";
+
 const CONFIG = {
   statusProperty: "Status",
   readyStatusValue: "Ready for Dev",
@@ -26,6 +30,18 @@ const CONFIG = {
   descriptionProperty: "Description",
   githubIssueProperty: "GitHub Issue",
 };
+
+const missing = [
+  "NOTION_API_KEY",
+  "NOTION_DATABASE_ID",
+  "GITHUB_TOKEN",
+  "GITHUB_REPOSITORY",
+].filter((name) => !process.env[name]);
+
+if (missing.length > 0) {
+  console.error(`Missing required env vars: ${missing.join(", ")}`);
+  process.exit(1);
+}
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
@@ -81,14 +97,28 @@ async function createIssueForCard(card) {
   return issue.data;
 }
 
-async function markCardSynced(card, issueUrl) {
+// Claimed BEFORE the issue is created, so a crash between the two steps
+// leaves a card that this script skips rather than one it files again on
+// every subsequent poll. A claimed card with no issue link is visible in
+// Notion and recoverable by hand; a duplicate issue is a duplicate cloud
+// session against the daily routine cap, every 15 minutes, forever.
+async function claimCard(card) {
+  await notion.pages.update({
+    page_id: card.id,
+    properties: {
+      [CONFIG.githubIssueProperty]: { url: CLAIM_MARKER },
+      [CONFIG.statusProperty]: {
+        select: { name: CONFIG.inProgressStatusValue },
+      },
+    },
+  });
+}
+
+async function recordIssueUrl(card, issueUrl) {
   await notion.pages.update({
     page_id: card.id,
     properties: {
       [CONFIG.githubIssueProperty]: { url: issueUrl },
-      [CONFIG.statusProperty]: {
-        select: { name: CONFIG.inProgressStatusValue },
-      },
     },
   });
 }
@@ -103,15 +133,25 @@ async function main() {
 
   console.log(`Found ${cards.length} card(s) to sync.`);
 
+  let failed = 0;
+
   for (const card of cards) {
     try {
+      await claimCard(card);
       const issue = await createIssueForCard(card);
-      await markCardSynced(card, issue.html_url);
+      await recordIssueUrl(card, issue.html_url);
       console.log(`Synced card ${card.id} -> ${issue.html_url}`);
     } catch (err) {
-      // Don't let one bad card fail the whole run.
+      // Don't let one bad card fail the whole run, but don't let the run
+      // report success either — a green cron job that synced nothing is
+      // how this entry point dies quietly.
+      failed += 1;
       console.error(`Failed to sync card ${card.id}:`, err.message);
     }
+  }
+
+  if (failed > 0) {
+    throw new Error(`${failed} of ${cards.length} card(s) failed to sync.`);
   }
 }
 

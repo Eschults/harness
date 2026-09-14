@@ -35,8 +35,11 @@ jobs:
         with:
           node-version: "20"
 
+      # Versions come from scripts/package.json rather than the command
+      # line, so a major release cannot land unnoticed. Falls back to
+      # `npm install` until a lockfile is committed.
       - name: Install dependencies
-        run: npm install @notionhq/client @octokit/rest
+        run: npm ci || npm install
         working-directory: scripts
 
       - name: Sync Notion cards to GitHub issues

@@ -1,0 +1,10 @@
+{
+  "name": "harness-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Dependencies for notion-poll.mjs. Version ranges are capped at a major so a breaking release cannot silently take the Notion entry point offline — @notionhq/client v5 in particular replaces the databases.query call this script relies on. Run `npm install` here once and commit package-lock.json, then the workflow's `npm ci` gives reproducible runs.",
+  "dependencies": {
+    "@notionhq/client": "^2.2.0",
+    "@octokit/rest": "^20.0.0"
+  }
+}
