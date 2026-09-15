@@ -24,7 +24,8 @@ Every run ends in exactly one of three outcomes. Pick deliberately; the differen
 
 These apply to every PR, whichever outcome:
 
-- Never mark someone else's draft ready, never approve, and never merge. Human approval is the gate.
+- Never mark someone else's draft ready, never approve, and never merge. Human approval is the gate, and you cannot be it on a PR you have committed to.
+- Never force-push, rebase, or amend a commit you did not write. Add commits; do not rewrite history.
 - Title format: `Fix: <summary>` or `Feat: <summary>`.
 - Include "Fixes #<issue-number>" in the description when applicable.
 - Describe root cause (bugs) or approach (features) in 2-4 sentences.

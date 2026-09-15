@@ -22,7 +22,11 @@ A crashed run leaves the `claude` label on, which is deliberate — re-applying 
 When you open a draft, the issue comment is a handoff rather than a notification. An engineer reading only that comment must be able to act on it. Include exactly three things, in this order:
 
 1. **The blocker, in one or two sentences.** Name the decision you need and what you would do under each answer. Not "I have a question" — the question itself.
-2. **A link to this session, as the place to take over.** Take the URL from the `Claude Code session started:` comment the workflow posted on this issue when it fired you. If you cannot find that comment, say so plainly; never guess or construct a session URL.
+2. **A link to this session, as the place to take over.** Get it from your own session id rather than from anywhere else:
+
+   ```bash
+   echo "https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID/#cse_/session_}"
+   ```
 3. **The fallback**, in one line: answering on the issue and re-applying the `claude` label starts a fresh run that picks the draft up where you left it.
 
 Present the session link as the default route. It keeps your full context, lets the engineer answer and watch you continue in place, and costs no further routine run — where the re-label path starts a cold session that has to reconstruct everything from the PR.
