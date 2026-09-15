@@ -108,21 +108,6 @@ It returns a session URL, or names the reason it didn't.
 
 The `claude` label stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent". A crashed run leaves it on deliberately: re-applying it retries, and the routine looks for an existing PR first so the retry can't open a second one.
 
-## When a run opens a draft
-
-A draft means Claude got somewhere real and then hit a decision that isn't its to make. It comments on the issue with the blocker in a sentence or two and a link back to its session, so the handoff is readable without opening the PR.
-
-**Take over in that session.** Open the link, answer the question, and Claude continues from there with its full context intact — nothing to reconstruct, and no further routine run spent. This is the path the comment points at.
-
-If the session is gone or you'd rather not, answer on the issue and re-apply the `claude` label. A fresh run finds the draft, reads the answer, finishes on the same branch, and marks the PR ready for review. It works, it just starts cold.
-
-## The self-review is not a review
-
-After opening a ready-for-review PR, the session runs `/code-review --fix` on its own diff, re-runs the suite, pushes the fixes, and comments a recap: what it found, what it fixed with the SHA, what it deliberately left and why, and a link to its session.
-
-**It wrote the code, so it is not a second opinion.** It has already talked itself into every choice it made, and it will defend some of them. The pass is worth running — it catches real mechanical defects and it is honest about what it skipped — but read the recap's "fixed" section as a diff that needs reviewing, not one already reviewed. Your approval is the only gate in this design.
-
-An earlier version of this harness gave review its own routine, fired by a `pull_request` webhook, so the diff got a cold read. It cost a second routine, a second cloud session against the daily cap, webhook filters, and a footgun where subscribing to `synchronize` made the reviewer re-trigger on its own pushes forever. If you want that separation back, it is a prompt file and a webhook trigger — but a human who actually reads the PR is cheaper and better.
 
 ## Worth knowing before you rely on it
 
