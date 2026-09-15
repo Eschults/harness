@@ -1,10 +1,10 @@
 # Autonomous PR harness
 
-Label a GitHub issue `claude` and a Claude Code session picks it up, writes the code, and opens a pull request for your team to review. A second session then reviews that PR, pushes fixes for what it found, and comments a recap of what it changed and what it left for you.
+Label a GitHub issue `claude` and a Claude Code session picks it up, writes the code, opens a pull request, reviews its own diff, and comments a recap of what it found and fixed. Your team reviews and merges.
 
-Both sessions run as [Claude Code routines](https://code.claude.com/docs/en/routines) on Anthropic's cloud infrastructure, billed against a Pro, Max, Team or Enterprise subscription. There is no `ANTHROPIC_API_KEY` anywhere in this repo, and no Claude runs on your GitHub runner.
+It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on Anthropic's cloud infrastructure, billed against a Pro, Max, Team or Enterprise subscription. There is no `ANTHROPIC_API_KEY` anywhere in this repo, and no Claude runs on your GitHub runner.
 
-Install is four files, two routines, and two repo values.
+Install is three files, one routine, and two repo values.
 
 ## Shape
 
@@ -15,31 +15,33 @@ Install is four files, two routines, and two repo values.
      .github/workflows/claude.yml ── POST /fire ──┐
      (the only thing on your runner)              │
                                                   ▼
-                                    implementation routine  ◄────────┐
-                                 clones repo, writes code,           │
-                                      runs the test suite            │
-                                                  │                  │
-                      ┌───────────────────────────┴────────┐          │
-                      │ work finished                      │ blocked on a
-                      ▼                                    ▼ human answer
-                PR ready for review             DRAFT PR + comment:
-                      │                         the blocker, and a
-                      │ pull_request event      link to the session
-                      ▼                                    │          │
-                review routine                            └──────────┘
-               /code-review --fix              engineer opens the session
-                      │                        and answers in place
-          ┌───────────┴────────────┐
-          ▼                        ▼
-   fixes pushed to          recap comment:
-   the PR branch            found / fixed / left,
-          │                 + link to this session
-          └───────────┬────────────┘
-                      ▼
-              human reviews & merges
+                                            one routine  ◄─────────┐
+                                     clones repo, writes code,     │
+                                          runs the test suite      │
+                                                  │                │
+                    ┌─────────────────────────────┴──────┐          │
+                    │ work finished                      │ blocked on a
+                    ▼                                    ▼ human answer
+              PR ready for review             DRAFT PR + comment:
+                    │                         the blocker, and a
+                    ▼ same session             link to the session
+           /code-review --fix on its own diff            │          │
+                    │                                    └──────────┘
+          ┌─────────┴──────────┐               engineer opens the session
+          ▼                    ▼               and answers in place
+   fixes pushed to      recap comment:
+   the PR branch        found / fixed / left,
+          │             + link to the session
+          └─────────┬──────────┘
+                    ▼
+            human reviews & merges
+                    │
+                    ▼  CI fails, or someone comments
+            Auto-fix pushes a fix
+            (routine setting, no webhook)
 ```
 
-The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events — it cannot subscribe to issue events — so the one workflow exists to turn `issues.labeled` into an authenticated POST. A plain GitHub webhook can't do that job, because webhooks can't send an `Authorization` header. The review routine needs no workflow at all: `pull_request` is a native trigger.
+The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events — it cannot subscribe to issue events — so the one workflow exists to turn `issues.labeled` into an authenticated POST. A plain GitHub webhook can't do that job, because webhooks can't send an `Authorization` header.
 
 ## 1. Copy the files
 
@@ -49,35 +51,31 @@ cd /path/to/your/project
 
 mkdir -p .github/workflows .claude/prompts
 cp /tmp/harness/.github/workflows/claude.yml .github/workflows/
-cp /tmp/harness/.claude/prompts/*.md .claude/prompts/
+cp /tmp/harness/.claude/prompts/issue-to-pr.md .claude/prompts/
 cat /tmp/harness/CLAUDE.md >> CLAUDE.md   # merge by hand if you already have one
 ```
 
 | File | Role |
 |---|---|
-| `.github/workflows/claude.yml` | Fires the implementation routine on the `claude` label. |
-| `.claude/prompts/issue-to-pr.md` | The implementation task, plus the routine prompt to paste. |
-| `.claude/prompts/review-pr.md` | The review task, plus its routine prompt. |
-| `CLAUDE.md` | Every rule both routines follow. Single source of truth. |
+| `.github/workflows/claude.yml` | Fires the routine on the `claude` label. |
+| `.claude/prompts/issue-to-pr.md` | The task, plus the routine prompt to paste. |
+| `CLAUDE.md` | Every rule the routine follows. Single source of truth. |
 
-Each routine's saved prompt lives on claude.ai rather than in git, which is why both are a few lines that defer to `.claude/prompts/` for the task and to `CLAUDE.md` for every rule. The part that matters stays version-controlled and reviewable.
+The routine's saved prompt lives on claude.ai rather than in git, which is why it is five lines that defer to `.claude/prompts/` for the task and to `CLAUDE.md` for every rule. The part that matters stays version-controlled and reviewable.
 
-## 2. Create two routines
+## 2. Create the routine
 
-Install the [Claude GitHub App](https://github.com/apps/claude) on the repo first. Cloud sessions need it to clone and push `claude/` branches, and the review routine needs it for webhook delivery — `/web-setup` grants cloning but **not** webhooks.
+Install the [Claude GitHub App](https://github.com/apps/claude) on the repo first — cloud sessions need it to clone and push `claude/` branches.
 
-Then at [claude.ai/code/routines](https://claude.ai/code/routines), create each routine pointing at the repo, with the prompt pasted from the bottom of the matching file:
+At [claude.ai/code/routines](https://claude.ai/code/routines): point the routine at the repo, paste the prompt from the bottom of `.claude/prompts/issue-to-pr.md`, and add an **API** trigger. Save first, then **Add another trigger → API → Generate token** — the URL and token only exist once the routine has an id, and the token is shown once.
 
-| Routine | Prompt | Trigger |
-|---|---|---|
-| Implementation | `.claude/prompts/issue-to-pr.md` | **API**. Save the routine, then **Add another trigger → API → Generate token**. The token is shown once. |
-| Review | `.claude/prompts/review-pr.md` | **GitHub event**: `pull_request`, actions `opened` and `ready_for_review` — **not `synchronize`** — with filters head branch contains `claude/` and is draft = `false`. |
+It needs no schedule and no GitHub event trigger. Three settings are worth getting right:
 
-> **Do not add `synchronize` to the review trigger.** The reviewer pushes its fixes to the branch it was fired on, so a `synchronize` subscription would re-fire it on its own push: review, fix, push, re-fire, until your daily routine cap is gone. `opened` and `ready_for_review` are the only safe actions here.
+- **Connectors: remove all of them.** A routine includes every connector on your account by default, and Claude can call any tool on an included one, writes included, without asking during a run. This routine needs none — `gh` is pre-installed in cloud sessions and reads `GH_TOKEN` automatically, which covers issues, labels, comments and PRs.
+- **Behavior → Auto-fix pull requests: on.** It watches CI and review comments on PRs the routine opens and pushes fixes. This is what handles the two things the session cannot: CI that fails after it exits, and review comments your engineers leave. A human comments, Claude pushes a fix, no webhook involved.
+- **Model**: whatever you'd want writing code unattended.
 
-Neither routine needs a schedule. Under **Connectors**, **remove every one of them**: a routine includes all your connectors by default, and Claude can call any tool on an included one, writes included, without asking during a run. Neither routine needs any — `gh` is pre-installed in cloud sessions and reads `GH_TOKEN` automatically, which covers issues, labels, comments and PRs. The cloud environment is the sandbox, and its network allowlist, variables and connectors are the agent's entire reach.
-
-You can also create these from the CLI with `/schedule`, which writes to the same account. The API trigger's token still has to be generated on the web; the CLI cannot create or revoke tokens.
+You can also create the routine from the CLI with `/schedule`, which writes to the same account. The API trigger's token still has to be generated on the web; the CLI cannot create or revoke tokens.
 
 ## 3. Set two repo values
 
@@ -85,7 +83,7 @@ You can also create these from the CLI with `/schedule`, which writes to the sam
 
 | Name | Kind | Value |
 |---|---|---|
-| `CLAUDE_ROUTINE_ID` | Variable | Implementation routine's trigger id, `trig_…` |
+| `CLAUDE_ROUTINE_ID` | Variable | The routine's trigger id, `trig_…` |
 | `CLAUDE_ROUTINE_TOKEN` | Secret | Its API trigger token, `sk-ant-oat01-…` |
 
 Prove them before involving a workflow:
@@ -118,24 +116,21 @@ A draft means Claude got somewhere real and then hit a decision that isn't its t
 
 If the session is gone or you'd rather not, answer on the issue and re-apply the `claude` label. A fresh run finds the draft, reads the answer, finishes on the same branch, and marks the PR ready for review. It works, it just starts cold.
 
-## What the reviewer does
+## The self-review is not a review
 
-When a PR opens ready for review, the review routine runs `/code-review --fix` on it, runs the test suite, pushes the fixes to the PR's branch as one commit, and posts a single recap comment: what it found, what it fixed with the commit SHA, what it deliberately left and why, and a link to its own session so you can read the reasoning behind each call.
+After opening a ready-for-review PR, the session runs `/code-review --fix` on its own diff, re-runs the suite, pushes the fixes, and comments a recap: what it found, what it fixed with the SHA, what it deliberately left and why, and a link to its session.
 
-It fixes only what is clearly correct and inside the PR's scope. Findings that need a human decision, touch a **never edit** path, would add a dependency, or amount to a design disagreement get reported rather than fixed — and never dropped silently. `CLAUDE.md` binds the reviewer's commits exactly as it binds the run that opened the PR.
+**It wrote the code, so it is not a second opinion.** It has already talked itself into every choice it made, and it will defend some of them. The pass is worth running — it catches real mechanical defects and it is honest about what it skipped — but read the recap's "fixed" section as a diff that needs reviewing, not one already reviewed. Your approval is the only gate in this design.
 
-**The reviewer's own commits are unreviewed.** That is the real cost of this setup: the PR now reads as "reviewed" while carrying code that nothing independently checked, so your approval is the only gate rather than the second one. Read the recap's "fixed" section as a diff to review, not as a diff already reviewed.
-
-To make the reviewer read-only instead, change `--fix` to `--comment` in step 4 of `.claude/prompts/review-pr.md` and delete steps 5 and 6. You get inline findings and no commits, and the author does the fixing.
+An earlier version of this harness gave review its own routine, fired by a `pull_request` webhook, so the diff got a cold read. It cost a second routine, a second cloud session against the daily cap, webhook filters, and a footgun where subscribing to `synchronize` made the reviewer re-trigger on its own pushes forever. If you want that separation back, it is a prompt file and a webhook trigger — but a human who actually reads the PR is cheaper and better.
 
 ## Worth knowing before you rely on it
 
 - **A green check means "session started"** — not "PR opened". The workflow finishes in seconds; the session outlives it and comments its URL on the issue. Both outcomes are reported on the issue, because a silently stalled `claude` label is the worst failure mode here.
-- **Never add `synchronize` to the review trigger.** The reviewer pushes to the branch that fired it, so subscribing to its own pushes loops until the daily cap is exhausted.
 - **The label must come from a human or a PAT.** GitHub does not fire downstream workflow triggers for actions taken with the default `GITHUB_TOKEN`, so an automation that labels issues with it creates a green run that never invokes Claude.
-- **Add branch protection requiring CI and a human approval.** The harness assumes it and does not enforce it. It is the only gate in the whole design: finished work arrives ready for review, and the reviewer commits to it rather than blocking it.
-- **Each issue costs up to two runs** against your account's daily routine cap, and draws down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as your GitHub user.
-- **Every connector left attached is a tool the agent can write with, unprompted.** Cloud sessions have no `--allowedTools` and no approval prompts, so the prompt is guidance and the connector list is the actual permission boundary. Neither routine needs a connector; leave the list empty.
+- **Add branch protection requiring CI and a human approval.** The harness assumes it and does not enforce it. It is the only gate in the whole design.
+- **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Auto-fix passes and re-labels cost additional runs. Branches, PRs, comments and labels all appear as your GitHub user.
+- **Every connector left attached is a tool the agent can write with, unprompted.** Cloud sessions have no `--allowedTools` and no approval prompts, so the prompt is guidance and the connector list is the actual permission boundary. This routine needs none; leave the list empty.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
-- **Nothing closes the loop on a dead session.** If a run dies mid-work the label stays on and nobody is told; you notice it in the label list, not from an alert.
+- **Nothing closes the loop on a dead session.** If a run dies mid-work the label stays on and nobody is told; you notice it in the label list, not from an alert. Turning on routine notifications is the cheap mitigation.
