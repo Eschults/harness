@@ -18,14 +18,15 @@ Two lists below are easy to confuse and are not the same thing. **Never edit** i
 ## Pull requests
 Every run ends in exactly one of three outcomes. Pick deliberately; the difference is what a human is being asked to do next.
 
-- **Ready for review** — the default. The change is complete, the full suite passes, and nothing is left to decide. Open it ready for review, not as a draft.
+- **Ready for review** — the default. The change is complete, the full suite passes, and nothing is left to decide. Open it ready for review, not as a draft, then self-review it before you exit.
 - **Draft** — the change is real but cannot proceed until a human answers something. State the question in the first line of the description, above everything else, and say what you would do under each answer. Then hand off on the issue: one or two sentences naming the blocker, and a link to your session so an engineer can take over where you stopped. A draft is a request for input, so open one only when you actually need input; never as a hedge on finished work.
 - **No PR** — there is no useful partial change to show. Comment on the issue instead, per "When to stop instead of guessing" below.
 
 These apply to every PR, whichever outcome:
 
-- Never mark someone else's draft ready, never approve, and never merge. Human approval is the gate, and you cannot be it on a PR you have committed to.
+- Never mark someone else's draft ready, never approve, and never merge. Human approval is the gate and you cannot be it, least of all on code you wrote.
 - Never force-push, rebase, or amend a commit you did not write. Add commits; do not rewrite history.
+- Never call your own work reviewed, approved, or safe to merge. A review you ran on your own diff is a self-review; say so, and say what it did not check.
 - Title format: `Fix: <summary>` or `Feat: <summary>`.
 - Include "Fixes #<issue-number>" in the description when applicable.
 - Describe root cause (bugs) or approach (features) in 2-4 sentences.
