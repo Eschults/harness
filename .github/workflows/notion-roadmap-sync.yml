@@ -46,7 +46,7 @@ jobs:
         working-directory: scripts
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATABASE_ID: ${{ vars.NOTION_DATABASE_ID }}
           # IMPORTANT: must be a PAT or GitHub App token, not the default
           # GITHUB_TOKEN. GitHub does not fire downstream workflow triggers
           # (like the "issues: labeled" event below) for issues created or
