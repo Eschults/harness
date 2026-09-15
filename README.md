@@ -76,6 +76,8 @@ curl -X POST "https://api.anthropic.com/v1/claude_code/routines/$CLAUDE_ROUTINE_
 
 ## How it works
 
+<div align="center">
+
 ```mermaid
 flowchart TD
     A["a human labels an issue <code>claude</code>"]
@@ -87,6 +89,8 @@ flowchart TD
     B -- "POST /fire" --> C
     C --> D
 ```
+
+</div>
 
 The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events — it cannot subscribe to issue events — so the one workflow exists to turn `issues.labeled` into an authenticated POST. A plain GitHub webhook can't do that job, because webhooks can't send an `Authorization` header.
 
