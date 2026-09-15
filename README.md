@@ -46,7 +46,7 @@ The label is the entire gate. A routine's GitHub trigger only fires on `pull_req
 ## 1. Copy the files
 
 ```bash
-git clone --depth 1 -b kickstart-harness git@github.com:Eschults/harness.git /tmp/harness
+git clone --depth 1 git@github.com:eschults-engineering/harness.git /tmp/harness
 cd /path/to/your/project
 
 mkdir -p .github/workflows .claude/prompts
