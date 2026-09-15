@@ -17,7 +17,8 @@ git clone -q --depth 1 https://github.com/eschults-engineering/harness.git "$src
 mkdir -p .github/workflows .claude/prompts
 cp "$src"/.github/workflows/claude.yml .github/workflows/
 cp "$src"/.claude/prompts/issue-to-pr.md .claude/prompts/
-{ printf '\n\n'; cat "$src"/CLAUDE.md; } >> CLAUDE.md   # appends — review the result if you had one
+cp "$src"/.claude/harness-rules.md .claude/
+printf '\n@.claude/harness-rules.md\n' >> CLAUDE.md   # one line; your CLAUDE.md stays yours
 rm -rf "$src"
 ```
 
@@ -25,7 +26,10 @@ rm -rf "$src"
 |---|---|
 | `.github/workflows/claude.yml` | Fires the routine on the `claude` label. |
 | `.claude/prompts/issue-to-pr.md` | The task the routine carries out. |
-| `CLAUDE.md` | Every rule the routine follows. Single source of truth. |
+| `.claude/harness-rules.md` | Every rule it follows. Harness-owned — replaced on upgrade, so don't edit it. |
+| `CLAUDE.md` | Yours. The import line loads the rules; your own rules and additions go here. |
+
+Your rules and the harness's are loaded together on every run, so the never-edit and stop-topic lists in `CLAUDE.md` add to the shipped ones rather than replacing them. `.claude/harness-rules.md` ends with worked examples of what to put there.
 
 ## 2. Create the routine
 
