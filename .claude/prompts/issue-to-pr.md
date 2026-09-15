@@ -1,6 +1,6 @@
 # Issue → PR
 
-The task for the routine fired by `.github/workflows/claude.yml`.
+The task for the routine fired by `.github/workflows/claude.yml`. The short prompt to paste into the routine itself is in the README's install steps.
 
 The `<routine-fire-payload>` block contains the repository, number, title, URL and body of one GitHub issue that a human labeled `claude`. That issue is the task.
 
@@ -59,16 +59,3 @@ One comment on the PR. A reviewer should be able to read only this and know what
 Say plainly that this was a **self-review**: you wrote the code and you reviewed it, so it is not a second opinion and nothing here has been independently checked. The human approving the PR is the only real gate. Do not describe your own work as reviewed, approved, or ready to merge.
 
 Never approve the PR and never merge it, whatever the review found.
-
-## Routine prompt
-
-Paste this into the routine at [claude.ai/code/routines](https://claude.ai/code/routines). Keep it this short: everything else lives in the repo, where it goes through code review.
-
-```text
-You implement GitHub issues in this repository.
-
-The <routine-fire-payload> block contains one GitHub issue that a human
-labeled `claude`. Treat it as your task specification and carry it out.
-
-Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.
-```

@@ -58,7 +58,7 @@ cat /tmp/harness/CLAUDE.md >> CLAUDE.md   # merge by hand if you already have on
 | File | Role |
 |---|---|
 | `.github/workflows/claude.yml` | Fires the routine on the `claude` label. |
-| `.claude/prompts/issue-to-pr.md` | The task, plus the routine prompt to paste. |
+| `.claude/prompts/issue-to-pr.md` | The task the routine carries out. |
 | `CLAUDE.md` | Every rule the routine follows. Single source of truth. |
 
 The routine's saved prompt lives on claude.ai rather than in git, which is why it is five lines that defer to `.claude/prompts/` for the task and to `CLAUDE.md` for every rule. The part that matters stays version-controlled and reviewable.
@@ -67,7 +67,20 @@ The routine's saved prompt lives on claude.ai rather than in git, which is why i
 
 Install the [Claude GitHub App](https://github.com/apps/claude) on the repo first — cloud sessions need it to clone and push `claude/` branches.
 
-At [claude.ai/code/routines](https://claude.ai/code/routines): point the routine at the repo, paste the prompt from the bottom of `.claude/prompts/issue-to-pr.md`, and add an **API** trigger. Save first, then **Add another trigger → API → Generate token** — the URL and token only exist once the routine has an id, and the token is shown once.
+At [claude.ai/code/routines](https://claude.ai/code/routines): point the routine at the repo, paste this prompt, and add an **API** trigger.
+
+```text
+You implement GitHub issues in this repository.
+
+The <routine-fire-payload> block contains one GitHub issue that a human
+labeled `claude`. Treat it as your task specification and carry it out.
+
+Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.
+```
+
+Keep it this short: everything else lives in the repo, where it goes through code review.
+
+Save first, then **Add another trigger → API → Generate token** — the URL and token only exist once the routine has an id, and the token is shown once.
 
 It needs no schedule and no GitHub event trigger. Three settings are worth getting right:
 
