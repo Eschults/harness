@@ -1,34 +1,40 @@
 # Autonomous PR harness
 
-Drop-in GitHub Actions that turn a Sentry error or a Notion roadmap card into a draft pull request, written by a [Claude Code routine](https://code.claude.com/docs/en/routines) running on Anthropic's cloud infrastructure. No Claude runs on your runner; no `ANTHROPIC_API_KEY` is involved. The runner only turns an issue event into an authenticated POST.
+Label a GitHub issue `claude` and a Claude Code session picks it up, writes the code, and opens a pull request for your team to review. A second session reviews that PR and posts its findings as comments.
 
-Install is: copy eight files, create two routines, set seven secrets, wire up Sentry and Notion. [docs/design-notes.md](docs/design-notes.md) explains why it is shaped this way.
+Both sessions run as [Claude Code routines](https://code.claude.com/docs/en/routines) on Anthropic's cloud infrastructure, billed against a Pro, Max, Team or Enterprise subscription. There is no `ANTHROPIC_API_KEY` anywhere in this repo, and no Claude runs on your GitHub runner.
+
+Install is four files, two routines, and two repo values.
 
 ## Shape
 
 ```
-Sentry (new issue)                    Notion (card → "Ready for Dev")
-        │                                          │
-        │ creates GH issue, label "sentry"         │ notion-roadmap-sync.yml (cron, 15m)
-        ▼                                          │ creates GH issue,
-  sentry-triage.yml                                │ labels "agent-ready" + "from-notion"
-  (cheap read-only routine                         │
-   labels agent-ready / needs-human)               │
-        │                                          │
-        └──────────────► "agent-ready" ◄───────────┘
-                               │
-                               ▼
-                    claude-issue-to-pr.yml
-                               │
-                               ▼
-                 remote Claude Code session
-                 (clones repo, opens DRAFT PR)
-                               │
-                               ▼
-                     human reviews & merges
+     human labels an issue `claude`
+                 │
+                 ▼
+       .github/workflows/claude.yml ── POST /fire ──┐
+       (the only thing on your runner)              │
+                                                    ▼
+                                      implementation routine  ◄───────┐
+                                   clones repo, writes code,          │
+                                        runs the test suite           │
+                                                    │                 │
+                        ┌───────────────────────────┴──────┐           │
+                        │ work finished                    │ blocked on a
+                        ▼                                  ▼ human answer
+                  PR ready for review              DRAFT PR + a comment
+                        │                           naming the blocker
+                        ▼  pull_request event      and linking the session
+                  review routine                           │           │
+                        │                                  └───────────┘
+                        ▼                              engineer opens the session
+                findings on the PR                     and answers in place
+                        │
+                        ▼
+                 human reviews & merges
 ```
 
-Both entry points converge on one label. Sentry gets a triage step because errors arrive with no human judgment attached; Notion skips it because moving a card to "Ready for Dev" *is* the judgment.
+The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events — it cannot subscribe to issue events — so the one workflow exists to turn `issues.labeled` into an authenticated POST. A plain GitHub webhook can't do that job, because webhooks can't send an `Authorization` header. The review routine needs no workflow at all: `pull_request` is a native trigger.
 
 ## 1. Copy the files
 
@@ -36,101 +42,82 @@ Both entry points converge on one label. Sentry gets a triage step because error
 git clone --depth 1 -b kickstart-harness git@github.com:Eschults/harness.git /tmp/harness
 cd /path/to/your/project
 
-mkdir -p .github/workflows .github/actions .claude/prompts
-cp    /tmp/harness/.github/workflows/*.yml .github/workflows/
-cp -r /tmp/harness/.github/actions/fire-claude-routine .github/actions/
-cp    /tmp/harness/.claude/prompts/*.md .claude/prompts/
-cp -r /tmp/harness/scripts .
-cat   /tmp/harness/CLAUDE.md >> CLAUDE.md   # merge by hand if you already have one
-
-( cd scripts && npm install )               # commit package-lock.json
+mkdir -p .github/workflows .claude/prompts
+cp /tmp/harness/.github/workflows/claude.yml .github/workflows/
+cp /tmp/harness/.claude/prompts/*.md .claude/prompts/
+cat /tmp/harness/CLAUDE.md >> CLAUDE.md   # merge by hand if you already have one
 ```
 
 | File | Role |
 |---|---|
-| `.github/workflows/claude-issue-to-pr.yml` | Fires the implementation routine on `agent-ready`. |
-| `.github/workflows/sentry-triage.yml` | Fires the triage routine on `issues.opened` labelled `sentry`. |
-| `.github/workflows/notion-roadmap-sync.yml` | Cron poll of Notion → GitHub issues. |
-| `.github/actions/fire-claude-routine/action.yml` | Shared POST to a routine's API trigger. Handles the untrusted issue text. |
+| `.github/workflows/claude.yml` | Fires the implementation routine on the `claude` label. |
 | `.claude/prompts/issue-to-pr.md` | The implementation task, plus the routine prompt to paste. |
-| `.claude/prompts/sentry-triage.md` | The triage task, plus its routine prompt. |
-| `scripts/notion-poll.mjs`, `scripts/package.json` | The Notion sync itself. |
-| `CLAUDE.md` | Every rule the agent follows. Single source of truth. |
+| `.claude/prompts/review-pr.md` | The review task, plus its routine prompt. |
+| `CLAUDE.md` | Every rule both routines follow. Single source of truth. |
 
-Only using one entry point? Skip the workflows and secrets for the other.
+Each routine's saved prompt lives on claude.ai rather than in git, which is why both are a few lines that defer to `.claude/prompts/` for the task and to `CLAUDE.md` for every rule. The part that matters stays version-controlled and reviewable.
 
 ## 2. Create two routines
 
-Install the [Claude GitHub App](https://github.com/apps/claude) on the repo first — cloud sessions need it to clone and push `claude/` branches.
+Install the [Claude GitHub App](https://github.com/apps/claude) on the repo first. Cloud sessions need it to clone and push `claude/` branches, and the review routine needs it for webhook delivery — `/web-setup` grants cloning but **not** webhooks.
 
-Then at [claude.ai/code/routines](https://claude.ai/code/routines), for each routine: point it at the repo, paste the routine prompt from the bottom of the matching `.claude/prompts/` file, add an **API** trigger, click **Generate token** (shown once).
+Then at [claude.ai/code/routines](https://claude.ai/code/routines), create each routine pointing at the repo, with the prompt pasted from the bottom of the matching file:
 
-| Routine | Prompt | Model | Connectors |
-|---|---|---|---|
-| Implementation | `.claude/prompts/issue-to-pr.md` | your normal coding model | only what the work needs |
-| Triage | `.claude/prompts/sentry-triage.md` | a cheap one — it is a yes/no call | GitHub, and nothing else |
-
-The routine's cloud environment *is* the sandbox: its network allowlist, env vars and attached connectors are the agent's reach. Every connector left attached is a tool it can write with, unprompted.
-
-## 3. Secrets and variables
-
-**Settings → Secrets and variables → Actions.** Ids are identifiers, so they go in the **Variables** tab; tokens and keys go in **Secrets**.
-
-| Name | Kind | Value | Needed for |
-|---|---|---|---|
-| `CLAUDE_ROUTINE_ID` | Variable | Implementation routine id, `trig_…` | both paths |
-| `CLAUDE_ROUTINE_TOKEN` | Secret | Its API trigger token, `sk-ant-oat01-…` | both paths |
-| `CLAUDE_TRIAGE_ROUTINE_ID` | Variable | Triage routine id | Sentry |
-| `CLAUDE_TRIAGE_ROUTINE_TOKEN` | Secret | Its API trigger token | Sentry |
-| `NOTION_API_KEY` | Secret | Internal Notion integration key | Notion |
-| `NOTION_DATABASE_ID` | Variable | Roadmap database id | Notion |
-| `NOTION_SYNC_PAT` | Secret | Fine-grained PAT, this repo, **Issues: read/write** | Notion |
-
-`NOTION_SYNC_PAT` is not optional and cannot be the default `GITHUB_TOKEN`: GitHub does not fire downstream workflow triggers for content created by it, so the issue would appear and Claude would never run.
-
-## 4. Wire Sentry
-
-Install Sentry's GitHub integration (**Settings → Integrations → GitHub**), then add an issue alert under **Project Settings → Alerts**:
-
-- **WHEN** `A new issue is created` — this trigger, not a frequency threshold.
-- **IF** optionally `level equals error` or `fatal`.
-- **THEN** `Create a new GitHub issue` → this repo, with `sentry` in the **Labels** field.
-- **Action interval**: high, as a backstop.
-
-The label must be applied at creation time, or `issues.opened` fires without it and triage never runs. Requires a Sentry **Team plan or above**; the free Developer plan has no "create a GitHub issue" action, which leaves this entry point dead.
-
-## 5. Wire Notion
-
-Create an internal Notion integration, share the roadmap database with it (databases are private to integrations until you do), and give the database these properties — rename in the `CONFIG` block of `notion-poll.mjs` if yours differ:
-
-| Property | Type | Role |
+| Routine | Prompt | Trigger |
 |---|---|---|
-| `Name` | title | issue title |
-| `Description` | rich_text | issue body |
-| `Status` | **select** | needs `Ready for Dev` and `In Progress` options |
-| `GitHub Issue` | url | written back by the script; its "already synced" marker |
+| Implementation | `.claude/prompts/issue-to-pr.md` | **API**. Save the routine, then **Add another trigger → API → Generate token**. The token is shown once. |
+| Review | `.claude/prompts/review-pr.md` | **GitHub event**: `pull_request`, actions `opened` and `ready_for_review`, filters head branch contains `claude/` and is draft = `false`. |
 
-`Status` must be a Notion **Select** property. Default Notion boards use the **Status** type instead, which needs `status:` rather than `select:` in the query filter and the update — check yours before the first run.
+Neither needs a schedule. Under **Connectors**, keep GitHub and **remove everything else**: a routine includes all your connectors by default, and Claude can call any tool on an included one, writes included, without asking during a run. The routine's cloud environment is the sandbox — its network allowlist, variables and connectors are the agent's entire reach.
 
-Adjust the cron in `notion-roadmap-sync.yml` to taste; 15 minutes is the default.
+You can also create these from the CLI with `/schedule`, which writes to the same account. The API trigger's token still has to be generated on the web; the CLI cannot create or revoke tokens.
+
+## 3. Set two repo values
+
+**Settings → Secrets and variables → Actions.** The id is an identifier, so it goes in the **Variables** tab; the token goes in **Secrets**.
+
+| Name | Kind | Value |
+|---|---|---|
+| `CLAUDE_ROUTINE_ID` | Variable | Implementation routine's trigger id, `trig_…` |
+| `CLAUDE_ROUTINE_TOKEN` | Secret | Its API trigger token, `sk-ant-oat01-…` |
+
+Prove them before involving a workflow:
+
+```bash
+curl -X POST "https://api.anthropic.com/v1/claude_code/routines/$CLAUDE_ROUTINE_ID/fire" \
+  -H "Authorization: Bearer $CLAUDE_ROUTINE_TOKEN" \
+  -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Setup check. Reply with the repo name and stop."}'
+```
+
+It returns a session URL, or names the reason it didn't.
 
 ## Labels
 
 | Label | Applied by | Means |
 |---|---|---|
-| `sentry` | Sentry alert | entered via the error path; triage it |
-| `agent-ready` | triage routine, or Notion sync | **the gate** — implementation fires on this |
-| `needs-human` | triage routine, or a failed dispatch | agent declined or never started |
-| `from-notion` | Notion sync | provenance only |
+| `claude` | a human | **the gate** — work starts on this, and the routine removes it when done |
+| `needs-human` | the routine | it declined, and said why in a comment |
+
+The `claude` label stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent". A crashed run leaves it on deliberately: re-applying it retries, and the routine looks for an existing PR first so the retry can't open a second one.
+
+## When a run opens a draft
+
+A draft means Claude got somewhere real and then hit a decision that isn't its to make. It comments on the issue with the blocker in a sentence or two and a link back to its session, so the handoff is readable without opening the PR.
+
+**Take over in that session.** Open the link, answer the question, and Claude continues from there with its full context intact — nothing to reconstruct, and no further routine run spent. This is the path the comment points at.
+
+If the session is gone or you'd rather not, answer on the issue and re-apply the `claude` label. A fresh run finds the draft, reads the answer, finishes on the same branch, and marks the PR ready for review. It works, it just starts cold.
 
 ## Worth knowing before you rely on it
 
-- **A green check means "session started"** — not "PR opened" and not "verdict recorded". Both workflows finish in seconds; the session outlives them and comments its URL on the issue.
-- **Triage is asynchronous.** An untriaged `sentry` issue is a normal state for a few minutes, not a bug.
-- **Both routines bill to one claude.ai account**, and draw down its subscription usage and daily routine run cap — not API-key billing. Branches, PRs and labels appear as that user.
-- **Triage shares that daily cap with implementation.** A burst of new Sentry error groups can exhaust it and starve the Notion path, which is the opposite of what a triage gate is for. Keep the alert rule narrow.
-- **Nothing closes the loop on a dead session**: the issue keeps `agent-ready` and stalls silently. Reconciliation is not built yet.
-- **Routine trigger tokens are long-lived bearer tokens.** Anyone holding one can fire the routine with arbitrary text. Rotate them like any other repo secret.
-- The `/fire` endpoint is in research preview behind `experimental-cc-routine-2026-04-01`. Watch that header in `fire-claude-routine/action.yml` when upgrading.
-
-Add branch protection requiring CI and a human approval before merge — the harness assumes it, it does not enforce it.
+- **A green check means "session started"** — not "PR opened". The workflow finishes in seconds; the session outlives it and comments its URL on the issue. Both outcomes are reported on the issue, because a silently stalled `claude` label is the worst failure mode here.
+- **The label must come from a human or a PAT.** GitHub does not fire downstream workflow triggers for actions taken with the default `GITHUB_TOKEN`, so an automation that labels issues with it creates a green run that never invokes Claude.
+- **Add branch protection requiring CI and a human approval.** The harness assumes it and does not enforce it. This matters more than it would with draft-only PRs, since finished work now arrives ready for review.
+- **Each issue costs up to two runs** against your account's daily routine cap, and draws down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as your GitHub user.
+- **Every connector left attached is a tool the agent can write with, unprompted.** Cloud sessions have no `--allowedTools` and no approval prompts; the prompt is guidance, the connector list is the actual permission boundary.
+- **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
+- **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
+- **Nothing closes the loop on a dead session.** If a run dies mid-work the label stays on and nobody is told; you notice it in the label list, not from an alert.
