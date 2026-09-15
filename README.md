@@ -6,53 +6,19 @@ It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on 
 
 Install is three files, one routine, and two repo values.
 
-## Shape
-
-```
-   human labels an issue `claude`
-               │
-               ▼
-     .github/workflows/claude.yml ── POST /fire ──┐
-     (the only thing on your runner)              │
-                                                  ▼
-                                            one routine  ◄─────────┐
-                                     clones repo, writes code,     │
-                                          runs the test suite      │
-                                                  │                │
-                    ┌─────────────────────────────┴──────┐          │
-                    │ work finished                      │ blocked on a
-                    ▼                                    ▼ human answer
-              PR ready for review             DRAFT PR + comment:
-                    │                         the blocker, and a
-                    ▼ same session             link to the session
-           /code-review --fix on its own diff            │          │
-                    │                                    └──────────┘
-          ┌─────────┴──────────┐               engineer opens the session
-          ▼                    ▼               and answers in place
-   fixes pushed to      recap comment:
-   the PR branch        found / fixed / left,
-          │             + link to the session
-          └─────────┬──────────┘
-                    ▼
-            human reviews & merges
-                    │
-                    ▼  CI fails, or someone comments
-            Auto-fix pushes a fix
-            (routine setting, no webhook)
-```
-
-The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events — it cannot subscribe to issue events — so the one workflow exists to turn `issues.labeled` into an authenticated POST. A plain GitHub webhook can't do that job, because webhooks can't send an `Authorization` header.
-
 ## 1. Copy the files
 
+Run this from the root of the repo you want the harness in — it needs no editing:
+
 ```bash
-git clone --depth 1 git@github.com:eschults-engineering/harness.git /tmp/harness
-cd /path/to/your/project
+src=$(mktemp -d)
+git clone -q --depth 1 https://github.com/eschults-engineering/harness.git "$src"
 
 mkdir -p .github/workflows .claude/prompts
-cp /tmp/harness/.github/workflows/claude.yml .github/workflows/
-cp /tmp/harness/.claude/prompts/issue-to-pr.md .claude/prompts/
-cat /tmp/harness/CLAUDE.md >> CLAUDE.md   # merge by hand if you already have one
+cp "$src"/.github/workflows/claude.yml .github/workflows/
+cp "$src"/.claude/prompts/issue-to-pr.md .claude/prompts/
+{ printf '\n\n'; cat "$src"/CLAUDE.md; } >> CLAUDE.md   # appends — review the result if you had one
+rm -rf "$src"
 ```
 
 | File | Role |
@@ -61,13 +27,11 @@ cat /tmp/harness/CLAUDE.md >> CLAUDE.md   # merge by hand if you already have on
 | `.claude/prompts/issue-to-pr.md` | The task the routine carries out. |
 | `CLAUDE.md` | Every rule the routine follows. Single source of truth. |
 
-The routine's saved prompt lives on claude.ai rather than in git, which is why it is a few lines that defer to `.claude/prompts/` for the task and to `CLAUDE.md` for every rule. The part that matters stays version-controlled and reviewable.
-
 ## 2. Create the routine
 
 Install the [Claude GitHub App](https://github.com/apps/claude) on the repo first — cloud sessions need it to clone and push `claude/` branches.
 
-At [claude.ai/code/routines](https://claude.ai/code/routines): point the routine at the repo and paste this prompt.
+At [claude.ai/code/routines](https://claude.ai/code/routines), point a new routine at the repo and paste this as its prompt:
 
 ```text
 You implement GitHub issues in this repository.
@@ -78,15 +42,15 @@ labeled `claude`. Treat it as your task specification and carry it out.
 Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.
 ```
 
-Keep it this short: everything else lives in the repo, where it goes through code review.
+It stays this short because everything else lives in the repo, where it goes through code review.
 
-Then add the **API** trigger, which has to come after the first save: **Add another trigger → API → Generate token** — the URL and token only exist once the routine has an id, and the token is shown once.
+Save, then **Add another trigger → API → Generate token**. It has to come after that first save: the URL and token only exist once the routine has an id, and the token is shown once. No schedule and no GitHub event trigger are needed.
 
-It needs no schedule and no GitHub event trigger. Three settings are worth getting right:
+Three settings are worth getting right:
 
-- **Connectors: remove all of them.** A routine includes every connector on your account by default, and Claude can call any tool on an included one, writes included, without asking during a run. This routine needs none — `gh` is pre-installed in cloud sessions and reads `GH_TOKEN` automatically, which covers issues, labels, comments and PRs.
-- **Behavior → Auto-fix pull requests: on.** It watches CI and review comments on PRs the routine opens and pushes fixes. This is what handles the two things the session cannot: CI that fails after it exits, and review comments your engineers leave. A human comments, Claude pushes a fix, no webhook involved.
-- **Model**: whatever you'd want writing code unattended.
+- **Connectors: remove all of them.** A routine includes every connector on your account by default, and during a run Claude can call any tool on one, writes included, without asking. Cloud sessions have no `--allowedTools` and no approval prompts, so this list — not the prompt — is the real permission boundary. This routine needs none: `gh` is pre-installed and reads `GH_TOKEN`, which covers issues, labels, comments and PRs.
+- **Behavior → Auto-fix pull requests: on.** It watches CI and review comments on PRs the routine opens and pushes fixes, covering the two things the session itself cannot: CI that fails after it exits, and review comments your engineers leave.
+- **Model:** whatever you'd want writing code unattended.
 
 You can also create the routine from the CLI with `/schedule`, which writes to the same account. The API trigger's token still has to be generated on the web; the CLI cannot create or revoke tokens.
 
@@ -99,7 +63,7 @@ You can also create the routine from the CLI with `/schedule`, which writes to t
 | `CLAUDE_ROUTINE_ID` | Variable | The routine's trigger id, `trig_…` |
 | `CLAUDE_ROUTINE_TOKEN` | Secret | Its API trigger token, `sk-ant-oat01-…` |
 
-Prove them before involving a workflow:
+Prove them before involving a workflow. This returns a session URL, or names the reason it didn't:
 
 ```bash
 curl -X POST "https://api.anthropic.com/v1/claude_code/routines/$CLAUDE_ROUTINE_ID/fire" \
@@ -110,17 +74,30 @@ curl -X POST "https://api.anthropic.com/v1/claude_code/routines/$CLAUDE_ROUTINE_
   -d '{"text": "Setup check. Reply with the repo name and stop."}'
 ```
 
-It returns a session URL, or names the reason it didn't.
+## How it works
 
-## Labels
+```
+human labels an issue `claude`
+          │
+          ▼
+.github/workflows/claude.yml ──POST /fire──▶ one routine, in the cloud
+(the only thing on your runner)              writes code, runs the tests,
+                                             opens a PR, reviews its own diff
+                                                          │
+                                                          ▼
+                                                 you review and merge
+```
+
+The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events — it cannot subscribe to issue events — so the one workflow exists to turn `issues.labeled` into an authenticated POST. A plain GitHub webhook can't do that job, because webhooks can't send an `Authorization` header.
+
+When a run hits something only a human can settle, it opens a draft PR instead and comments the blocker with a link to its session, where you can answer and watch it pick the work back up.
 
 | Label | Applied by | Means |
 |---|---|---|
 | `claude` | a human | **the gate** — work starts on this, and the routine removes it when done |
 | `needs-human` | the routine | it declined, and said why in a comment |
 
-The `claude` label stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent". A crashed run leaves it on deliberately: re-applying it retries, and the routine looks for an existing PR first so the retry can't open a second one.
-
+`claude` stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent". A crashed run leaves it on deliberately: re-applying it retries, and the routine looks for an existing PR first so the retry can't open a second one.
 
 ## Worth knowing before you rely on it
 
@@ -128,7 +105,6 @@ The `claude` label stays on while a run is in flight and comes off at every term
 - **The label must come from a human or a PAT.** GitHub does not fire downstream workflow triggers for actions taken with the default `GITHUB_TOKEN`, so an automation that labels issues with it creates a green run that never invokes Claude.
 - **Add branch protection requiring CI and a human approval.** The harness assumes it and does not enforce it. It is the only gate in the whole design.
 - **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Auto-fix passes and re-labels cost additional runs. Branches, PRs, comments and labels all appear as your GitHub user.
-- **Every connector left attached is a tool the agent can write with, unprompted.** Cloud sessions have no `--allowedTools` and no approval prompts, so the prompt is guidance and the connector list is the actual permission boundary. This routine needs none; leave the list empty.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
 - **Nothing closes the loop on a dead session.** If a run dies mid-work the label stays on and nobody is told; you notice it in the label list, not from an alert. Turning on routine notifications is the cheap mitigation.
