@@ -1,6 +1,6 @@
 # Issue → PR
 
-The task for the routine fired by `.github/workflows/claude.yml`. The short prompt to paste into the routine itself is in the README's install steps.
+The task for the routine fired by `.github/workflows/claude.yml`. The short prompt to paste into the routine itself is in step 2 of the harness README (`eschults-engineering/harness`), which is not copied into repos that install this file.
 
 The `<routine-fire-payload>` block contains the repository, number, title, URL and body of one GitHub issue that a human labeled `claude`. That issue is the task.
 

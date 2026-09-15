@@ -61,13 +61,13 @@ cat /tmp/harness/CLAUDE.md >> CLAUDE.md   # merge by hand if you already have on
 | `.claude/prompts/issue-to-pr.md` | The task the routine carries out. |
 | `CLAUDE.md` | Every rule the routine follows. Single source of truth. |
 
-The routine's saved prompt lives on claude.ai rather than in git, which is why it is five lines that defer to `.claude/prompts/` for the task and to `CLAUDE.md` for every rule. The part that matters stays version-controlled and reviewable.
+The routine's saved prompt lives on claude.ai rather than in git, which is why it is a few lines that defer to `.claude/prompts/` for the task and to `CLAUDE.md` for every rule. The part that matters stays version-controlled and reviewable.
 
 ## 2. Create the routine
 
 Install the [Claude GitHub App](https://github.com/apps/claude) on the repo first — cloud sessions need it to clone and push `claude/` branches.
 
-At [claude.ai/code/routines](https://claude.ai/code/routines): point the routine at the repo, paste this prompt, and add an **API** trigger.
+At [claude.ai/code/routines](https://claude.ai/code/routines): point the routine at the repo and paste this prompt.
 
 ```text
 You implement GitHub issues in this repository.
@@ -80,7 +80,7 @@ Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.
 
 Keep it this short: everything else lives in the repo, where it goes through code review.
 
-Save first, then **Add another trigger → API → Generate token** — the URL and token only exist once the routine has an id, and the token is shown once.
+Then add the **API** trigger, which has to come after the first save: **Add another trigger → API → Generate token** — the URL and token only exist once the routine has an id, and the token is shown once.
 
 It needs no schedule and no GitHub event trigger. Three settings are worth getting right:
 
