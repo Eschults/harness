@@ -108,6 +108,7 @@ gh label create needs-human --color D93F0B --description "Claude declined, see i
     <source media="(prefers-color-scheme: dark)" srcset="docs/how-it-works-dark.svg">
     <img src="docs/how-it-works-light.svg" width="450" alt="A human or a bot labels an issue claude; a GitHub Actions workflow POSTs /fire; one Claude routine in the cloud reads the issue, writes code, runs the tests, opens a PR, self-reviews it and removes the label. The human reviews the PR: if nothing needs to change they merge and deploy, otherwise they take control of the Claude session.">
   </picture>
+  <br/><sub><a href="https://claude.ai/artifact/L4yVFvUXqjVQN1fyGa4hPv">Source</a></sub>
 </p>
 
 The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events, so the GHA workflow exists to turn `issues.labeled` into a trigger for an authenticated POST (also, a plain GitHub webhook can't send an `Authorization` header).
