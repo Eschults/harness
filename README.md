@@ -48,7 +48,7 @@ It stays this short because everything else lives in the repo, where it goes thr
 
 Then **Select a trigger → API**, remove any irrelevant **Connectors** available to Claude during runs (note that `gh` is preinstalled by default and does not appear here).
 
-Activate **Behavior → Auto-fix pull requests.** to watch CI and review comments on PRs to resume a session and push fixes, covering the two things the session itself cannot: CI that fails after it exits, and review comments your engineers leave.
+Activate **Behavior → Auto-fix pull requests** to watch CI and review comments on PRs to resume a session and push fixes, covering the two things the session itself cannot: CI that fails after it exits, and review comments your engineers leave.
 
 Last, activate **Notifications** to make sure Engineering gets pinged in case of input needed or session dying mid-run.
 
@@ -71,16 +71,24 @@ gh variable set CLAUDE_ROUTINE_ID --body "$CLAUDE_ROUTINE_ID"
 gh secret set CLAUDE_ROUTINE_TOKEN --body "$CLAUDE_ROUTINE_TOKEN"
 ```
 
-Prove them before involving a workflow. This returns a session URL, or names the reason it didn't:
+Prove them before involving a workflow:
 
 ```bash
-curl -X POST "https://api.anthropic.com/v1/claude_code/routines/$CLAUDE_ROUTINE_ID/fire" \
+curl -sS -X POST "https://api.anthropic.com/v1/claude_code/routines/$CLAUDE_ROUTINE_ID/fire" \
   -H "Authorization: Bearer $CLAUDE_ROUTINE_TOKEN" \
   -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
   -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
-  -d '{"text": "Setup check. Reply with the repo name and stop."}'
+  -d '{"text": "Setup check. Reply with the repo name and stop."}'; echo
 ```
+
+If the response looks like :point_down: it worked :tada:
+
+```json
+{"claude_code_session_id":"cse_…","claude_code_session_url":"https://claude.ai/code/cse_…","type":"routine_fire"}
+```
+
+Anything else is an error naming the reason: bad token, wrong id, or daily routine cap. Note that the session itself does no work, which is expected until the new files are merged, but Claude is smart enough to terminate it.
 
 ## 4. Create the labels
 
