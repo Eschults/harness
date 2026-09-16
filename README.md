@@ -107,7 +107,7 @@ gh label create needs-human --color D93F0B --description "Claude declined, see i
 
 ```mermaid
 flowchart TD
-    A["a human labels an issue <code>claude</code>"]
+    A["<b>YOU or 3rd party</b><br/>labels an issue <code>claude</code>"]
     B["<b>.github/workflows/claude.yml</b><br/>the only thing on your runner"]
     C["<b>one routine, in the cloud</b><br/>writes code, runs the tests,<br/>opens a PR, reviews its diff"]
     D["you review and merge"]
@@ -115,6 +115,8 @@ flowchart TD
     A --> B
     B -- "POST /fire" --> C
     C --> D
+
+    style A fill:#D97757,stroke:#B85F3F,color:#fff
 ```
 
 </div>
