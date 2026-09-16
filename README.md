@@ -110,7 +110,7 @@ gh label create needs-human --color D93F0B --description "Claude declined, see i
 
 The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events, so the GHA workflow exists to turn `issues.labeled` into a trigger for an authenticated POST (also, a plain GitHub webhook can't send an `Authorization` header).
 
-When a run hits something only a human can settle, it opens a draft PR instead and comments the blocker with a link to its session, where you can answer and watch it pick the work back up.
+When a run hits something only a human can settle, it opens a draft PR instead and comments the blocker with a link to its session, where you can answer and watch it pick the work back up. The same goes for a finished PR you want changed: take the session over in the browser from that link, or in your terminal with `claude --from-pr <number>`, and finish the work together rather than starting over.
 
 | Label | Applied by | Means |
 |---|---|---|
