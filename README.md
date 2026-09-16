@@ -101,25 +101,16 @@ gh label create needs-human --color D93F0B --description "Claude declined, see i
 
 ## How it works
 
-<div align="center">
-
-```mermaid
-flowchart TD
-    A["a human labels an issue <code>claude</code>"]
-    B["<b>.github/workflows/claude.yml</b><br/>the only thing on your runner"]
-    C["<b>one routine, in the cloud</b><br/>writes code, runs the tests,<br/>opens a PR, reviews its diff"]
-    D["you review and merge"]
-
-    A --> B
-    B -- "POST /fire" --> C
-    C --> D
-```
-
-</div>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/how-it-works-dark.svg">
+    <img src="docs/how-it-works-light.svg" width="450" alt="A human labels an issue claude; a GitHub Actions workflow POSTs /fire; one Claude routine in the cloud reads the issue, writes code, runs the tests, opens a PR, self-reviews it and removes the label. The human reviews the PR: if nothing needs to change they merge and deploy, otherwise they take control of the Claude session.">
+  </picture>
+</p>
 
 The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events, so the GHA workflow exists to turn `issues.labeled` into a trigger for an authenticated POST (also, a plain GitHub webhook can't send an `Authorization` header).
 
-When a run hits something only a human can settle, it opens a draft PR instead and comments the blocker with a link to its session, where you can answer and watch it pick the work back up.
+When a run hits something only a human can settle, it opens a draft PR instead and comments the blocker with a link to its session, where you can answer and watch it pick the work back up. The same goes for a finished PR you want changed: take the session over in the browser from that link, or in your terminal with `claude --from-pr <number>`, and finish the work together rather than starting over.
 
 | Label | Applied by | Means |
 |---|---|---|
