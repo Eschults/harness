@@ -6,6 +6,8 @@ It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on 
 
 Install is three files, one routine, two labels, and two repo values.
 
+> **Note.** This is a proof of concept and the first brick of a larger design. On its own, labeling an issue is no faster than starting a Claude Code session locally. The label is meant to become a hook for external events — a Sentry error, a Notion roadmap card — so that engineering work starts without human initiation.
+
 ## 1. Copy the files
 
 Run this from the root of your project repo:
