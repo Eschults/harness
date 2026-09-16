@@ -106,7 +106,7 @@ gh label create needs-human --color D93F0B --description "Claude declined, see i
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/how-it-works-dark.svg">
-    <img src="docs/how-it-works-light.svg" width="450" alt="A human labels an issue claude; a GitHub Actions workflow POSTs /fire; one Claude routine in the cloud reads the issue, writes code, runs the tests, opens a PR, self-reviews it and removes the label. The human reviews the PR: if nothing needs to change they merge and deploy, otherwise they take control of the Claude session.">
+    <img src="docs/how-it-works-light.svg" width="450" alt="A human or a bot labels an issue claude; a GitHub Actions workflow POSTs /fire; one Claude routine in the cloud reads the issue, writes code, runs the tests, opens a PR, self-reviews it and removes the label. The human reviews the PR: if nothing needs to change they merge and deploy, otherwise they take control of the Claude session.">
   </picture>
 </p>
 
@@ -116,7 +116,7 @@ When a run hits something only a human can settle, it opens a draft PR instead a
 
 | Label | Applied by | Means |
 |---|---|---|
-| `claude` | a human | **the gate** — work starts on this, and the routine removes it when done |
+| `claude` | a human, or a bot on their behalf | **the gate** — work starts on this, and the routine removes it when done |
 | `needs-human` | the routine | it declined, and said why in a comment |
 
 `claude` stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
