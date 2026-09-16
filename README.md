@@ -48,7 +48,7 @@ Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.
 
 It stays this short because everything else lives in the repo, where it goes through code review.
 
-Then **Select a trigger → API**, remove any irrelevant **Connectors** available to Claude during runs (note that `gh` is preinstalled by default and does not appear here).
+Then **Select a trigger → API**, remove any irrelevant **Connectors** available to Claude during runs (note that `gh` is preinstalled by default and does not appear there).
 
 Activate **Behavior → Auto-fix pull requests** to watch CI and review comments on PRs to resume a session and push fixes, covering the two things the session itself cannot: CI that fails after it exits, and review comments your engineers leave.
 
@@ -90,7 +90,7 @@ If the response looks like :point_down: it worked :tada:
 {"claude_code_session_id":"cse_…","claude_code_session_url":"https://claude.ai/code/cse_…","type":"routine_fire"}
 ```
 
-Anything else is an error naming the reason: bad token, wrong id, or daily routine cap. Note that the session itself does no work, which is expected until the new files are merged, but Claude is smart enough to terminate it.
+Anything else is an error naming the reason: bad token, wrong id, or daily routine cap. Note that the session itself does no work, which is expected until the new files are merged.
 
 ## 4. Create the labels
 
@@ -124,8 +124,8 @@ The label is the entire gate. A routine's GitHub trigger only fires on `pull_req
 ## Worth knowing
 - When a run hits something only a human can settle, it opens a draft PR and comments the blocker with a link to its session, where you can answer and watch it pick the work back up.
 - The same goes for a finished PR you want changed: **take the session over** in the browser from that link, or **in your terminal with `claude --from-pr <number>`**, and finish the work together rather than starting over.
-- **A green check means "session started"** — not "PR opened". The workflow finishes in seconds; the session outlives it and comments its URL on the issue. Both outcomes are reported on the issue, because a silently stalled `claude` label is the worst failure mode here.
-- **The label must come from a human or a PAT.** GitHub does not fire downstream workflow triggers for actions taken with the default `GITHUB_TOKEN`, so a GHA workflow that labels issues with it creates a green run that never invokes Claude.
+- **A green check on the GHA run means "session started"** not "PR opened". The workflow finishes in seconds; the session outlives it and comments its URL on the issue. Both outcomes are reported on the issue, because a silently stalled `claude` label is the worst failure mode here.
+- **The label cannot be added by another GHA workflow.** GitHub does not fire downstream workflow triggers for actions taken with the default `GITHUB_TOKEN`, so a GHA workflow that labels issues with it creates a green run that never invokes Claude.
 - **Add branch protection requiring CI and a human approval.** The harness assumes it and does not enforce it. It is the only gate in the whole design.
 - **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as your GitHub user, commits appear as Claude.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
