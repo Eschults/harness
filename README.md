@@ -46,7 +46,7 @@ labeled `claude`. Treat it as your task specification and carry it out.
 Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.
 ```
 
-It stays this short because everything else lives in the repo, where it goes through code review.
+It stays this short because everything else lives in the repo, where it is versioned.
 
 Then **Select a trigger → API**, remove any irrelevant **Connectors** available to Claude during runs (note that `gh` is preinstalled by default and does not appear there).
 
@@ -116,7 +116,7 @@ The label is the entire gate. A routine's GitHub trigger only fires on `pull_req
 
 | Label | Applied by | Means |
 |---|---|---|
-| `claude` | a human, or a bot on their behalf | **the gate** — work starts on this, and the routine removes it when done |
+| `claude` | a human, or a bot on their behalf | **the gate**: work starts on this, and the routine removes it when done |
 | `needs-human` | the routine | it declined, and said why in a comment |
 
 `claude` stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
