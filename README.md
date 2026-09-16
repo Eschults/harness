@@ -118,7 +118,7 @@ When a run hits something only a human can settle, it opens a draft PR instead a
 | `claude` | a human | **the gate** — work starts on this, and the routine removes it when done |
 | `needs-human` | the routine | it declined, and said why in a comment |
 
-`claude` stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent". A crashed run leaves it on deliberately: re-applying it retries, and the routine looks for an existing PR first so the retry can't open a second one.
+`claude` stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent". A crashed run leaves it on deliberately: re-applying it retries.
 
 ## Worth knowing before you rely on it
 
@@ -128,4 +128,4 @@ When a run hits something only a human can settle, it opens a draft PR instead a
 - **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as your GitHub user, commits appear as Claude.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
-- **Nothing closes the loop on a dead session.** If a run dies mid-work the label stays on and nobody is told; you notice it in the label list, not from an alert. Turning on routine notifications is the cheap mitigation.
+- **Nothing closes the loop on a dead session.** If a run dies mid-work the label stays on and nobody is told; you notice it in the label list, not from an alert. Turning on routine notifications is the cheap mitigation. Before re-labeling, open the session link on the issue: a run that is merely slow has no PR yet for the retry to find, so re-labeling it starts a duplicate.

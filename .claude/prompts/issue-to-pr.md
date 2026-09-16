@@ -2,19 +2,20 @@
 
 The task for the routine fired by `.github/workflows/claude.yml`.
 
-The `<routine-fire-payload>` block contains the repository, number, title, URL and body of one GitHub issue that a human labeled `claude`. That issue is the task.
+The `<routine-fire-payload>` block names one GitHub issue that a human labeled `claude`. That issue is the task.
 
 1. `.claude/harness-rules.md` and `CLAUDE.md` are loaded for you and bind this run. This file is the procedure; it adds no rules of its own.
-2. **Look for an open PR referencing the issue before anything else.** Re-applying the label fires this routine again, so never open a second PR for one issue. What you do depends on what you find:
+2. Read the issue and its comments with `gh issue view <number> --comments`.
+3. **Look for an open PR referencing the issue before anything else.** Re-applying the label fires this routine again, so never open a second PR for one issue. What you do depends on what you find:
    - **An open PR ready for review** — stop and say so. It is already waiting on a human.
-   - **An open draft PR of yours** — read its description and comments. If the question it was blocked on has been answered, continue the work on that same branch and mark the PR ready for review when it is done. If it has not been answered, stop and say so.
-   - **Nothing** — carry on below.
-3. Reproduce the problem or pin down the feature's scope before writing code. If the issue is a stack trace, write a failing test that reproduces it, then fix the code, then confirm the test passes.
-4. Open the PR — ready for review or draft, per the three outcomes below — then comment the link on the issue.
-5. **Self-review the PR**, per the section below. Ready-for-review PRs only; skip it on a draft, which by definition is not finished.
-6. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
+   - **An open draft PR on a `claude/` branch** — a previous run's. If the question it was blocked on has been answered, on the PR or on the issue, continue on that branch and mark the PR ready for review when it is done. Otherwise stop and say so.
+   - **Anything else** — carry on below.
+4. Reproduce the problem or pin down the feature's scope before writing code. If the issue is a stack trace, write a failing test that reproduces it, then fix the code, then confirm the test passes.
+5. Open the PR — ready for review or draft, per the three outcomes below — then comment the link on the issue.
+6. **Self-review the PR**, per the section below. Ready-for-review PRs only; skip it on a draft, which by definition is not finished.
+7. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
 
-A crashed run leaves the `claude` label on, which is deliberate — re-applying it retries, and step 2 keeps the retry from duplicating work.
+A crashed run leaves the `claude` label on, which is deliberate: re-applying it retries.
 
 ## The three outcomes
 
