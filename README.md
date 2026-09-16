@@ -56,18 +56,14 @@ Three settings are worth getting right:
 
 You can also create the routine from the CLI with `/schedule`, which writes to the same account. The API trigger's token still has to be generated on the web; the CLI cannot create or revoke tokens.
 
-## 3. Create the labels
+## 3. Set two repo values
+
+The id is an identifier; the token is a secret.
 
 ```bash
-gh label create claude --color D97757 --description "starts a Claude Code run" --force
-gh label create needs-human --color D93F0B --description "Claude declined, see its comment" --force
+gh variable set CLAUDE_ROUTINE_ID --body "trig_…"
+gh secret set CLAUDE_ROUTINE_TOKEN --body "sk-ant-oat01-…"
 ```
-
-`--force` makes this safe to re-run: it creates the label if missing and updates its color/description in place if it already exists, so re-running the install doesn't fail on a label you already have.
-
-## 4. Set two repo values
-
-**Settings → Secrets and variables → Actions.** The id is an identifier, so it goes in the **Variables** tab; the token goes in **Secrets**.
 
 | Name | Kind | Value |
 |---|---|---|
@@ -84,6 +80,15 @@ curl -X POST "https://api.anthropic.com/v1/claude_code/routines/$CLAUDE_ROUTINE_
   -H "Content-Type: application/json" \
   -d '{"text": "Setup check. Reply with the repo name and stop."}'
 ```
+
+## 4. Create the labels
+
+```bash
+gh label create claude --color D97757 --description "starts a Claude Code run" --force
+gh label create needs-human --color D93F0B --description "Claude declined, see its comment" --force
+```
+
+`--force` makes this safe to re-run: it creates the label if missing and updates its color/description in place if it already exists, so re-running the install doesn't fail on a label you already have.
 
 ## How it works
 
