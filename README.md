@@ -11,15 +11,13 @@ Install is three files, one routine, and two repo values.
 Run this from the root of the repo you want the harness in — it needs no editing:
 
 ```bash
-src=$(mktemp -d)
-git clone -q --depth 1 https://github.com/eschults-engineering/harness.git "$src"
+src=https://raw.githubusercontent.com/Eschults/harness/main
 
 mkdir -p .github/workflows .claude/prompts
-cp "$src"/.github/workflows/claude.yml .github/workflows/
-cp "$src"/.claude/prompts/issue-to-pr.md .claude/prompts/
-cp "$src"/.claude/harness-rules.md .claude/
+curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
+curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md
+curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
 printf '\n@.claude/harness-rules.md\n' >> CLAUDE.md   # one line; your CLAUDE.md stays yours
-rm -rf "$src"
 ```
 
 | File | Role |
