@@ -6,6 +6,8 @@ It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on 
 
 Install is three files, one routine, two labels, and two repo values.
 
+> **Note.** This is a proof of concept and the first brick of a larger design. On its own, labeling an issue is no faster than starting a Claude Code session locally. The label is meant to become a hook for external events — a Sentry error, a Notion roadmap card — so that engineering work starts without human initiation.
+
 ## 1. Copy the files
 
 Run this from the root of your project repo:
@@ -104,8 +106,9 @@ gh label create needs-human --color D93F0B --description "Claude declined, see i
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/how-it-works-dark.svg">
-    <img src="docs/how-it-works-light.svg" width="450" alt="A human labels an issue claude; a GitHub Actions workflow POSTs /fire; one Claude routine in the cloud reads the issue, writes code, runs the tests, opens a PR, self-reviews it and removes the label. The human reviews the PR: if nothing needs to change they merge and deploy, otherwise they take control of the Claude session.">
+    <img src="docs/how-it-works-light.svg" width="450" alt="A human or a bot labels an issue claude; a GitHub Actions workflow POSTs /fire; one Claude routine in the cloud reads the issue, writes code, runs the tests, opens a PR, self-reviews it and removes the label. The human reviews the PR: if nothing needs to change they merge and deploy, otherwise they take control of the Claude session.">
   </picture>
+  <br/><sub><a href="https://claude.ai/artifact/L4yVFvUXqjVQN1fyGa4hPv">Source</a></sub>
 </p>
 
 The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events, so the GHA workflow exists to turn `issues.labeled` into a trigger for an authenticated POST (also, a plain GitHub webhook can't send an `Authorization` header).
@@ -114,7 +117,7 @@ When a run hits something only a human can settle, it opens a draft PR instead a
 
 | Label | Applied by | Means |
 |---|---|---|
-| `claude` | a human | **the gate** — work starts on this, and the routine removes it when done |
+| `claude` | a human, or a bot on their behalf | **the gate** — work starts on this, and the routine removes it when done |
 | `needs-human` | the routine | it declined, and said why in a comment |
 
 `claude` stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
@@ -128,3 +131,17 @@ When a run hits something only a human can settle, it opens a draft PR instead a
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
 - **Nothing closes the loop on a dead session.** If a run dies mid-work the label stays on and nobody is told; you notice it in the label list, not from an alert. Turning on routine notifications is the cheap mitigation.
+
+## Upgrading
+
+The three harness-owned files are the only ones an upgrade touches; `CLAUDE.md` is yours and stays as it is. Re-run this from the root of your project repo, then review the diff and commit:
+
+```bash
+src=https://raw.githubusercontent.com/Eschults/harness/main
+
+curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
+curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md
+curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
+```
+
+Run it on a clean tree so the diff is only the upgrade. Local edits to these three files are overwritten rather than merged — the diff is where you'd notice — which is why `CLAUDE.md` is the place for your own rules. The routine's instructions live in claude.ai, not the repo, so check step 2 if they changed.
