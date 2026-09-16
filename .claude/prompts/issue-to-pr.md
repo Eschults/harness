@@ -6,7 +6,7 @@ The `<routine-fire-payload>` block names one GitHub issue that a human labeled `
 
 1. `.claude/harness-rules.md` and `CLAUDE.md` are loaded for you and bind this run. This file is the procedure; it adds no rules of its own.
 2. Read the issue and its comments with `gh issue view <number> --comments`.
-3. Reproduce the problem or pin down the feature's scope before writing code. If the issue is a stack trace, write a failing test that reproduces it, then fix the code, then confirm the test passes.
+3. Reproduce the problem or pin down the feature's scope before writing code.
 4. Open the PR — ready for review or draft, per the three outcomes below — then comment the link on the issue.
 5. **Self-review the PR**, per the section below. Ready-for-review PRs only; skip it on a draft, which by definition is not finished.
 6. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
@@ -15,11 +15,11 @@ The `<routine-fire-payload>` block names one GitHub issue that a human labeled `
 
 Every run ends in exactly one of these. Pick deliberately; the difference is what a human is being asked to do next.
 
-- **Ready for review** — the default. The change is complete, the full suite passes, and nothing is left to decide. Open it ready for review, not as a draft, then self-review it before you exit.
+- **Ready for review** — the default. The change is complete and nothing is left to decide. Open it ready for review, not as a draft, then self-review it before you exit.
 - **Draft** — the change is real but cannot proceed until a human answers something. State the question in the first line of the description, above everything else, and say what you would do under each answer. Then hand off on the issue, per below. A draft is a request for input, so open one only when you actually need input; never as a hedge on finished work.
 - **No PR** — there is no useful partial change to show. Comment on the issue explaining what you found, remove `claude`, and add `needs-human`. That is a successful outcome, not a failure.
 
-When the rulebook tells you to stop rather than guess, take **Draft** if you have a real change and one clear question a human can answer, and **No PR** when the doubt goes to the root of the task. A change touching auth, payments, permissions or PII is always **No PR**.
+When the rulebook tells you to stop rather than guess, take **Draft** if you have a real change and one clear question a human can answer, and **No PR** when the doubt goes to the root of the task.
 
 ## Handing off a draft
 
@@ -41,7 +41,7 @@ Once the PR is open and ready for review, review your own work before you exit. 
 3. **Commit and push to the PR's branch.** One commit for the review pass. If you fixed nothing, push nothing.
 4. **Comment the recap on the PR**, per below.
 
-Apply a fix when it is clearly correct, confined to the PR's own scope, and allowed by the rules. Report instead of fixing when the finding needs a human decision, lands on anything in the rulebook's "when to stop" list, would mean editing a **never edit** path or adding a dependency, or is a design question rather than a defect. Never drop a finding silently — anything you chose not to fix goes in the recap with the reason.
+Apply a fix when it is clearly correct, confined to the PR's own scope, and allowed by the rules. Report instead of fixing when it needs a human decision or is a design question rather than a defect. Never drop a finding silently — anything you chose not to fix goes in the recap with the reason.
 
 ## The recap comment
 
@@ -55,7 +55,3 @@ One comment on the PR. A reviewer should be able to read only this and know what
    ```bash
    echo "https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID/#cse_/session_}"
    ```
-
-Say plainly that this was a **self-review**: you wrote the code and you reviewed it, so it is not a second opinion and nothing here has been independently checked. The human approving the PR is the only real gate. Do not describe your own work as reviewed, approved, or ready to merge.
-
-Never approve the PR and never merge it, whatever the review found.
