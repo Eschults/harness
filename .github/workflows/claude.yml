@@ -30,16 +30,13 @@ jobs:
     permissions:
       issues: write
     steps:
-      # ISSUE_BODY and ISSUE_TITLE are attacker-controlled. They reach curl
-      # through the environment, never through ${{ }} inside run:, so a
-      # backtick or $(...) in an issue title cannot execute on this runner.
+      # The payload only names the issue; the session reads it with gh, so
+      # no attacker-controlled text lands inside the prompt.
       - name: Fire the routine
         id: fire
         env:
           ROUTINE_ID: ${{ vars.CLAUDE_ROUTINE_ID }}
           ROUTINE_TOKEN: ${{ secrets.CLAUDE_ROUTINE_TOKEN }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
         run: |
@@ -50,12 +47,11 @@ jobs:
             exit 1
           fi
 
-          text=$(printf 'Repository: %s\nIssue: #%s — %s\nURL: %s\n\n--- issue body ---\n%s\n' \
-            "$GITHUB_REPOSITORY" "$ISSUE_NUMBER" "$ISSUE_TITLE" "$ISSUE_URL" "$ISSUE_BODY")
+          text=$(printf 'Repository: %s\nIssue: #%s\nURL: %s\n' "$GITHUB_REPOSITORY" "$ISSUE_NUMBER" "$ISSUE_URL")
 
+          # No --retry: the POST is not idempotent, a re-send starts a second session.
           response="$RUNNER_TEMP/fire.json"
-          status=$(curl -sS -o "$response" -w '%{http_code}' \
-            --retry 3 --retry-connrefused --max-time 60 \
+          status=$(curl -sS -o "$response" -w '%{http_code}' --max-time 60 \
             -X POST "https://api.anthropic.com/v1/claude_code/routines/${ROUTINE_ID}/fire" \
             -H "Authorization: Bearer ${ROUTINE_TOKEN}" \
             -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
@@ -97,7 +93,7 @@ jobs:
           gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$body"
 
       - name: Report the failure on the issue
-        if: failure()
+        if: failure() && steps.fire.outcome == 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}

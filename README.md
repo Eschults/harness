@@ -118,7 +118,7 @@ When a run hits something only a human can settle, it opens a draft PR instead a
 | `claude` | a human | **the gate** — work starts on this, and the routine removes it when done |
 | `needs-human` | the routine | it declined, and said why in a comment |
 
-`claude` stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent". A crashed run leaves it on deliberately: re-applying it retries, and the routine looks for an existing PR first so the retry can't open a second one.
+`claude` stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
 
 ## Worth knowing before you rely on it
 
