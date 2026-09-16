@@ -6,7 +6,7 @@ It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on 
 
 Install is three files, one routine, two labels, and two repo values.
 
-> **Note.** This is a proof of concept and the first brick of a larger design. On its own, labeling an issue is no faster than starting a Claude Code session locally. The label is meant to become a hook for external events — a Sentry error, a Notion roadmap card — so that engineering work starts without human initiation.
+> **Note.** This is a proof of concept and the first brick of a larger design. On its own, labeling an issue is no faster than starting a Claude Code session locally. The label is meant to become a hook for external events (a bug reported by your APM, a roadmap card from your PM tool...) so that engineering work starts without human initiation.
 
 ## 1. Copy the files
 
@@ -111,9 +111,8 @@ gh label create needs-human --color D93F0B --description "Claude declined, see i
   <br/><sub><a href="https://claude.ai/artifact/L4yVFvUXqjVQN1fyGa4hPv">Source</a></sub>
 </p>
 
-The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events, so the GHA workflow exists to turn `issues.labeled` into a trigger for an authenticated POST (also, a plain GitHub webhook can't send an `Authorization` header).
+The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events, so the GHA workflow exists to turn `issues.labeled` into a trigger for an authenticated POST `/fire` (plain GitHub webhooks can't send an `Authorization` header).
 
-When a run hits something only a human can settle, it opens a draft PR instead and comments the blocker with a link to its session, where you can answer and watch it pick the work back up. The same goes for a finished PR you want changed: take the session over in the browser from that link, or in your terminal with `claude --from-pr <number>`, and finish the work together rather than starting over.
 
 | Label | Applied by | Means |
 |---|---|---|
@@ -122,8 +121,9 @@ When a run hits something only a human can settle, it opens a draft PR instead a
 
 `claude` stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
 
-## Worth knowing before you rely on it
-
+## Worth knowing
+- When a run hits something only a human can settle, it opens a draft PR and comments the blocker with a link to its session, where you can answer and watch it pick the work back up.
+- The same goes for a finished PR you want changed: **take the session over** in the browser from that link, or **in your terminal with `claude --from-pr <number>`**, and finish the work together rather than starting over.
 - **A green check means "session started"** — not "PR opened". The workflow finishes in seconds; the session outlives it and comments its URL on the issue. Both outcomes are reported on the issue, because a silently stalled `claude` label is the worst failure mode here.
 - **The label must come from a human or a PAT.** GitHub does not fire downstream workflow triggers for actions taken with the default `GITHUB_TOKEN`, so a GHA workflow that labels issues with it creates a green run that never invokes Claude.
 - **Add branch protection requiring CI and a human approval.** The harness assumes it and does not enforce it. It is the only gate in the whole design.
