@@ -139,3 +139,17 @@ When a run hits something only a human can settle, it opens a draft PR instead a
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
 - **Nothing closes the loop on a dead session.** If a run dies mid-work the label stays on and nobody is told; you notice it in the label list, not from an alert. Turning on routine notifications is the cheap mitigation.
+
+## Upgrading
+
+The three harness-owned files are the only ones an upgrade touches; `CLAUDE.md` is yours and stays as it is. Re-run this from the root of your project repo, then review the diff and commit:
+
+```bash
+src=https://raw.githubusercontent.com/Eschults/harness/main
+
+curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
+curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md
+curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
+```
+
+Run it on a clean tree so the diff is only the upgrade. Local edits to these three files are overwritten rather than merged — the diff is where you'd notice — which is why `CLAUDE.md` is the place for your own rules. The routine's instructions live in claude.ai, not the repo, so check step 2 if they changed.
