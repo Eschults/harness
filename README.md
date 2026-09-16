@@ -31,9 +31,9 @@ Your rules and the harness's are loaded together on every run, so the never-edit
 
 ## 2. Create the routine
 
-Install the [Claude GitHub App](https://github.com/apps/claude) on the repo first — cloud sessions need it to clone and push `claude/` branches.
+First, go to [Claude GitHub App](https://github.com/apps/claude) and Configure it to have access to your project repo: cloud sessions need it to clone and push `claude/` branches.
 
-At [claude.ai/code/routines](https://claude.ai/code/routines), point a new routine at the repo and paste this as its prompt:
+Then [create the routine](https://claude.ai/code/routines/new): name it `<repo name> - Issue to PR` (for `acme/webapp`, `Webapp - Issue to PR`), select the project repo, the model, the cloud environment, and paste this as its instructions:
 
 ```text
 You implement GitHub issues in this repository.
@@ -46,26 +46,30 @@ Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.
 
 It stays this short because everything else lives in the repo, where it goes through code review.
 
-Save, then **Add another trigger → API → Generate token**. It has to come after that first save: the URL and token only exist once the routine has an id, and the token is shown once. No schedule and no GitHub event trigger are needed.
+Then **Select a trigger → API**, remove any irrelevant **Connectors** available to Claude during runs (note that `gh` is preinstalled by default and does not appear here).
 
-Three settings are worth getting right:
+Activate **Behavior → Auto-fix pull requests.** to watch CI and review comments on PRs to resume a session and push fixes, covering the two things the session itself cannot: CI that fails after it exits, and review comments your engineers leave.
 
-- **Connectors: remove all of them.** A routine includes every connector on your account by default, and during a run Claude can call any tool on one, writes included, without asking. Cloud sessions have no `--allowedTools` and no approval prompts, so this list — not the prompt — is the real permission boundary. This routine needs none: `gh` is pre-installed and reads `GH_TOKEN`, which covers issues, labels, comments and PRs.
-- **Behavior → Auto-fix pull requests: on.** It watches CI and review comments on PRs the routine opens and pushes fixes, covering the two things the session itself cannot: CI that fails after it exits, and review comments your engineers leave.
-- **Model:** whatever you'd want writing code unattended.
+Last, activate **Notifications** to make sure Engineering gets pinged in case of input needed or session dying mid-run.
 
-You can also create the routine from the CLI with `/schedule`, which writes to the same account. The API trigger's token still has to be generated on the web; the CLI cannot create or revoke tokens.
+Once created, copy the routine token for the next step.
 
 ## 3. Set two repo values
 
-The id is an identifier, `trig_…`; the token is a secret, `sk-ant-oat01-…`.
+The id is an identifier, `trig_…`; the token is a secret, `sk-ant-oat01-…`. Put both in a `.env` at the repo root, with your editor rather than `echo` so the token never lands in shell history, and make sure `.env` is gitignored:
 
-```bash
-gh variable set CLAUDE_ROUTINE_ID --body "trig_…"
-gh secret set CLAUDE_ROUTINE_TOKEN
+```dotenv
+CLAUDE_ROUTINE_ID=trig_…
+CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-…
 ```
 
-The second command prompts for the value instead of taking it as an argument, so the token never lands in shell history.
+Then load it and push both values to the repo:
+
+```bash
+source .env
+gh variable set CLAUDE_ROUTINE_ID --body "$CLAUDE_ROUTINE_ID"
+gh secret set CLAUDE_ROUTINE_TOKEN --body "$CLAUDE_ROUTINE_TOKEN"
+```
 
 Prove them before involving a workflow. This returns a session URL, or names the reason it didn't:
 
