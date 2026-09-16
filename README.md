@@ -58,17 +58,14 @@ You can also create the routine from the CLI with `/schedule`, which writes to t
 
 ## 3. Set two repo values
 
-The id is an identifier; the token is a secret.
+The id is an identifier, `trig_…`; the token is a secret, `sk-ant-oat01-…`.
 
 ```bash
 gh variable set CLAUDE_ROUTINE_ID --body "trig_…"
-gh secret set CLAUDE_ROUTINE_TOKEN --body "sk-ant-oat01-…"
+gh secret set CLAUDE_ROUTINE_TOKEN
 ```
 
-| Name | Kind | Value |
-|---|---|---|
-| `CLAUDE_ROUTINE_ID` | Variable | The routine's trigger id, `trig_…` |
-| `CLAUDE_ROUTINE_TOKEN` | Secret | Its API trigger token, `sk-ant-oat01-…` |
+The second command prompts for the value instead of taking it as an argument, so the token never lands in shell history.
 
 Prove them before involving a workflow. This returns a session URL, or names the reason it didn't:
 
