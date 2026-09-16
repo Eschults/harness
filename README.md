@@ -144,4 +144,4 @@ curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.
 curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
 ```
 
-Run it on a clean tree so the diff is only the upgrade. Local edits to these three files are overwritten rather than merged — the diff is where you'd notice — which is why `CLAUDE.md` is the place for your own rules. The routine's instructions live in claude.ai, not the repo, so check step 2 if they changed.
+Run it on a clean tree so the diff is only the upgrade. Local edits to these three files are overwritten rather than merged, check the diff for impacts. The routine's instructions live in claude.ai, not the repo, so check step 2 if they changed.
