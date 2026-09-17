@@ -39,13 +39,15 @@ Once the PR is open and ready for review, review your own work before you exit. 
 1. **Run `/code-review <PR number> --fix`.** The skill scopes the diff, ranks findings, and applies the fixes. Do not hand-roll a review in its place, and do not skip it because you feel good about the code — that feeling is exactly what the pass is checking.
 2. **Run the full test suite again.** A fix that breaks the build is worse than the finding it resolved.
 3. **Commit and push to the PR's branch.** One commit for the review pass. If you fixed nothing, push nothing.
-4. **Comment the recap on the PR**, per below.
+4. **Post the recap as a PR review**, per below.
 
 Apply a fix when it is clearly correct, confined to the PR's own scope, and allowed by the rules. Report instead of fixing when it needs a human decision or is a design question rather than a defect. Never drop a finding silently — anything you chose not to fix goes in the recap with the reason.
 
-## The recap comment
+## The recap review
 
-One comment on the PR. A reviewer should be able to read only this and know what changed and what still needs them:
+One PR review, posted with `gh pr review <PR number> --comment --body-file <file>`. It is a review rather than a plain comment so it lands in the PR's review timeline, where a reviewer looks first. Always the **Comment** verdict: never `--approve`, since you cannot be the approval gate, and never `--request-changes`, since you already pushed every fix you were going to make. No heading at the top; the review's own frame says what it is.
+
+A reviewer should be able to read only this and know what changed and what still needs them:
 
 1. **What the review found**, grouped by severity, one line each.
 2. **What you fixed**, with the commit SHA, and confirmation that the suite passes.
