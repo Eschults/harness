@@ -48,7 +48,7 @@ Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.
 
 It stays this short because everything else lives in the repo, where it is versioned.
 
-Then **Select a trigger → API**, remove any irrelevant **Connectors** available to Claude during runs (note that `gh` is preinstalled by default and does not appear there).
+Then **Select a trigger → API**, remove any irrelevant **Connectors** available to Claude during runs.
 
 Activate **Behavior → Auto-fix pull requests** to watch CI and review comments on PRs to resume a session and push fixes, covering the two things the session itself cannot: CI that fails after it exits, and review comments your engineers leave.
 
