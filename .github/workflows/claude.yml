@@ -87,9 +87,7 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           SESSION_URL: ${{ steps.fire.outputs.session-url }}
         run: |
-          body=$(printf '%s\n\n%s\n' \
-            "Claude Code session started: $SESSION_URL" \
-            "It will open a PR here when it is done, or comment if it decides not to. Open the session to watch, steer, or answer questions mid-run.")
+          body=$(printf '%s\n\n%s\n' "Claude is looking into it :point_right: $SESSION_URL incoming PR :hourglass_flowing_sand:")
           gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$body"
 
       - name: Report the failure on the issue
