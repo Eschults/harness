@@ -7,7 +7,7 @@ The `<routine-fire-payload>` block names one GitHub issue that a human labeled `
 1. `.claude/harness-rules.md` and `CLAUDE.md` are loaded for you and bind this run. This file is the procedure; it adds no rules of its own.
 2. Read the issue and its comments with `gh issue view <number> --comments`.
 3. Reproduce the problem or pin down the feature's scope before writing code.
-4. Open the PR — ready for review or draft, per the three outcomes below — then comment the link on the issue.
+4. Open the PR — ready for review or draft, per the three outcomes below — then comment the link on the issue. If the change is visible in a UI, screenshot it first, per the section below.
 5. **Self-review the PR**, per the section below. Ready-for-review PRs only; skip it on a draft, which by definition is not finished.
 6. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
 
@@ -31,6 +31,12 @@ When you open a draft, the issue comment is a handoff rather than a notification
    ```bash
    echo "https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID/#cse_/session_}"
    ```
+
+## Screenshots for UI changes
+
+A reviewer cannot run your branch from a PR page, so when the change alters something a user sees, show it to them. Screenshot the main states the change introduces, commit the images on the PR's branch in their own commit, and link each one from the description next to the change it shows. Whatever tooling you need to render the page is for this run only: do not add it to the project's dependencies.
+
+Say in the description that the images are review-only and come out before merge. They are for the reviewer's eyes, not for `main`'s history. Drop them when the reviewer asks; if they ask after you have exited, the resumed session does it.
 
 ## Self-review
 
