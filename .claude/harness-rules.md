@@ -24,6 +24,7 @@ Two lists below are easy to confuse and are not the same thing. **Never edit** i
 - Title format: `Fix: <summary>` or `Feat: <summary>`.
 - Include "Fixes #<issue-number>" in the description when applicable.
 - Describe root cause (bugs) or approach (features) in 2-4 sentences.
+- Screenshots committed for review, marked as such in the description, are not part of the change. Remove them when the reviewer asks, whether or not this run committed them.
 
 ## When to stop instead of guessing
 Do not guess your way past any of the following. Stop, and name the specific thing you need decided.
