@@ -4,11 +4,7 @@ The task for the routine that fires on a schedule, with no issue to work from.
 
 Nobody asked for anything. Work out the one capability this project should gain next, and file it as an issue. The label you add starts an implementation run, so filing books a human's review time.
 
-1. Read the README for what the project promises and does not yet do, then the code and the last few merged PRs for what it can carry.
-2. Read the open issues, and the closed ones far enough back to catch what a human already rejected.
-3. Pick the capability worth building next: a feature the README implies but nothing delivers, a manual step the project could take over, a failure mode the design could remove. Keep it to what one implementation run can carry — code it may touch, decisions already made, a diff under the cap in the rules.
-4. File it when you can say in a sentence each what someone can do afterwards that they cannot do now, why this before the rest, what done looks like, and why it fits one PR. Short of that, report what you found and file nothing.
-5. Label it, then stop.
+How you work it out is yours — every project shows what it is missing somewhere different. What holds regardless: nobody has filed it and nobody has rejected it already, one implementation run can carry it, and you can say what someone will be able to do that they cannot do now. File one issue, or none.
 
 ## The issue
 
