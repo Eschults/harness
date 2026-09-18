@@ -135,12 +135,7 @@ It labels the issue as your GitHub user through the Claude GitHub App, so the la
 
 The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events, so the GHA workflow exists to turn `issues.labeled` into a trigger for an authenticated POST `/fire` (plain GitHub webhooks can't send an `Authorization` header).
 
-
-| Label | Applied by | Means |
-|---|---|---|
-| `claude` | a human, a bot on their behalf, or the step 5 routine | **the gate**: work starts on this, and the routine removes it when done |
-
-`claude` stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
+`claude` is applied by a human, a bot on their behalf, or the step 5 routine. It stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
 
 ## Worth knowing
 - When a run hits something only a human can settle, it opens a draft PR and comments the blocker with a link to its session, where you can answer and watch it pick the work back up.
