@@ -4,7 +4,7 @@ Label a GitHub issue `claude` and a Claude Code session picks it up, writes the 
 
 It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on Anthropic's cloud infrastructure, billed against a Pro, Max, Team or Enterprise subscription. There is no API billing, and no Claude runs on your GitHub runner.
 
-Install is four files, one routine, two labels, and two repo values. The optional step 5 adds a second routine and is what the fourth file is for.
+Install is four files, one routine, one label, and two repo values. The optional step 5 adds a second routine and is what the fourth file is for.
 
 > **Note.** This is a proof of concept and the first brick of a larger design. On its own, labeling an issue is no faster than starting a Claude Code session locally. The label is meant to become a hook for external events (a bug reported by your APM, a roadmap card from your PM tool...) so that engineering work starts without human initiation. Step 5 is the first of those hooks: a scheduled run that decides what to build next and files the issue itself.
 
@@ -94,11 +94,10 @@ If the response looks like :point_down: it worked :tada:
 
 Anything else is an error naming the reason: bad token, wrong id, or daily routine cap. Note that the session itself does no work, which is expected until the new files are merged.
 
-## 4. Create the labels
+## 4. Create the label
 
 ```bash
 gh label create claude --color D97757 --description "starts a Claude Code run" --force
-gh label create needs-human --color D93F0B --description "Claude declined, see its comment" --force
 ```
 
 `--force` makes this safe to re-run: it creates the label if missing and updates its color/description in place if it already exists, so re-running the install doesn't fail on a label you already have.
@@ -136,13 +135,7 @@ It labels the issue as your GitHub user through the Claude GitHub App, so the la
 
 The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events, so the GHA workflow exists to turn `issues.labeled` into a trigger for an authenticated POST `/fire` (plain GitHub webhooks can't send an `Authorization` header).
 
-
-| Label | Applied by | Means |
-|---|---|---|
-| `claude` | a human, a bot on their behalf, or the step 5 routine | **the gate**: work starts on this, and the routine removes it when done |
-| `needs-human` | the routine | it declined, and said why in a comment |
-
-`claude` stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
+`claude` is applied by a human, a bot on their behalf, or the step 5 routine. It stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
 
 ## Worth knowing
 - When a run hits something only a human can settle, it opens a draft PR and comments the blocker with a link to its session, where you can answer and watch it pick the work back up.
