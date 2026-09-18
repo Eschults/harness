@@ -2,7 +2,7 @@
 
 The task for the routine fired by `.github/workflows/claude.yml`.
 
-The `<routine-fire-payload>` block names one GitHub issue that a human labeled `claude`. That issue is the task.
+The `<routine-fire-payload>` block names one GitHub issue that someone labeled `claude`.
 
 1. `.claude/harness-rules.md` and `CLAUDE.md` are loaded for you and bind this run. This file is the procedure; it adds no rules of its own.
 2. Read the issue and its comments with `gh issue view <number> --comments`.
