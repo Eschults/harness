@@ -108,7 +108,7 @@ So far only a human opens the gate. A second routine closes that loop: it wakes 
 
 It needs no workflow and no second token. Routines have their own schedule, so this runs on Anthropic's infrastructure and bills the same way as step 2.
 
-[Create a second routine](https://claude.ai/code/routines/new): name it `<repo name> - Next to build`, select the same repo, model and environment, and paste this as its instructions:
+[Create a second routine](https://claude.ai/code/routines/new): name it `<repo name> - Next to Build`, select the same repo, model and environment, and paste this as its instructions:
 
 ```text
 You decide what this repository should gain next.
@@ -128,7 +128,7 @@ It labels the issue as your GitHub user through the Claude GitHub App, so the la
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/how-it-works-dark.svg">
-    <img src="docs/how-it-works-light.svg" width="450" alt="A human or a bot labels an issue claude; a GitHub Actions workflow POSTs /fire; one Claude routine in the cloud reads the issue, writes code, runs the tests, opens a PR, self-reviews it and removes the label. The human reviews the PR: if nothing needs to change they merge and deploy, otherwise they take control of the Claude session.">
+    <img src="docs/how-it-works-light.svg" width="580" alt="Optionally, the Next to Build routine works out what to build next on a schedule and files an issue with the claude label. An issue labeled claude is the trigger, whether a human, a bot or that routine applies it; a GitHub Actions workflow POSTs /fire; the Issue to PR routine reads the issue, writes code, runs the tests, opens a PR, self-reviews it and removes the label. The human reviews the PR: if nothing needs to change they merge and deploy, otherwise they take control of the Claude session.">
   </picture>
   <br/><sub><a href="https://claude.ai/artifact/L4yVFvUXqjVQN1fyGa4hPv">Source</a></sub>
 </p>
