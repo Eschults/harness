@@ -28,7 +28,9 @@ url=$(gh issue create --title "<title>" --body-file <file>)
 gh issue edit "${url##*/}" --add-label claude
 ```
 
-Use `needs-human` instead of `claude` when the work needs a never-edit path or a decision from the stop list, since an implementation run would stop on arrival. Never leave it unlabeled — that is nobody's queue.
+Use `needs-human` instead of `claude` when the work needs a never-edit path or a decision from the stop list, since an implementation run would stop on arrival; name the path or the decision in the body, so whoever picks it up knows what only they can settle.
+
+Never leave it unlabeled — that is nobody's queue. The two commands fail independently, so check the label actually landed before you call the issue filed, and if it did not, say so in your ending report with the issue number.
 
 ## Ending the run
 

@@ -4,7 +4,7 @@ Label a GitHub issue `claude` and a Claude Code session picks it up, writes the 
 
 It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on Anthropic's cloud infrastructure, billed against a Pro, Max, Team or Enterprise subscription. There is no API billing, and no Claude runs on your GitHub runner.
 
-Install is four files, one routine, two labels, and two repo values.
+Install is four files, one routine, two labels, and two repo values. The optional step 5 adds a second routine and is what the fourth file is for.
 
 > **Note.** This is a proof of concept and the first brick of a larger design. On its own, labeling an issue is no faster than starting a Claude Code session locally. The label is meant to become a hook for external events (a bug reported by your APM, a roadmap card from your PM tool...) so that engineering work starts without human initiation. Step 5 is the first of those hooks: a scheduled run that decides what to build next and files the issue itself.
 
@@ -42,7 +42,7 @@ Then [create the routine](https://claude.ai/code/routines/new): name it `<repo n
 ```text
 You implement GitHub issues in this repository.
 
-The <routine-fire-payload> block contains one GitHub issue that a human
+The <routine-fire-payload> block contains one GitHub issue that someone
 labeled `claude`. Treat it as your task specification and carry it out.
 
 Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.
@@ -98,7 +98,7 @@ Anything else is an error naming the reason: bad token, wrong id, or daily routi
 
 ```bash
 gh label create claude --color D97757 --description "starts a Claude Code run" --force
-gh label create needs-human --color D93F0B --description "Claude declined, see its comment" --force
+gh label create needs-human --color D93F0B --description "an agent cannot take this, a human must" --force
 ```
 
 `--force` makes this safe to re-run: it creates the label if missing and updates its color/description in place if it already exists, so re-running the install doesn't fail on a label you already have.
@@ -139,8 +139,8 @@ The label is the entire gate. A routine's GitHub trigger only fires on `pull_req
 
 | Label | Applied by | Means |
 |---|---|---|
-| `claude` | a human, or a bot on their behalf | **the gate**: work starts on this, and the routine removes it when done |
-| `needs-human` | the routine | it declined, and said why in a comment |
+| `claude` | a human, a bot on their behalf, or the step 5 routine | **the gate**: work starts on this, and the routine removes it when done |
+| `needs-human` | a routine | no agent can take it: a run declined the issue and said why, or step 5 proposed work needing a never-edit path or a stop-topic decision |
 
 `claude` stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
 
