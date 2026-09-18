@@ -162,3 +162,7 @@ curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
 ```
 
 Run it on a clean tree so the diff is only the upgrade. Local edits to these four files are overwritten rather than merged, check the diff for impacts. The routines' instructions live in claude.ai, not the repo, so check steps 2 and 5 if they changed.
+
+## License
+
+[MIT](LICENSE). The files you copy in step 1 are yours to use, edit and redistribute; keep the copyright notice.
