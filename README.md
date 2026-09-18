@@ -54,7 +54,7 @@ Then **Select a trigger → API**, remove any irrelevant **Connectors** availabl
 
 Activate **Behavior → Auto-fix pull requests** to watch CI and review comments on PRs to resume a session and push fixes, covering the two things the session itself cannot: CI that fails after it exits, and review comments your engineers leave.
 
-Last, activate **Notifications** to make sure Engineering gets pinged in case of input needed or session dying mid-run.
+Last, activate **Notifications** to make sure Engineering gets pinged when a run needs input.
 
 Once created, copy the routine token for the next step.
 
@@ -147,14 +147,13 @@ The label is the entire gate. A routine's GitHub trigger only fires on `pull_req
 ## Worth knowing
 - When a run hits something only a human can settle, it opens a draft PR and comments the blocker with a link to its session, where you can answer and watch it pick the work back up.
 - The same goes for a finished PR you want changed: **take the session over** in the browser from that link, or **in your terminal with `claude --teleport cse_...`**, and finish the work together rather than starting over.
-- **A green check on the GHA run means "session started"** not "PR opened". The workflow finishes in seconds; the session outlives it and comments its URL on the issue. Both outcomes are reported on the issue, because a silently stalled `claude` label is the worst failure mode here.
+- **A green check on the GHA run means "session started"** not "PR opened". The workflow finishes in seconds; the session outlives it and comments its URL on the issue. If it cannot start one, it says so on the issue instead, so either way the issue tells you where things stand.
 - **The label cannot be added by another GHA workflow.** GitHub does not fire downstream workflow triggers for actions taken with the default `GITHUB_TOKEN`, so a GHA workflow that labels issues with it creates a green run that never invokes Claude.
 - **Add branch protection requiring CI and a human approval.** The harness assumes it and does not enforce it. It is the only gate in the whole design.
 - **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as your GitHub user, commits appear as Claude.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
 - **The step 5 routine is the only thing here that starts work nobody asked for**, and it proposes features rather than fixes, so what it files is a product call. Its prompt tells it to file nothing rather than invent work, but the gate is still branch protection, not the issue. Read what it files before you let a run act on it.
-- **Nothing closes the loop on a dead session.** If a run dies mid-work the label stays on and nobody is told; you notice it in the label list, not from an alert. Turning on routine notifications is the cheap mitigation.
 
 ## Upgrading
 
