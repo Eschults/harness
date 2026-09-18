@@ -4,9 +4,9 @@ Label a GitHub issue `claude` and a Claude Code session picks it up, writes the 
 
 It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on Anthropic's cloud infrastructure, billed against a Pro, Max, Team or Enterprise subscription. There is no API billing, and no Claude runs on your GitHub runner.
 
-Install is three files, one routine, two labels, and two repo values.
+Install is four files, one routine, two labels, and two repo values.
 
-> **Note.** This is a proof of concept and the first brick of a larger design. On its own, labeling an issue is no faster than starting a Claude Code session locally. The label is meant to become a hook for external events (a bug reported by your APM, a roadmap card from your PM tool...) so that engineering work starts without human initiation.
+> **Note.** This is a proof of concept and the first brick of a larger design. On its own, labeling an issue is no faster than starting a Claude Code session locally. The label is meant to become a hook for external events (a bug reported by your APM, a roadmap card from your PM tool...) so that engineering work starts without human initiation. Step 5 is the first of those hooks: a scheduled audit that files the issue itself.
 
 ## 1. Copy the files
 
@@ -18,6 +18,7 @@ src=https://raw.githubusercontent.com/Eschults/harness/main
 mkdir -p .github/workflows .claude/prompts
 curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
 curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md
+curl -fsSL "$src/.claude/prompts/codebase-audit.md" -o .claude/prompts/codebase-audit.md
 curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
 printf '\n@.claude/harness-rules.md\n' >> CLAUDE.md   # one line; your CLAUDE.md stays yours
 ```
@@ -26,6 +27,7 @@ printf '\n@.claude/harness-rules.md\n' >> CLAUDE.md   # one line; your CLAUDE.md
 |---|---|
 | `.github/workflows/claude.yml` | Fires the routine on the `claude` label. |
 | `.claude/prompts/issue-to-pr.md` | The task the routine carries out. |
+| `.claude/prompts/codebase-audit.md` | The task for the optional audit routine in step 5. |
 | `.claude/harness-rules.md` | Every rule it follows. Harness-owned — replaced on upgrade, so don't edit it. |
 | `CLAUDE.md` | Yours. The import line loads the rules; your own rules and additions go here. |
 
@@ -101,6 +103,28 @@ gh label create needs-human --color D93F0B --description "Claude declined, see i
 
 `--force` makes this safe to re-run: it creates the label if missing and updates its color/description in place if it already exists, so re-running the install doesn't fail on a label you already have.
 
+## 5. Optional: audit the codebase on a schedule
+
+So far only a human opens the gate. A second routine closes that loop: it wakes on a schedule, reads the repo, and files one issue with the `claude` label when it finds something worth doing — which fires the workflow from step 1 and starts an implementation run with nobody in the loop until review.
+
+It needs no workflow and no second token. Routines have their own schedule, so this runs on Anthropic's infrastructure and bills the same way as step 2.
+
+[Create a second routine](https://claude.ai/code/routines/new): name it `<repo name> - Codebase audit`, select the same repo, model and environment, and paste this as its instructions:
+
+```text
+You audit this repository and file the next piece of work.
+
+Nothing triggered this run and there is no issue to read. Survey the
+repository, decide whether anything is worth doing next, and file at
+most one issue.
+
+Read CLAUDE.md and .claude/prompts/codebase-audit.md, and follow both exactly.
+```
+
+Then **Select a trigger → Schedule** and pick a weekly slot, so the issue is waiting when the week starts. Weekly, not daily: each run costs one against your daily cap, and a repository does not grow a valuable new problem every day. Leave **Auto-fix pull requests** off — this routine opens none. Turn **Notifications** on.
+
+The audit labels the issue as your GitHub user through the Claude GitHub App, so the label does fire `claude.yml`. A GHA cron job labelling with `GITHUB_TOKEN` would not, which is why this is a routine and not a workflow (see "Worth knowing").
+
 ## How it works
 
 <p align="center">
@@ -130,18 +154,20 @@ The label is the entire gate. A routine's GitHub trigger only fires on `pull_req
 - **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as your GitHub user, commits appear as Claude.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
+- **The audit routine is the only thing here that starts work nobody asked for.** Its prompt tells it to bias hard toward filing nothing, but the gate is still branch protection, not the issue. Read what it files before you let a run act on it.
 - **Nothing closes the loop on a dead session.** If a run dies mid-work the label stays on and nobody is told; you notice it in the label list, not from an alert. Turning on routine notifications is the cheap mitigation.
 
 ## Upgrading
 
-The three harness-owned files are the only ones an upgrade touches; `CLAUDE.md` is yours and stays as it is. Re-run this from the root of your project repo, then review the diff and commit:
+The four harness-owned files are the only ones an upgrade touches; `CLAUDE.md` is yours and stays as it is. Re-run this from the root of your project repo, then review the diff and commit:
 
 ```bash
 src=https://raw.githubusercontent.com/Eschults/harness/main
 
 curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
 curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md
+curl -fsSL "$src/.claude/prompts/codebase-audit.md" -o .claude/prompts/codebase-audit.md
 curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
 ```
 
-Run it on a clean tree so the diff is only the upgrade. Local edits to these three files are overwritten rather than merged, check the diff for impacts. The routine's instructions live in claude.ai, not the repo, so check step 2 if they changed.
+Run it on a clean tree so the diff is only the upgrade. Local edits to these four files are overwritten rather than merged, check the diff for impacts. The routines' instructions live in claude.ai, not the repo, so check steps 2 and 5 if they changed.
