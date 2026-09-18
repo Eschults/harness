@@ -15,6 +15,8 @@ The next capability, not the next cleanup: a feature the README's own promise im
 
 File only when you can say in one sentence each what a user can do afterwards that they cannot do now, why this before the others, what done looks like, and why it fits one PR under the diff cap. If you cannot, you do not understand it well enough to hand it over.
 
+Propose only what an implementation run could actually build. Work that lands in a never-edit path, or turns on a decision from the stop list, would stop that run on arrival — leave it unfiled and name it in your ending report, where a human sees it.
+
 One per run at most, and none is a fine answer. Inventing work costs a review, a run against the daily cap, and the credibility of your next issue.
 
 ## The issue you write
@@ -28,10 +30,8 @@ url=$(gh issue create --title "<title>" --body-file <file>)
 gh issue edit "${url##*/}" --add-label claude
 ```
 
-Use `needs-human` instead of `claude` when the work needs a never-edit path or a decision from the stop list, since an implementation run would stop on arrival; name the path or the decision in the body, so whoever picks it up knows what only they can settle.
-
-Never leave it unlabeled — that is nobody's queue. The two commands fail independently, so check the label actually landed before you call the issue filed, and if it did not, say so in your ending report with the issue number.
+The two commands fail independently, so check the label landed before you call the issue filed — an unlabeled issue is in nobody's queue. If it did not, say so in your ending report with the issue number.
 
 ## Ending the run
 
-Say what you filed and why, or what you passed over and why none of it cleared the bar.
+Say what you filed and why, or what you passed over and why none of it cleared the bar. Anything real that you left unfiled because only a human can take it goes here too.

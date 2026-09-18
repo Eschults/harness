@@ -98,7 +98,7 @@ Anything else is an error naming the reason: bad token, wrong id, or daily routi
 
 ```bash
 gh label create claude --color D97757 --description "starts a Claude Code run" --force
-gh label create needs-human --color D93F0B --description "an agent cannot take this, a human must" --force
+gh label create needs-human --color D93F0B --description "Claude declined, see its comment" --force
 ```
 
 `--force` makes this safe to re-run: it creates the label if missing and updates its color/description in place if it already exists, so re-running the install doesn't fail on a label you already have.
@@ -140,7 +140,7 @@ The label is the entire gate. A routine's GitHub trigger only fires on `pull_req
 | Label | Applied by | Means |
 |---|---|---|
 | `claude` | a human, a bot on their behalf, or the step 5 routine | **the gate**: work starts on this, and the routine removes it when done |
-| `needs-human` | a routine | no agent can take it: a run declined the issue and said why, or step 5 proposed work needing a never-edit path or a stop-topic decision |
+| `needs-human` | the routine | it declined, and said why in a comment |
 
 `claude` stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
 
