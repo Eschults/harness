@@ -18,7 +18,7 @@ Every run ends in exactly one of these. Pick deliberately; the difference is wha
 
 - **Ready for review** — the default. The change is complete and nothing is left to decide. Open it ready for review, not as a draft, then self-review it before you exit.
 - **Draft** — the change is real but cannot proceed until a human answers something. State the question in the first line of the description, above everything else, and say what you would do under each answer. Then hand off on the issue, per below. A draft is a request for input, so open one only when you actually need input; never as a hedge on finished work.
-- **No PR** — there is no useful partial change to show. Comment on the issue explaining what you found, remove `claude`, and add `needs-human`. That is a successful outcome, not a failure.
+- **No PR** — there is no useful partial change to show. Comment on the issue explaining what you found and remove `claude`. That is a successful outcome, not a failure.
 
 When the rulebook tells you to stop rather than guess, take **Draft** if you have a real change and one clear question a human can answer, and **No PR** when the doubt goes to the root of the task.
 
