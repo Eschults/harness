@@ -121,7 +121,7 @@ most one issue.
 Read CLAUDE.md and .claude/prompts/codebase-audit.md, and follow both exactly.
 ```
 
-Then **Select a trigger → Schedule** and pick a weekly slot, so the issue is waiting when the week starts. Weekly, not daily: each run costs one against your daily cap, and a repository does not grow a valuable new problem every day. Leave **Auto-fix pull requests** off — this routine opens none. Turn **Notifications** on.
+Then **Select a trigger → Schedule** and pick a weekly slot, so the issue is waiting when the week starts. Weekly, not daily: a run that files something costs two against your daily cap, its own and the implementation run the label starts, and a repository does not grow a valuable new problem every day. Leave **Auto-fix pull requests** off — this routine opens none. Turn **Notifications** on.
 
 The audit labels the issue as your GitHub user through the Claude GitHub App, so the label does fire `claude.yml`. A GHA cron job labelling with `GITHUB_TOKEN` would not, which is why this is a routine and not a workflow (see "Worth knowing").
 
