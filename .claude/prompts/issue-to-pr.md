@@ -52,6 +52,8 @@ Apply a fix when it is clearly correct, confined to the PR's own scope, and allo
 
 Findings belong on the pull request, never in the diff. A finding about one line also goes on that line, and the recap carries every finding either way. Never write a comment into the source to record a finding, justify a fix, or flag something you left.
 
+Track code comments that do not belong in the code, and make them review inline comments instead. Strip them out before handing off your work. 
+
 ## The recap review
 
 One PR review, with the **Comment** verdict, carrying inline comments on the lines that earned them. A review, not a comment: it belongs in the PR's review timeline, where a reviewer looks first and where a merge leaves it behind. Never approve, since you cannot be the approval gate, and never request changes, since you already pushed every fix you were going to make. No heading at the top; the review's own frame says what it is.
