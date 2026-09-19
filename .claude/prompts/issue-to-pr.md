@@ -5,12 +5,20 @@ The task for the routine fired by `.github/workflows/claude.yml`.
 The `<routine-fire-payload>` block names one GitHub issue that someone labeled `claude`.
 
 1. `.claude/harness-rules.md` and `CLAUDE.md` are loaded for you and bind this run. This file is the procedure; it adds no rules of its own.
-2. Read the issue and its comments with `gh issue view <number> --comments`.
+2. Read the issue and every comment on it, with the tooling from the section below.
 3. Reproduce the problem or pin down the feature's scope before writing code.
 4. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
 5. Open the PR — ready for review or draft, per the three outcomes below — then comment the link on the issue.
 6. **Self-review the PR**, per the section below. Ready-for-review PRs only; skip it on a draft, which by definition is not finished.
 7. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
+
+## Reaching GitHub
+
+A Claude Code cloud session has no `gh` on its PATH, so nothing in this file assumes one. Establish what this session actually has before the first call that needs it — the GitHub MCP tools (`mcp__github__*`) in a cloud session, `gh` in a terminal session that has it — and use the same tooling for every GitHub call in the run.
+
+The tool changes; what has to end up on GitHub does not. Where a step below names an outcome — a review, an issue comment, a label removed — that outcome is the requirement, and reaching for a different kind of object because it was easier to post is a failure of the step, not a variation on it.
+
+If nothing available can reach this repository, stop and say so as plainly as you can wherever you can still write. A run that cannot read the issue or post its review cannot finish, and working from the payload alone is guessing.
 
 ## The three outcomes
 
@@ -50,9 +58,13 @@ Once the PR is open and ready for review, review your own work before you exit. 
 
 Apply a fix when it is clearly correct, confined to the PR's own scope, and allowed by the rules. Report instead of fixing when it needs a human decision or is a design question rather than a defect. Never drop a finding silently — anything you chose not to fix goes in the recap with the reason.
 
+Findings belong on the pull request, never in the diff. A finding about one line goes on that line as an inline comment in the review; everything else goes in the recap. Do not write a comment into the source to record a review finding, to justify a fix, or to flag something you decided not to change: the review is a layer over the diff that a merge discards, while a code comment reaches `main` and stays there long after the exchange that produced it is forgotten.
+
 ## The recap review
 
-One PR review, posted with `gh pr review <PR number> --comment --body-file <file>`. It is a review rather than a plain comment so it lands in the PR's review timeline, where a reviewer looks first. Always the **Comment** verdict: never `--approve`, since you cannot be the approval gate, and never `--request-changes`, since you already pushed every fix you were going to make. No heading at the top; the review's own frame says what it is.
+One PR review, carrying the **Comment** verdict and any inline comments the findings earned. A review, not a comment: it has to land in the PR's review timeline, which is where a reviewer looks first and where a merge leaves it behind. With the GitHub MCP tools, a recap with no inline comments is one `pull_request_review_write` call with `method: "create"` and `event: "COMMENT"`; with inline comments it is three — `create` to open a pending review, `add_comment_to_pending_review` per line, then `submit_pending` with `event: "COMMENT"`. With `gh` it is `gh pr review <PR number> --comment --body-file <file>`. Never approve, since you cannot be the approval gate, and never request changes, since you already pushed every fix you were going to make. No heading at the top; the review's own frame says what it is.
+
+If the review will not post, a plain PR comment is the fallback — but open it by saying the review failed and name the error, so the reviewer sees a degraded outcome rather than a recap that looks like it worked. Silently posting a comment in place of a review is the one thing this step cannot do.
 
 A reviewer should be able to read only this and know what changed and what still needs them:
 
