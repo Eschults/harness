@@ -10,14 +10,9 @@ How you work it out is yours — every project shows what it is missing somewher
 
 Title is the capability, under 72 characters. Body is `## Context` (what is missing and why it matters now), `## Done looks like` (acceptance criteria as a checklist), then the files you expect to change. Say that a scheduled run proposed it and nobody asked, so whoever triages it knows where it came from.
 
-Create it unlabeled and label it in a second step — `claude.yml` listens for `issues.labeled`, and a label set at creation time does not reliably emit that event:
+Create it unlabeled, then label it in a second step — `claude.yml` listens for `issues.labeled`, and a label set at creation time does not reliably emit that event.
 
-```bash
-url=$(gh issue create --title "<title>" --body-file <file>)
-gh issue edit "${url##*/}" --add-label claude
-```
-
-The two commands fail independently, so confirm the label landed before you call the issue filed.
+The two steps fail independently, so confirm the label landed before you call the issue filed. An issue created but never labeled starts nothing and sits in nobody's queue; report its number rather than leaving it.
 
 ## Ending the run
 

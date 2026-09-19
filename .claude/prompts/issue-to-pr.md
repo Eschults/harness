@@ -5,7 +5,7 @@ The task for the routine fired by `.github/workflows/claude.yml`.
 The `<routine-fire-payload>` block names one GitHub issue that someone labeled `claude`.
 
 1. `.claude/harness-rules.md` and `CLAUDE.md` are loaded for you and bind this run. This file is the procedure; it adds no rules of its own.
-2. Read the issue and its comments with `gh issue view <number> --comments`.
+2. Read the issue and every comment on it. A specification often continues in the comments, and the body alone will not show it.
 3. Reproduce the problem or pin down the feature's scope before writing code.
 4. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
 5. Open the PR — ready for review or draft, per the three outcomes below — then comment the link on the issue.
@@ -50,9 +50,17 @@ Once the PR is open and ready for review, review your own work before you exit. 
 
 Apply a fix when it is clearly correct, confined to the PR's own scope, and allowed by the rules. Report instead of fixing when it needs a human decision or is a design question rather than a defect. Never drop a finding silently — anything you chose not to fix goes in the recap with the reason.
 
+Findings belong on the pull request, never in the diff. A finding about one line also goes on that line, and the recap carries every finding either way. Never write a comment into the source to record a finding, justify a fix, or flag something you left.
+
+Track code comments that do not belong in the code, and make them review inline comments instead. Strip them out before handing off your work. 
+
+Track code comments that do not belong in the code, and make them review inline comments instead. Strip them out before handing off your work. 
+
 ## The recap review
 
-One PR review, posted with `gh pr review <PR number> --comment --body-file <file>`. It is a review rather than a plain comment so it lands in the PR's review timeline, where a reviewer looks first. Always the **Comment** verdict: never `--approve`, since you cannot be the approval gate, and never `--request-changes`, since you already pushed every fix you were going to make. No heading at the top; the review's own frame says what it is.
+One PR review, with the **Comment** verdict, carrying inline comments on the lines that earned them. A review, not a comment: it belongs in the PR's review timeline, where a reviewer looks first and where a merge leaves it behind. Never approve, since you cannot be the approval gate, and never request changes, since you already pushed every fix you were going to make. No heading at the top; the review's own frame says what it is.
+
+If the review will not post, say so in the first line of the fallback comment and name the error. A comment passed off as the recap is the one thing this step cannot do.
 
 A reviewer should be able to read only this and know what changed and what still needs them:
 
