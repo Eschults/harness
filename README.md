@@ -165,4 +165,4 @@ Run it on a clean tree so the diff is only the upgrade. Local edits to these fou
 
 ## License
 
-[MIT](LICENSE). The files you copy in step 1 are yours to use, edit and redistribute; keep the copyright notice.
+[MIT](LICENSE). The files you copy in step 1 are yours to use, edit and redistribute. Step 1 doesn't copy this `LICENSE`, so if you pass the harness files on, carry the copyright and permission notice with them.
