@@ -27,7 +27,7 @@ When the rulebook tells you to stop rather than guess, take **Draft** if you hav
 When you open a draft, the issue comment is a handoff rather than a notification. An engineer reading only that comment must be able to act on it. Include exactly two things, in this order:
 
 1. **The blocker, in one or two sentences.** Name concisely the decision you need and what you would do under each answer.
-2. **A link to this session, as the place to take over.** Show both the claude.ai Web UI link, and the `claude --teleport` command to take over from a Terminal.
+2. **A link to this session, as the place to take over.** Show both the claude.ai Web UI link, and the `claude --teleport` command to take over from a Terminal (rendered as a multi-line code block).
 
 ## Screenshots for UI changes
 
@@ -61,4 +61,4 @@ A reviewer should be able to read only this and know what changed and what still
 1. **What the review found**, grouped by severity, one line each.
 2. **What you fixed**, with the commit SHA, and confirmation that the suite passes.
 3. **What you left**, each with its reason. This is the part a human has to act on, so do not bury it.
-4. **A link to this session**, so the reasoning behind every call above is inspectable. Show both the claude.ai Web UI link, and the `claude --teleport` command to take over from a Terminal.
+4. **A link to this session**, so the reasoning behind every call above is inspectable. Show both the claude.ai Web UI link, and the `claude --teleport` command to take over from a Terminal (rendered as a multi-line code block).
