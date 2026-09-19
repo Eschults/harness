@@ -10,7 +10,7 @@ How you work it out is yours — every project shows what it is missing somewher
 
 Title is the capability, under 72 characters. Body is `## Context` (what is missing and why it matters now), `## Done looks like` (acceptance criteria as a checklist), then the files you expect to change. Say that a scheduled run proposed it and nobody asked, so whoever triages it knows where it came from.
 
-Create it unlabeled, then label it in a second step — `claude.yml` listens for `issues.labeled`, and a label set at creation time does not reliably emit that event. A Claude Code cloud session has no `gh` on its PATH, so do both through the GitHub MCP tools — `issue_write` with `method: "create"` and no `labels`, then `issue_write` with `method: "update"` and `labels: ["claude"]` — or through `gh issue create` and `gh issue edit --add-label` in a session that has `gh`.
+Create it unlabeled, then label it in a second step — `claude.yml` listens for `issues.labeled`, and a label set at creation time does not reliably emit that event.
 
 The two steps fail independently, so confirm the label landed before you call the issue filed. An issue created but never labeled starts nothing and sits in nobody's queue; report its number rather than leaving it.
 
