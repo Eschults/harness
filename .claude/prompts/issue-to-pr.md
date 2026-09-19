@@ -12,12 +12,6 @@ The `<routine-fire-payload>` block names one GitHub issue that someone labeled `
 6. **Self-review the PR**, per the section below. Ready-for-review PRs only; skip it on a draft, which by definition is not finished.
 7. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
 
-## Reaching GitHub
-
-Nothing here names a command, because what reaches GitHub from a given session is not knowable when this file is written. Every step names its outcome instead — a review, an issue comment, a label removed. Work out what you have before the first step that needs it, and produce that outcome with it; posting a different kind of object because it was easier is a failure of the step, not a variation on it.
-
-If nothing you have can reach this repository, stop and say so wherever you can still write, rather than working from the payload alone.
-
 ## The three outcomes
 
 Every run ends in exactly one of these. Pick deliberately; the difference is what a human is being asked to do next.
@@ -56,7 +50,7 @@ Once the PR is open and ready for review, review your own work before you exit. 
 
 Apply a fix when it is clearly correct, confined to the PR's own scope, and allowed by the rules. Report instead of fixing when it needs a human decision or is a design question rather than a defect. Never drop a finding silently — anything you chose not to fix goes in the recap with the reason.
 
-Findings belong on the pull request, never in the diff. A finding about one line also goes on that line, and the recap carries every finding either way. Never write a comment into the source to record a finding, justify a fix, or flag something you left: a review is discarded on merge, while a code comment reaches `main` and outlives the exchange that produced it.
+Findings belong on the pull request, never in the diff. A finding about one line also goes on that line, and the recap carries every finding either way. Never write a comment into the source to record a finding, justify a fix, or flag something you left.
 
 ## The recap review
 
