@@ -10,7 +10,7 @@ The `<routine-fire-payload>` block names one GitHub issue that someone labeled `
 4. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
 5. Open the PR — ready for review or draft, per the three outcomes below — then comment the link on the issue.
 6. **Self-review the PR**, per the section below. Ready-for-review PRs only; skip it on a draft, which by definition is not finished.
-7. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie. That label comes off; the issue's others stay exactly as they were.
+7. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
 
 ## Reaching GitHub
 
