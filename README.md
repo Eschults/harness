@@ -25,7 +25,7 @@ Put your project's own rules in `CLAUDE.md`, not `harness-rules.md`, so an upgra
 
 Install is four files, one routine, one label, and two repo values. Step 5 adds a second routine to start triggering Claude without human intervention.
 
-### 1. Copy the files
+#### 1. Copy the files
 
 Run this from the root of your project repo:
 
@@ -40,7 +40,7 @@ curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
 printf '\n@.claude/harness-rules.md\n' >> CLAUDE.md   # one line; your CLAUDE.md stays yours
 ```
 
-### 2. Create the "Issue to PR" routine
+#### 2. Create the "Issue to PR" routine
 
 First, go to [Claude GitHub App](https://github.com/apps/claude) and Configure it to have access to your project repo: cloud sessions need it to clone and push `claude/` branches.
 
@@ -65,7 +65,7 @@ Last, activate **Notifications** to make sure Engineering gets pinged when a run
 
 Once created, copy the routine token for the next step.
 
-### 3. Set two repo values
+#### 3. Set two repo values
 
 The id is an identifier, `trig_…`; the token is a secret, `sk-ant-oat01-…`. Put both in a `.env` at the repo root, with your editor rather than `echo` so the token never lands in shell history, and make sure `.env` is gitignored:
 
@@ -101,7 +101,7 @@ If the response looks like :point_down: it worked :tada:
 
 Anything else is an error naming the reason: bad token, wrong id, or daily routine cap. Note that the session itself does no work, which is expected until the new files are merged.
 
-### 4. Create the label
+#### 4. Create the label
 
 ```bash
 gh label create claude --color D97757 --description "starts a Claude Code run" --force
@@ -109,7 +109,7 @@ gh label create claude --color D97757 --description "starts a Claude Code run" -
 
 `--force` makes this safe to re-run: it creates the label if missing and updates its color/description in place if it already exists, so re-running the install doesn't fail on a label you already have.
 
-### 5. (Opt) Create the "Next to build" routine
+#### 5. (Opt) Create the "Next to build" routine
 
 So far only a human opens the gate. A second routine closes that loop: it wakes on a schedule, reads the repo, works out the capability it should gain next, and files that as one issue with the `claude` label, which fires the "Issue to PR" workflow and starts an implementation run with nobody in the loop until review.
 
@@ -130,7 +130,7 @@ Then **Select a trigger → Schedule** and pick the frequency that suits your te
 
 It labels the issue as your GitHub user through the Claude GitHub App, so the label does fire `claude.yml`. A GHA cron job labelling with `GITHUB_TOKEN` would not, which is why this is a routine and not a workflow (see "Worth knowing").
 
-## 6. Your turn
+#### 6. Your turn
 
 Wire your APM to file a `claude`-labeled issue on high-severity errors, or connect your roadmap tool to push cards straight to GitHub as they're ready to build. Either one closes the same loop: work starts the moment it's ready, not the moment someone's free to kick it off.
 
