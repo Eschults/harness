@@ -57,9 +57,9 @@ Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.
 
 It stays this short because everything else lives in the repo, where it is versioned.
 
-Then **Select a trigger → API**, remove any irrelevant **Connectors** available to Claude during runs.
+Then **Select a trigger → API**, and remove any irrelevant **Connectors** available to Claude during runs.
 
-Activate **Behavior → Auto-fix pull requests** to watch CI and review comments on PRs to resume a session and push fixes, covering the two things the session itself cannot: CI that fails after it exits, and review comments your engineers leave.
+Activate **Behavior → Auto-fix pull requests**. It watches CI and review comments on PRs, then resumes the session to push fixes, covering the two things the session itself cannot: CI that fails after it exits, and review comments your engineers leave.
 
 Last, activate **Notifications** to make sure Engineering gets pinged when a run needs input.
 
@@ -67,7 +67,7 @@ Once created, copy the routine token for the next step.
 
 #### 3. Set two repo values
 
-The id is an identifier, `trig_…`; the token is a secret, `sk-ant-oat01-…`. Put both in a `.env` at the repo root, with your editor rather than `echo` so the token never lands in shell history, and make sure `.env` is gitignored:
+The routine id looks like `trig_…`; the token is a secret, `sk-ant-oat01-…`. Put both in a `.env` at the repo root, with your editor rather than `echo` so the token never lands in shell history, and make sure `.env` is gitignored:
 
 ```dotenv
 CLAUDE_ROUTINE_ID=trig_…
@@ -82,7 +82,7 @@ gh variable set CLAUDE_ROUTINE_ID --body "$CLAUDE_ROUTINE_ID"
 gh secret set CLAUDE_ROUTINE_TOKEN --body "$CLAUDE_ROUTINE_TOKEN"
 ```
 
-Prove them before involving a workflow:
+Verify them before involving a workflow:
 
 ```bash
 curl -sS -X POST "https://api.anthropic.com/v1/claude_code/routines/$CLAUDE_ROUTINE_ID/fire" \
@@ -149,7 +149,7 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 ## Worth knowing
 - **A green check on the GHA run means "session started"** not "PR opened". The workflow finishes in seconds, the session outlives it and comments its URL on the issue. If it cannot start one, it says so on the issue instead, so either way the issue tells you where things stand.
 - **The label cannot be added by another GHA workflow.** GitHub does not fire downstream workflow triggers for actions taken with the default `GITHUB_TOKEN`, so a GHA workflow that labels issues with it creates a green run that never invokes Claude.
-- **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as the GitHub user linked to your Claude account, commits appear as Claude.
+- **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as the GitHub user linked to your Claude account; commits appear as Claude.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
 
