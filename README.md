@@ -108,8 +108,9 @@ Everything above this step runs unattended, so branch protection requiring CI an
 
 ```bash
 branch=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
+protected=$(gh api "repos/{owner}/{repo}/branches/$branch" -q .protected)
 
-gh api "repos/{owner}/{repo}/branches/$branch/protection" >/dev/null 2>&1 ||
+if [ "$protected" = false ]; then
   gh api --method PUT "repos/{owner}/{repo}/branches/$branch/protection" --input - <<'JSON'
 {
   "required_status_checks": {"strict": false, "contexts": []},
@@ -118,15 +119,22 @@ gh api "repos/{owner}/{repo}/branches/$branch/protection" >/dev/null 2>&1 ||
   "restrictions": null
 }
 JSON
+fi
 
 gh api --method PATCH "repos/{owner}/{repo}/branches/$branch/protection/required_pull_request_reviews" \
   -F required_approving_review_count=1
-
-gh api --method PATCH "repos/{owner}/{repo}/branches/$branch/protection/required_status_checks" \
-  -f 'contexts[]=test'
 ```
 
-The first command only creates protection on a branch that has none, and the two after it touch one setting each, so re-running the install leaves the rest of a rule you already have as it is. Name one `contexts[]=` per check that must pass, spelled as it appears on a PR; that last command replaces the required-check list, so pass all of them. If your existing rule has status checks switched off, it reports them as not enabled rather than turning them on — switch them on once in the rule and re-runs hold them there. You need admin rights on the repo, and on a private repo a plan that offers protected branches. [GitHub's branch protection docs](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/managing-a-branch-protection-rule) cover the stricter rules worth adding on top, such as dismissing stale approvals, requiring conversation resolution, or applying the rules to administrators too.
+Protection is created only on a branch GitHub reports as unprotected, so a read that fails for any other reason leaves an existing rule alone rather than overwriting it. The call after it sets one setting and nothing else, so re-running the install leaves the rest of a rule you already have as it is. If that rule has pull request reviews switched off, the call reports them as not enabled rather than turning them on — switch them on once in the rule and re-runs hold them there.
+
+Then require your CI, one `contexts[]=` per check, from the same shell so `$branch` is still set. Replace the placeholder with your own check names, spelled as they appear on a PR:
+
+```bash
+gh api --method PATCH "repos/{owner}/{repo}/branches/$branch/protection/required_status_checks" \
+  -f 'contexts[]=YOUR_CHECK_NAME'
+```
+
+This replaces the required-check list rather than adding to it, so pass every check you want required. GitHub accepts any name, and a name nothing ever reports holds every PR at "Expected — Waiting for status to be reported" and blocks the merge for good, so take the names from a real PR. Same as above, if your existing rule has status checks switched off, this reports them as not enabled rather than turning them on. You need admin rights on the repo, and on a private repo a plan that offers protected branches. [GitHub's branch protection docs](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/managing-a-branch-protection-rule) cover the stricter rules worth adding on top, such as dismissing stale approvals, requiring conversation resolution, or applying the rules to administrators too.
 
 ## 6. Optional: decide what to build next, on a schedule
 
