@@ -133,20 +133,14 @@ It labels the issue as your GitHub user through the Claude GitHub App, so the la
   <br/><sub><a href="https://claude.ai/artifact/L4yVFvUXqjVQN1fyGa4hPv">Source</a></sub>
 </p>
 
-The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events, so the GHA workflow exists to turn `issues.labeled` into a trigger for an authenticated POST `/fire` (plain GitHub webhooks can't send an `Authorization` header).
-
-`claude` is applied by a human, a bot on their behalf, or the step 5 routine. It stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
+The label is the trigger, and the issue holds the specs. `claude` is applied by your team, the "Next to Build" routing, or an integration with a tool of your engineering ecosystem. It stays on while a run is in flight and comes off when the agent is done working.
 
 ## Worth knowing
-- When a run hits something only a human can settle, it opens a draft PR and comments the blocker with a link to its session, where you can answer and watch it pick the work back up.
-- The same goes for a finished PR you want changed: **take the session over** in the browser from that link, or **in your terminal with `claude --teleport cse_...`**, and finish the work together rather than starting over.
-- **A green check on the GHA run means "session started"** not "PR opened". The workflow finishes in seconds; the session outlives it and comments its URL on the issue. If it cannot start one, it says so on the issue instead, so either way the issue tells you where things stand.
+- **A green check on the GHA run means "session started"** not "PR opened". The workflow finishes in seconds, the session outlives it and comments its URL on the issue. If it cannot start one, it says so on the issue instead, so either way the issue tells you where things stand.
 - **The label cannot be added by another GHA workflow.** GitHub does not fire downstream workflow triggers for actions taken with the default `GITHUB_TOKEN`, so a GHA workflow that labels issues with it creates a green run that never invokes Claude.
-- **Add branch protection requiring CI and a human approval.** The harness assumes it and does not enforce it. It is the only gate in the whole design.
-- **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as your GitHub user, commits appear as Claude.
+- **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as the GitHub user linked to your Claude account, commits appear as Claude.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
-- **The step 5 routine is the only thing here that starts work nobody asked for**, and it proposes features rather than fixes, so what it files is a product call. Its prompt tells it to file nothing rather than invent work, but the gate is still branch protection, not the issue. Read what it files before you let a run act on it.
 
 ## Upgrading
 
