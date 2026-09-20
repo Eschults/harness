@@ -6,7 +6,7 @@ Label a GitHub issue `claude` and a Claude Code session picks it up, writes the 
 
 It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on Anthropic's cloud infrastructure, billed against a Pro, Max, Team or Enterprise subscription. There is no API billing, and no Claude runs on your GitHub runner.
 
-- Trigger: [`.github/workflows/claude.yml`](./.github/workflows/claude.yml)
+- Trigger: [`.github/workflows/claude.yml`](.github/workflows/claude.yml)
 - Task: [`.claude/prompts/issue-to-pr.md`](.claude/prompts/issue-to-pr.md)
 
 ## Next to build
@@ -18,9 +18,9 @@ Install is four files, one routine, one label, and two repo values. Step 5 adds 
 - Task: [`.claude/prompts/next-to-build.md`](.claude/prompts/next-to-build.md)
 
 ## Harness Rules
-They live in [`.claude/prompts/harness-rules.md`](.claude/prompts/harness-rules.md) and are imported in your project's `CLAUDE.md` without overriding it. Your rules and the harness's are loaded together on every run, so the never-edit and stop-topic lists in `CLAUDE.md` add to the shipped ones rather than replacing them.
+They live in [`.claude/harness-rules.md`](.claude/harness-rules.md) and are imported in your project's `CLAUDE.md` without overriding it. Your rules and the harness's are loaded together on every run, so the never-edit and stop-topic lists in `CLAUDE.md` add to the shipped ones rather than replacing them.
 
-Any specific rules must be stored in your own `CLAUDE.md` to avoid being erased on the next upgrade. `.claude/harness-rules.md` ends with examples of what to put there, cf [Your repo's additions](.claude/prompts/harness-rules.md#your-repos-additions).
+Any specific rules must be stored in your own `CLAUDE.md` to avoid being erased on the next upgrade. `.claude/harness-rules.md` ends with examples of what to put there, cf [Your repo's additions](.claude/harness-rules.md#your-repos-additions).
 
 ## Setup
 
