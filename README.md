@@ -130,6 +130,10 @@ Then **Select a trigger → Schedule** and pick the frequency that suits your te
 
 It labels the issue as your GitHub user through the Claude GitHub App, so the label does fire `claude.yml`. A GHA cron job labelling with `GITHUB_TOKEN` would not, which is why this is a routine and not a workflow (see "Worth knowing").
 
+## 6. Your turn
+
+Wire your APM to file a `claude`-labeled issue on high-severity errors, or connect your roadmap tool to push cards straight to GitHub as they're ready to build. Either one closes the same loop: work starts the moment it's ready, not the moment someone's free to kick it off.
+
 ## How it works
 
 <p align="center">
