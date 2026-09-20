@@ -166,7 +166,7 @@ curl -fsSL "$src/.claude/prompts/next-to-build.md" -o .claude/prompts/next-to-bu
 curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
 ```
 
-Run it on a clean tree so the diff is only the upgrade. Local edits to these four files are overwritten rather than merged, so check the diff for impacts. The routines' instructions live in claude.ai, not the repo, so check steps 2 and 5 if they changed.
+Run it on a clean tree so the diff is only the upgrade. Local edits to these four files are overwritten rather than merged, so check the diff for impacts. The routines' instructions live in claude.ai, not the repo, so check steps 2 and 5 if they changed (they were designed not to).
 
 ## License
 
