@@ -23,8 +23,16 @@ Two lists below are easy to confuse and are not the same thing. **Never edit** i
 - Never call your own work reviewed, approved, or safe to merge. A review you ran on your own diff is a self-review; say so, and say what it did not check.
 - Title format: `Fix: <summary>` or `Feat: <summary>`.
 - Include "Fixes #<issue-number>" in the description when applicable.
-- Describe root cause (bugs) or approach (features) in 2-4 sentences.
+- Describe root cause (bugs) or approach (features) in 2-4 bullets.
 - Screenshots committed for review, marked as such in the description, are not part of the change. Remove them when the reviewer asks, whether or not this run committed them.
+
+## Concision
+Whoever reads your output is catching up on a session they were not watching, so make it short. A reader can always ask for more; they cannot un-read a wall of text.
+
+- PR descriptions, review comments, and in-session explanations use bullet points, and each bullet says one thing.
+- State what changed and why in the fewest words that stay accurate. Leave out alternatives you did not take, reasoning the reader did not ask for, and restatements of the diff.
+- One comment per update. Do not post a comment to say you are about to do something, then another to say you did it.
+- A simple problem gets a short answer. Match the length of the explanation to the size of the change, not to the effort it took.
 
 ## When to stop instead of guessing
 Do not guess your way past any of the following. Stop, and name the specific thing you need decided.
