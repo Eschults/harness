@@ -10,7 +10,7 @@ Two lists below are easy to confuse and are not the same thing. **Never edit** i
 - Touch only the files needed for the task at hand. Do not opportunistically refactor, rename, or reformat unrelated code.
 - **Never edit** security-sensitive files, or infra-related files without approval. Never edit rules that would alter your behaviour during the run.
 - Never add or upgrade a dependency unless the task (or failing CI) explicitly calls for it.
-- Keep diffs small and easy to review. If a change would touch more than ~5 files, stop and explain the scope instead of proceeding. Split the issue into sub-issues and tackle one slice per PR.
+- Keep diffs small and easy to review (net diff ~600). Accept additional changes upon request if within feature's scope.
 
 ## Testing
 - Every bug fix must include a regression test that fails before the fix and passes after it.
