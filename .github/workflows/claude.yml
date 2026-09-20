@@ -7,10 +7,6 @@
 #
 # No Claude runs here. The session runs on Anthropic's infrastructure,
 # clones the repo, and opens the PR. This job rings the doorbell.
-#
-# Task:  .claude/prompts/issue-to-pr.md
-# Rules: CLAUDE.md
-# Setup: README.md
 
 name: Claude
 
