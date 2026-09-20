@@ -126,9 +126,9 @@ capability the project is missing, and file at most one issue for it.
 Read CLAUDE.md and .claude/prompts/next-to-build.md, and follow both exactly.
 ```
 
-Then **Select a trigger → Schedule** and pick the frequency that suits your team's needs and org. Leave **Auto-fix pull requests** off — this routine opens none. Turn **Notifications** on.
+Then **Select a trigger → Schedule** and pick the frequency that suits your team's needs and organization. Leave **Auto-fix pull requests** off — this routine opens none. Turn **Notifications** on.
 
-It labels the issue as your GitHub user through the Claude GitHub App, so the label does fire `claude.yml`. A GHA cron job labelling with `GITHUB_TOKEN` would not, which is why this is a routine and not a workflow (see "Worth knowing").
+It labels the issue as your GitHub user through the Claude GitHub App, so the label does fire `claude.yml`. A GHA cron job labeling with `GITHUB_TOKEN` would not, which is why this is a routine and not a workflow (see "Worth knowing").
 
 #### 6. Your turn
 
@@ -144,7 +144,7 @@ Wire your APM to file a `claude`-labeled issue on high-severity errors, or conne
   <br/><sub><a href="https://claude.ai/artifact/L4yVFvUXqjVQN1fyGa4hPv">Source</a></sub>
 </p>
 
-The label is the trigger, and the issue holds the specs. `claude` is applied by your team, the "Next to Build" routing, or an integration with a tool of your engineering ecosystem. It stays on while a run is in flight and comes off when the agent is done working.
+The label is the trigger, and the issue holds the specs. `claude` is applied by your team, the "Next to Build" routine, or an integration with a tool of your engineering ecosystem. It stays on while a run is in flight and comes off when the agent is done working.
 
 ## Worth knowing
 - **A green check on the GHA run means "session started"** not "PR opened". The workflow finishes in seconds, the session outlives it and comments its URL on the issue. If it cannot start one, it says so on the issue instead, so either way the issue tells you where things stand.
@@ -166,7 +166,7 @@ curl -fsSL "$src/.claude/prompts/next-to-build.md" -o .claude/prompts/next-to-bu
 curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
 ```
 
-Run it on a clean tree so the diff is only the upgrade. Local edits to these four files are overwritten rather than merged, check the diff for impacts. The routines' instructions live in claude.ai, not the repo, so check steps 2 and 5 if they changed.
+Run it on a clean tree so the diff is only the upgrade. Local edits to these four files are overwritten rather than merged, so check the diff for impacts. The routines' instructions live in claude.ai, not the repo, so check steps 2 and 5 if they changed.
 
 ## License
 
