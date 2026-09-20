@@ -6,7 +6,7 @@ Label a GitHub issue `claude` and a Claude Code session picks it up, writes the 
 
 It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on Anthropic's cloud infrastructure, billed against a Pro, Max, Team or Enterprise subscription. There is no API billing, and no Claude runs on your GitHub runner.
 
-- Trigger: [`.github/workflows/claude.yml`](.github/workflows/claude.yml)
+- Trigger: [`.github/workflows/claude.yml`](./.github/workflows/claude.yml)
 - Task: [`.claude/prompts/issue-to-pr.md`](.claude/prompts/issue-to-pr.md)
 
 ## Next to build
