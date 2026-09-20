@@ -1,14 +1,30 @@
 # Autonomous PR harness
 
+## Issue to PR
+
 Label a GitHub issue `claude` and a Claude Code session picks it up, writes the code, opens a pull request, reviews its own diff, and posts a review recapping what it found and fixed. Your team reviews and merges.
 
 It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on Anthropic's cloud infrastructure, billed against a Pro, Max, Team or Enterprise subscription. There is no API billing, and no Claude runs on your GitHub runner.
 
-Install is four files, one routine, one label, and two repo values. The optional step 5 adds a second routine and is what the fourth file is for.
+- Trigger: [`.github/workflows/claude.yml`](.github/workflows/claude.yml)
+- Task: [`.claude/prompts/issue-to-pr.md`](.claude/prompts/issue-to-pr.md)
 
-> **Note.** This is a proof of concept and the first brick of a larger design. On its own, labeling an issue is no faster than starting a Claude Code session locally. The label is meant to become a hook for external events (a bug reported by your APM, a roadmap card from your PM tool...) so that engineering work starts without human initiation. Step 5 is the first of those hooks: a scheduled run that decides what to build next and files the issue itself.
+## Next to build
 
-## 1. Copy the files
+Scheduled Claude Code routine that browses the repo and creates a `claude`-labeled issue to start working on what it finds this project should gain next.
+
+Install is four files, one routine, one label, and two repo values. Step 5 adds a second routine to start triggering Claude without human intervention.
+
+- Task: [`.claude/prompts/next-to-build.md`](.claude/prompts/next-to-build.md)
+
+## Harness Rules
+They live in [`.claude/prompts/harness-rules.md`](.claude/prompts/harness-rules.md) and are imported in your project's `CLAUDE.md` without overriding it. Your rules and the harness's are loaded together on every run, so the never-edit and stop-topic lists in `CLAUDE.md` add to the shipped ones rather than replacing them.
+
+Any specific rules must be stored in your own `CLAUDE.md` to avoid being erased on the next upgrade. `.claude/harness-rules.md` ends with examples of what to put there, cf [Your repo's additions](.claude/prompts/harness-rules.md#your-repos-additions).
+
+## Setup
+
+### 1. Copy the files
 
 Run this from the root of your project repo:
 
@@ -23,17 +39,7 @@ curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
 printf '\n@.claude/harness-rules.md\n' >> CLAUDE.md   # one line; your CLAUDE.md stays yours
 ```
 
-| File | Role |
-|---|---|
-| `.github/workflows/claude.yml` | Fires the routine on the `claude` label. |
-| `.claude/prompts/issue-to-pr.md` | The task the routine carries out. |
-| `.claude/prompts/next-to-build.md` | The task for the optional proposal routine in step 5. |
-| `.claude/harness-rules.md` | Every rule it follows. Harness-owned — replaced on upgrade, so don't edit it. |
-| `CLAUDE.md` | Yours. The import line loads the rules; your own rules and additions go here. |
-
-Your rules and the harness's are loaded together on every run, so the never-edit and stop-topic lists in `CLAUDE.md` add to the shipped ones rather than replacing them. `.claude/harness-rules.md` ends with worked examples of what to put there.
-
-## 2. Create the routine
+### 2. Create the "Issue to PR" routine
 
 First, go to [Claude GitHub App](https://github.com/apps/claude) and Configure it to have access to your project repo: cloud sessions need it to clone and push `claude/` branches.
 
@@ -58,7 +64,7 @@ Last, activate **Notifications** to make sure Engineering gets pinged when a run
 
 Once created, copy the routine token for the next step.
 
-## 3. Set two repo values
+### 3. Set two repo values
 
 The id is an identifier, `trig_…`; the token is a secret, `sk-ant-oat01-…`. Put both in a `.env` at the repo root, with your editor rather than `echo` so the token never lands in shell history, and make sure `.env` is gitignored:
 
@@ -94,7 +100,7 @@ If the response looks like :point_down: it worked :tada:
 
 Anything else is an error naming the reason: bad token, wrong id, or daily routine cap. Note that the session itself does no work, which is expected until the new files are merged.
 
-## 4. Create the label
+### 4. Create the label
 
 ```bash
 gh label create claude --color D97757 --description "starts a Claude Code run" --force
@@ -102,9 +108,9 @@ gh label create claude --color D97757 --description "starts a Claude Code run" -
 
 `--force` makes this safe to re-run: it creates the label if missing and updates its color/description in place if it already exists, so re-running the install doesn't fail on a label you already have.
 
-## 5. Optional: decide what to build next, on a schedule
+### 5. (Opt) Create the "Next to build" routine
 
-So far only a human opens the gate. A second routine closes that loop: it wakes on a schedule, reads the repo, works out the capability it should gain next, and files that as one issue with the `claude` label — which fires the workflow from step 1 and starts an implementation run with nobody in the loop until review.
+So far only a human opens the gate. A second routine closes that loop: it wakes on a schedule, reads the repo, works out the capability it should gain next, and files that as one issue with the `claude` label, which fires the "Issue to PR" workflow and starts an implementation run with nobody in the loop until review.
 
 It needs no workflow and no second token. Routines have their own schedule, so this runs on Anthropic's infrastructure and bills the same way as step 2.
 
