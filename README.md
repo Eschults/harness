@@ -4,9 +4,9 @@ Label a GitHub issue `claude` and a Claude Code session picks it up, writes the 
 
 It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on Anthropic's cloud infrastructure, billed against a Pro, Max, Team or Enterprise subscription. There is no API billing, and no Claude runs on your GitHub runner.
 
-Install is four files, one routine, one label, and two repo values. The optional step 5 adds a second routine and is what the fourth file is for.
+Install is four files, one routine, one label, two repo values, and branch protection. The optional step 6 adds a second routine and is what the fourth file is for.
 
-> **Note.** This is a proof of concept and the first brick of a larger design. On its own, labeling an issue is no faster than starting a Claude Code session locally. The label is meant to become a hook for external events (a bug reported by your APM, a roadmap card from your PM tool...) so that engineering work starts without human initiation. Step 5 is the first of those hooks: a scheduled run that decides what to build next and files the issue itself.
+> **Note.** This is a proof of concept and the first brick of a larger design. On its own, labeling an issue is no faster than starting a Claude Code session locally. The label is meant to become a hook for external events (a bug reported by your APM, a roadmap card from your PM tool...) so that engineering work starts without human initiation. Step 6 is the first of those hooks: a scheduled run that decides what to build next and files the issue itself.
 
 ## 1. Copy the files
 
@@ -27,7 +27,7 @@ printf '\n@.claude/harness-rules.md\n' >> CLAUDE.md   # one line; your CLAUDE.md
 |---|---|
 | `.github/workflows/claude.yml` | Fires the routine on the `claude` label. |
 | `.claude/prompts/issue-to-pr.md` | The task the routine carries out. |
-| `.claude/prompts/next-to-build.md` | The task for the optional proposal routine in step 5. |
+| `.claude/prompts/next-to-build.md` | The task for the optional proposal routine in step 6. |
 | `.claude/harness-rules.md` | Every rule it follows. Harness-owned — replaced on upgrade, so don't edit it. |
 | `CLAUDE.md` | Yours. The import line loads the rules; your own rules and additions go here. |
 
@@ -102,7 +102,33 @@ gh label create claude --color D97757 --description "starts a Claude Code run" -
 
 `--force` makes this safe to re-run: it creates the label if missing and updates its color/description in place if it already exists, so re-running the install doesn't fail on a label you already have.
 
-## 5. Optional: decide what to build next, on a schedule
+## 5. Protect the default branch
+
+Everything above this step runs unattended, so branch protection requiring CI and one approving review is the only gate in the design: it is what keeps a PR Claude wrote and reviewed from reaching your default branch without a human.
+
+```bash
+branch=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
+
+gh api "repos/{owner}/{repo}/branches/$branch/protection" >/dev/null 2>&1 ||
+  gh api --method PUT "repos/{owner}/{repo}/branches/$branch/protection" --input - <<'JSON'
+{
+  "required_status_checks": {"strict": false, "contexts": []},
+  "required_pull_request_reviews": {"required_approving_review_count": 1},
+  "enforce_admins": null,
+  "restrictions": null
+}
+JSON
+
+gh api --method PATCH "repos/{owner}/{repo}/branches/$branch/protection/required_pull_request_reviews" \
+  -F required_approving_review_count=1
+
+gh api --method PATCH "repos/{owner}/{repo}/branches/$branch/protection/required_status_checks" \
+  -f 'contexts[]=test'
+```
+
+The first command only creates protection on a branch that has none, and the two after it touch one setting each, so re-running the install leaves the rest of a rule you already have as it is. Name one `contexts[]=` per check that must pass, spelled as it appears on a PR; that last command replaces the required-check list, so pass all of them. If your existing rule has status checks switched off, it reports them as not enabled rather than turning them on — switch them on once in the rule and re-runs hold them there. You need admin rights on the repo, and on a private repo a plan that offers protected branches. [GitHub's branch protection docs](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/managing-a-branch-protection-rule) cover the stricter rules worth adding on top, such as dismissing stale approvals, requiring conversation resolution, or applying the rules to administrators too.
+
+## 6. Optional: decide what to build next, on a schedule
 
 So far only a human opens the gate. A second routine closes that loop: it wakes on a schedule, reads the repo, works out the capability it should gain next, and files that as one issue with the `claude` label — which fires the workflow from step 1 and starts an implementation run with nobody in the loop until review.
 
@@ -135,18 +161,18 @@ It labels the issue as your GitHub user through the Claude GitHub App, so the la
 
 The label is the entire gate. A routine's GitHub trigger only fires on `pull_request` and `release` events, so the GHA workflow exists to turn `issues.labeled` into a trigger for an authenticated POST `/fire` (plain GitHub webhooks can't send an `Authorization` header).
 
-`claude` is applied by a human, a bot on their behalf, or the step 5 routine. It stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
+`claude` is applied by a human, a bot on their behalf, or the step 6 routine. It stays on while a run is in flight and comes off at every terminal outcome, so the label always means "waiting for an agent".
 
 ## Worth knowing
 - When a run hits something only a human can settle, it opens a draft PR and comments the blocker with a link to its session, where you can answer and watch it pick the work back up.
 - The same goes for a finished PR you want changed: **take the session over** in the browser from that link, or **in your terminal with `claude --teleport cse_...`**, and finish the work together rather than starting over.
 - **A green check on the GHA run means "session started"** not "PR opened". The workflow finishes in seconds; the session outlives it and comments its URL on the issue. If it cannot start one, it says so on the issue instead, so either way the issue tells you where things stand.
 - **The label cannot be added by another GHA workflow.** GitHub does not fire downstream workflow triggers for actions taken with the default `GITHUB_TOKEN`, so a GHA workflow that labels issues with it creates a green run that never invokes Claude.
-- **Add branch protection requiring CI and a human approval.** The harness assumes it and does not enforce it. It is the only gate in the whole design.
+- **Branch protection is the only gate in the whole design.** Step 5 turns it on; the harness assumes it is on and has no way to enforce it itself.
 - **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as your GitHub user, commits appear as Claude.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
-- **The step 5 routine is the only thing here that starts work nobody asked for**, and it proposes features rather than fixes, so what it files is a product call. Its prompt tells it to file nothing rather than invent work, but the gate is still branch protection, not the issue. Read what it files before you let a run act on it.
+- **The step 6 routine is the only thing here that starts work nobody asked for**, and it proposes features rather than fixes, so what it files is a product call. Its prompt tells it to file nothing rather than invent work, but the gate is still branch protection, not the issue. Read what it files before you let a run act on it.
 
 ## Upgrading
 
@@ -161,7 +187,7 @@ curl -fsSL "$src/.claude/prompts/next-to-build.md" -o .claude/prompts/next-to-bu
 curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
 ```
 
-Run it on a clean tree so the diff is only the upgrade. Local edits to these four files are overwritten rather than merged, check the diff for impacts. The routines' instructions live in claude.ai, not the repo, so check steps 2 and 5 if they changed.
+Run it on a clean tree so the diff is only the upgrade. Local edits to these four files are overwritten rather than merged, check the diff for impacts. The routines' instructions live in claude.ai, not the repo, so check steps 2 and 6 if they changed.
 
 ## License
 
