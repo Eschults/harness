@@ -13,16 +13,17 @@ It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on 
 
 Scheduled Claude Code routine that browses the repo and creates a `claude`-labeled issue to start working on what it finds this project should gain next.
 
-Install is four files, one routine, one label, and two repo values. Step 5 adds a second routine to start triggering Claude without human intervention.
-
 - Task: [`.claude/prompts/next-to-build.md`](.claude/prompts/next-to-build.md)
 
 ## Harness Rules
+
 They live in [`.claude/harness-rules.md`](.claude/harness-rules.md), imported into your project's `CLAUDE.md` without overriding it: both are loaded on every run, and an upgrade only ever touches `harness-rules.md`.
 
 Put your project's own rules in `CLAUDE.md`, not `harness-rules.md`, so an upgrade never erases them. See [This repo's additions](.claude/harness-rules.md#this-repos-additions) for how the two combine and what to write.
 
 ## Setup
+
+Install is four files, one routine, one label, and two repo values. Step 5 adds a second routine to start triggering Claude without human intervention.
 
 ### 1. Copy the files
 
@@ -125,7 +126,7 @@ capability the project is missing, and file at most one issue for it.
 Read CLAUDE.md and .claude/prompts/next-to-build.md, and follow both exactly.
 ```
 
-Then **Select a trigger → Schedule** and pick a weekly slot, so the issue is waiting when the week starts. Weekly, not daily: a run that files something costs two against your daily cap, its own and the implementation run the label starts, and a project does not grow a worthwhile new capability every day. Leave **Auto-fix pull requests** off — this routine opens none. Turn **Notifications** on.
+Then **Select a trigger → Schedule** and pick the frequency that suits your team's needs and org. Leave **Auto-fix pull requests** off — this routine opens none. Turn **Notifications** on.
 
 It labels the issue as your GitHub user through the Claude GitHub App, so the label does fire `claude.yml`. A GHA cron job labelling with `GITHUB_TOKEN` would not, which is why this is a routine and not a workflow (see "Worth knowing").
 
