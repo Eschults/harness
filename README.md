@@ -30,7 +30,7 @@ Install is four files, one routine, one label, and two repo values. Step 5 adds 
 Run this from the root of your project repo:
 
 ```bash
-src=https://raw.githubusercontent.com/Eschults/harness/main
+src=https://raw.githubusercontent.com/Eschults/harness/v1
 
 mkdir -p .github/workflows .claude/prompts
 curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
@@ -155,10 +155,12 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 
 ## Upgrading
 
+The harness is tagged: `main` moves as work lands, but `src` above points at `v1`, a floating tag that always resolves to the latest `v1.x.y` release. Each release also gets its own fixed tag (`v1.1.0`, `v1.2.0`, …), so `git log v1.0.0..v1.1.0` (or the GitHub compare view) shows exactly what an upgrade changes before you run it. A maintainer cuts a release with `bin/release`, which shows the last tag and prompts for the next version.
+
 The four harness-owned files are the only ones an upgrade touches; `CLAUDE.md` is yours and stays as it is. Re-run this from the root of your project repo, then review the diff and commit:
 
 ```bash
-src=https://raw.githubusercontent.com/Eschults/harness/main
+src=https://raw.githubusercontent.com/Eschults/harness/v1
 
 curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
 curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md

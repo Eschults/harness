@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Cuts a harness release: tags the current commit vX.Y.Z and moves the
+# floating major tag (vX) to it. The README's src= points at the major
+# tag, so upgraders always get the latest release in that major line,
+# while the full tag stays put as a fixed point to diff between.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+git fetch --tags --quiet
+
+last_tag=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+if [ -n "$last_tag" ]; then
+  echo "Last release: $last_tag"
+else
+  echo "No releases yet."
+fi
+
+read -rp "Next version (e.g. 1.2.0): " version
+version=${version#v}
+
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Version must be X.Y.Z" >&2
+  exit 1
+fi
+
+tag="v$version"
+major="v${version%%.*}"
+
+if git rev-parse "$tag" >/dev/null 2>&1; then
+  echo "$tag already exists" >&2
+  exit 1
+fi
+
+git tag -a "$tag" -m "Release $tag"
+git tag -f "$major" "$tag" >/dev/null
+
+git push origin "$tag"
+git push origin "$major" --force
+
+echo "Released $tag, moved $major to point at it."
