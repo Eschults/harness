@@ -134,6 +134,20 @@ It labels the issue as your GitHub user through the Claude GitHub App, so the la
 
 Wire your APM to file a `claude`-labeled issue on high-severity errors, or connect your roadmap tool to push cards straight to GitHub as they're ready to build. Either one closes the same loop: work starts the moment it's ready, not the moment someone's free to kick it off.
 
+Create the issue first, without the `claude` label, then add the label in a separate follow-up call. `claude.yml` only listens for `issues.labeled`, and GitHub does not reliably emit that event for a label attached in the same call that creates the issue, so a one-call integration looks like it started a run but never does. The "Next to Build" routine follows the same two-step sequence for its own issues (see `.claude/prompts/next-to-build.md`):
+
+```bash
+number=$(curl -fsSL -X POST "https://api.github.com/repos/$OWNER/$REPO/issues" \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -d '{"title": "...", "body": "..."}' | jq -r .number)
+
+curl -fsSL -X POST "https://api.github.com/repos/$OWNER/$REPO/issues/$number/labels" \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -d '{"labels": ["claude"]}'
+```
+
 ## How it works
 
 <p align="center">
@@ -148,7 +162,7 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 
 ## Worth knowing
 - **A green check on the GHA run means "session started"** not "PR opened". The workflow finishes in seconds, the session outlives it and comments its URL on the issue. If it cannot start one, it says so on the issue instead, so either way the issue tells you where things stand.
-- **The label cannot be added by another GHA workflow.** GitHub does not fire downstream workflow triggers for actions taken with the default `GITHUB_TOKEN`, so a GHA workflow that labels issues with it creates a green run that never invokes Claude.
+- **The label cannot be added by another GHA workflow, or attached at issue-creation time.** GitHub does not fire downstream workflow triggers for actions taken with the default `GITHUB_TOKEN`, so a GHA workflow that labels issues with it creates a green run that never invokes Claude. Separately, `claude.yml` only listens for `issues.labeled`, which GitHub does not reliably emit for a label set in the same call that creates the issue, so an integration must create the issue first and label it in a second call (see "Your turn").
 - **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as the GitHub user linked to your Claude account; commits appear as Claude.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
