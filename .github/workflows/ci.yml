@@ -1,0 +1,18 @@
+# Runs this repo's test suite (bin/ci): zero-cost checks that this repo's own
+# rules text (.claude/harness-rules.md, CLAUDE.md) hasn't been silently
+# deleted or reworded. No model calls, no secrets needed.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check-rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./bin/ci
