@@ -23,20 +23,21 @@ Put your project's own rules in `CLAUDE.md`, not `harness-rules.md`, so an upgra
 
 ## Setup
 
-Install is four files, one routine, one label, and two repo values. Step 5 adds a second routine to start triggering Claude without human intervention.
+Install is five files, one routine, one label, and two repo values. Step 5 adds a second routine to start triggering Claude without human intervention.
 
 #### 1. Copy the files
 
 Run this from the root of your project repo:
 
 ```bash
-src=https://raw.githubusercontent.com/Eschults/harness/main
+src=https://raw.githubusercontent.com/Eschults/harness/v1
 
 mkdir -p .github/workflows .claude/prompts
 curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
 curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md
 curl -fsSL "$src/.claude/prompts/next-to-build.md" -o .claude/prompts/next-to-build.md
 curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
+curl -fsSL "$src/.claude/HARNESS_VERSION" -o .claude/HARNESS_VERSION
 printf '\n@.claude/harness-rules.md\n' >> CLAUDE.md   # one line; your CLAUDE.md stays yours
 ```
 
@@ -155,18 +156,29 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 
 ## Upgrading
 
-The four harness-owned files are the only ones an upgrade touches; `CLAUDE.md` is yours and stays as it is. Re-run this from the root of your project repo, then review the diff and commit:
+The harness is tagged: `main` moves as work lands, but `src` points at `v1`, a floating tag resolving to the latest `v1.x.y` release, cut with `bin/release`. Setup and upgrade pin the tag they fetched to `.claude/HARNESS_VERSION`; the upgrade block below diffs it against the latest tag and opens the compare view first.
+
+The five harness-owned files are the only ones an upgrade touches; `CLAUDE.md` is yours and stays as it is. Re-run this from the root of your project repo, then review the diff and commit:
 
 ```bash
-src=https://raw.githubusercontent.com/Eschults/harness/main
+current=$(cat .claude/HARNESS_VERSION 2>/dev/null || true)
+latest=$(curl -fsSL https://api.github.com/repos/Eschults/harness/tags | jq -r '.[].name' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+if [ -n "$current" ] && [ "$current" != "$latest" ]; then
+  compare="https://github.com/Eschults/harness/compare/$current...$latest"
+  echo "Upgrading $current -> $latest: $compare"
+  open "$compare" 2>/dev/null || xdg-open "$compare" 2>/dev/null || true
+fi
+
+src=https://raw.githubusercontent.com/Eschults/harness/v1
 
 curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
 curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md
 curl -fsSL "$src/.claude/prompts/next-to-build.md" -o .claude/prompts/next-to-build.md
 curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
+curl -fsSL "$src/.claude/HARNESS_VERSION" -o .claude/HARNESS_VERSION
 ```
 
-Run it on a clean tree so the diff is only the upgrade. Local edits to these four files are overwritten rather than merged, so check the diff for impacts. The routines' instructions live in claude.ai, not the repo, so check steps 2 and 5 if they changed (they were designed not to).
+Run it on a clean tree so the diff is only the upgrade. Local edits to these five files are overwritten rather than merged, so check the diff for impacts. The routines' instructions live in claude.ai, not the repo, so check steps 2 and 5 if they changed (they were designed not to).
 
 ## License
 
