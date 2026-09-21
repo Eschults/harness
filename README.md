@@ -137,13 +137,21 @@ Wire your APM to file a `claude`-labeled issue on high-severity errors, or conne
 Create the issue first, without the `claude` label, then add the label in a separate follow-up call. `claude.yml` only listens for `issues.labeled`, and GitHub does not reliably emit that event for a label attached in the same call that creates the issue, so a one-call integration looks like it started a run but never does. The "Next to Build" routine follows the same two-step sequence for its own issues (see `.claude/prompts/next-to-build.md`):
 
 ```bash
-number=$(curl -fsSL -X POST "https://api.github.com/repos/$OWNER/$REPO/issues" \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
+# ISSUE_FILER_TOKEN is a PAT or GitHub App token. The default GITHUB_TOKEN in
+# a GHA workflow can't fire issues.labeled either way (see "Worth knowing"),
+# so it belongs to neither call.
+number=$(curl -sS -X POST "https://api.github.com/repos/$OWNER/$REPO/issues" \
+  -H "Authorization: Bearer $ISSUE_FILER_TOKEN" \
   -H "Accept: application/vnd.github+json" \
   -d '{"title": "...", "body": "..."}' | jq -r .number)
 
-curl -fsSL -X POST "https://api.github.com/repos/$OWNER/$REPO/issues/$number/labels" \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
+if [ -z "$number" ] || [ "$number" = "null" ]; then
+  echo "issue creation failed" >&2
+  exit 1
+fi
+
+curl -sS -X POST "https://api.github.com/repos/$OWNER/$REPO/issues/$number/labels" \
+  -H "Authorization: Bearer $ISSUE_FILER_TOKEN" \
   -H "Accept: application/vnd.github+json" \
   -d '{"labels": ["claude"]}'
 ```
