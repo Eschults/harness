@@ -37,11 +37,8 @@ curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
 curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md
 curl -fsSL "$src/.claude/prompts/next-to-build.md" -o .claude/prompts/next-to-build.md
 curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
+curl -fsSL "$src/.claude/HARNESS_VERSION" -o .claude/HARNESS_VERSION
 printf '\n@.claude/harness-rules.md\n' >> CLAUDE.md   # one line; your CLAUDE.md stays yours
-
-tags=$(curl -fsSL https://api.github.com/repos/Eschults/harness/tags)
-v1_sha=$(echo "$tags" | jq -r '.[] | select(.name=="v1") | .commit.sha')
-echo "$tags" | jq -r --arg sha "$v1_sha" '.[] | select(.commit.sha==$sha and (.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .name' | head -1 > .claude/HARNESS_VERSION
 ```
 
 #### 2. Create the "Issue to PR" routine
@@ -161,7 +158,7 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 
 The harness is tagged: `main` moves as work lands, but `src` above points at `v1`, a floating tag that always resolves to the latest `v1.x.y` release. Each release also gets its own fixed tag (`v1.1.0`, `v1.2.0`, …), so `git log v1.0.0..v1.1.0` (or the GitHub compare view) shows exactly what an upgrade changes before you run it. A maintainer cuts a release with `bin/release`, which shows the last tag and prompts for the next version.
 
-Setup and upgrade both resolve `v1` to the release it currently points at and pin it in `.claude/HARNESS_VERSION`. Compare that file against the [latest tags](https://github.com/Eschults/harness/tags) to tell whether you're behind; re-running the upgrade block always re-resolves and re-pins it.
+Setup and upgrade both copy `.claude/HARNESS_VERSION`, the tag `bin/release` last wrote to the repo. Compare it against the [latest tags](https://github.com/Eschults/harness/tags) to tell whether you're behind; re-running the upgrade block re-copies it.
 
 The five harness-owned files are the only ones an upgrade touches; `CLAUDE.md` is yours and stays as it is. Re-run this from the root of your project repo, then review the diff and commit:
 
@@ -172,13 +169,10 @@ curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
 curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md
 curl -fsSL "$src/.claude/prompts/next-to-build.md" -o .claude/prompts/next-to-build.md
 curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
-
-tags=$(curl -fsSL https://api.github.com/repos/Eschults/harness/tags)
-v1_sha=$(echo "$tags" | jq -r '.[] | select(.name=="v1") | .commit.sha')
-echo "$tags" | jq -r --arg sha "$v1_sha" '.[] | select(.commit.sha==$sha and (.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .name' | head -1 > .claude/HARNESS_VERSION
+curl -fsSL "$src/.claude/HARNESS_VERSION" -o .claude/HARNESS_VERSION
 ```
 
-Run it on a clean tree so the diff is only the upgrade. Local edits to these four files are overwritten rather than merged, so check the diff for impacts. The routines' instructions live in claude.ai, not the repo, so check steps 2 and 5 if they changed (they were designed not to).
+Run it on a clean tree so the diff is only the upgrade. Local edits to these five files are overwritten rather than merged, so check the diff for impacts. The routines' instructions live in claude.ai, not the repo, so check steps 2 and 5 if they changed (they were designed not to).
 
 ## License
 

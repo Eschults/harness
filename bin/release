@@ -54,6 +54,11 @@ if git rev-parse "$tag" >/dev/null 2>&1; then
   exit 1
 fi
 
+echo "$tag" > .claude/HARNESS_VERSION
+git add .claude/HARNESS_VERSION
+git commit -m "Release $tag"
+git push origin main
+
 git tag -a "$tag" -m "Release $tag"
 git tag -f "$major" "$tag" >/dev/null
 
