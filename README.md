@@ -156,9 +156,7 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 
 ## Upgrading
 
-The harness is tagged: `main` moves as work lands, but `src` above points at `v1`, a floating tag that always resolves to the latest `v1.x.y` release. Each release also gets its own fixed tag (`v1.1.0`, `v1.2.0`, …), so `git log v1.0.0..v1.1.0` (or the GitHub compare view) shows exactly what an upgrade changes before you run it. A maintainer cuts a release with `bin/release`, which shows the last tag and prompts for the next version.
-
-Setup and upgrade both copy `.claude/HARNESS_VERSION`, the tag `bin/release` last wrote to the repo. The upgrade block reads it, works out the latest tag, and opens the GitHub compare view between the two before touching anything; `gh browse` has no way to open an arbitrary compare view, so it shells out to `open`/`xdg-open` on the compare URL instead (printed either way, if neither is available).
+The harness is tagged: `main` moves as work lands, but `src` points at `v1`, a floating tag resolving to the latest `v1.x.y` release, cut with `bin/release`. Setup and upgrade pin the tag they fetched to `.claude/HARNESS_VERSION`; the upgrade block below diffs it against the latest tag and opens the compare view first (`gh browse` can't, so it shells out to `open`/`xdg-open`, or just prints the URL).
 
 The five harness-owned files are the only ones an upgrade touches; `CLAUDE.md` is yours and stays as it is. Re-run this from the root of your project repo, then review the diff and commit:
 
