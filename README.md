@@ -158,11 +158,19 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 
 The harness is tagged: `main` moves as work lands, but `src` above points at `v1`, a floating tag that always resolves to the latest `v1.x.y` release. Each release also gets its own fixed tag (`v1.1.0`, `v1.2.0`, …), so `git log v1.0.0..v1.1.0` (or the GitHub compare view) shows exactly what an upgrade changes before you run it. A maintainer cuts a release with `bin/release`, which shows the last tag and prompts for the next version.
 
-Setup and upgrade both copy `.claude/HARNESS_VERSION`, the tag `bin/release` last wrote to the repo. Compare it against the [latest tags](https://github.com/Eschults/harness/tags) to tell whether you're behind; re-running the upgrade block re-copies it.
+Setup and upgrade both copy `.claude/HARNESS_VERSION`, the tag `bin/release` last wrote to the repo. The upgrade block reads it, works out the latest tag, and opens the GitHub compare view between the two before touching anything; `gh browse` has no way to open an arbitrary compare view, so it shells out to `open`/`xdg-open` on the compare URL instead (printed either way, if neither is available).
 
 The five harness-owned files are the only ones an upgrade touches; `CLAUDE.md` is yours and stays as it is. Re-run this from the root of your project repo, then review the diff and commit:
 
 ```bash
+current=$(cat .claude/HARNESS_VERSION 2>/dev/null || true)
+latest=$(curl -fsSL https://api.github.com/repos/Eschults/harness/tags | jq -r '.[].name' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+if [ -n "$current" ] && [ "$current" != "$latest" ]; then
+  compare="https://github.com/Eschults/harness/compare/$current...$latest"
+  echo "Upgrading $current -> $latest: $compare"
+  open "$compare" 2>/dev/null || xdg-open "$compare" 2>/dev/null || true
+fi
+
 src=https://raw.githubusercontent.com/Eschults/harness/v1
 
 curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
