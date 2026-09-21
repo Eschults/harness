@@ -158,7 +158,7 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 
 The harness is tagged: `main` moves as work lands, but `src` points at `v1`, a floating tag resolving to the latest `v1.x.y` release, cut with `bin/release`. Setup and upgrade pin the tag they fetched to `.claude/HARNESS_VERSION`; the upgrade block below diffs it against the latest tag and opens the compare view first.
 
-The five harness-owned files are the only ones an upgrade touches; `CLAUDE.md` is yours and stays as it is. Re-run this from the root of your project repo, then review the diff and commit:
+Run the following to checkout the diff between your version and the source repo's latest release:
 
 ```bash
 current=$(cat .claude/HARNESS_VERSION 2>/dev/null || true)
@@ -168,7 +168,11 @@ if [ -n "$current" ] && [ "$current" != "$latest" ]; then
   echo "Upgrading $current -> $latest: $compare"
   open "$compare" 2>/dev/null || xdg-open "$compare" 2>/dev/null || true
 fi
+```
 
+To confirm upgrade, run the following and commit the changes:
+
+```bash
 src=https://raw.githubusercontent.com/Eschults/harness/v1
 
 curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
@@ -177,8 +181,6 @@ curl -fsSL "$src/.claude/prompts/next-to-build.md" -o .claude/prompts/next-to-bu
 curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
 curl -fsSL "$src/.claude/HARNESS_VERSION" -o .claude/HARNESS_VERSION
 ```
-
-Run it on a clean tree so the diff is only the upgrade. Local edits to these five files are overwritten rather than merged, so check the diff for impacts. The routines' instructions live in claude.ai, not the repo, so check steps 2 and 5 if they changed (they were designed not to).
 
 ## License
 
