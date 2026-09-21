@@ -4,9 +4,6 @@
 No model calls: each check asserts a load-bearing sentence is still present
 in .claude/harness-rules.md or CLAUDE.md, catching accidental deletion or
 rewording of a rule during an edit to these files.
-
-Model-based evals (claude plugin eval) are reserved for regression tests
-tied to real, high-severity bugs, added under evals/ as they happen.
 """
 import pathlib
 import sys
