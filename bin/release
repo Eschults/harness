@@ -54,6 +54,21 @@ if git rev-parse "$tag" >/dev/null 2>&1; then
   exit 1
 fi
 
+if [ -n "$last_tag" ]; then
+  last_version="${last_tag#v}"
+  last_major="v${last_version%%.*}"
+  if [ "$major" != "$last_major" ]; then
+    echo
+    echo "This is a major bump: $last_major -> $major."
+    echo "README.md, bin/install, and bin/upgrade all pin $last_major today (bin/ci's pinned-major-consistent check enforces they agree with each other, not with the version you just typed). Update that pin to $major in all three, commit, and push to main first, or the new major tag won't reach anyone who upgrades."
+    read -rp "Already made and pushed that commit on main? [y/N] " major_confirm
+    if [[ ! "$major_confirm" =~ ^[Yy]$ ]]; then
+      echo "Update the pinned tag to $major in README.md, bin/install, and bin/upgrade, commit and push to main, then re-run bin/release." >&2
+      exit 1
+    fi
+  fi
+fi
+
 echo "$tag" > .claude/HARNESS_VERSION
 git add .claude/HARNESS_VERSION
 git commit -m "Release $tag"
