@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Zero-cost regression checks on this repo's own rules text.
+"""Zero-cost regression checks on this repo's own rules text and tooling.
 
-No model calls: each check asserts a load-bearing sentence is still present
+No model calls: most checks assert a load-bearing sentence is still present
 in .claude/harness-rules.md, CLAUDE.md, .claude/prompts/issue-to-pr.md, or
 .claude/prompts/next-to-build.md, catching accidental deletion or rewording
-of a rule during an edit to these files.
+of a rule during an edit to these files. One check instead asserts that
+README.md, bin/install, and bin/upgrade all pin the same major release tag,
+catching a stale reference left behind after bin/release cuts a new major.
 """
 import pathlib
+import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -14,6 +17,19 @@ HARNESS_RULES = (ROOT / ".claude" / "harness-rules.md").read_text()
 CLAUDE_MD = (ROOT / "CLAUDE.md").read_text()
 ISSUE_TO_PR = (ROOT / ".claude" / "prompts" / "issue-to-pr.md").read_text()
 NEXT_TO_BUILD = (ROOT / ".claude" / "prompts" / "next-to-build.md").read_text()
+README = (ROOT / "README.md").read_text()
+BIN_INSTALL = (ROOT / "bin" / "install").read_text()
+BIN_UPGRADE = (ROOT / "bin" / "upgrade").read_text()
+
+
+def _pinned_major(text: str) -> str | None:
+    match = re.search(r"raw\.githubusercontent\.com/Eschults/harness/(v\d+)\b", text)
+    return match.group(1) if match else None
+
+
+README_MAJOR = _pinned_major(README)
+BIN_INSTALL_MAJOR = _pinned_major(BIN_INSTALL)
+BIN_UPGRADE_MAJOR = _pinned_major(BIN_UPGRADE)
 
 CHECKS = [
     (
@@ -76,6 +92,13 @@ CHECKS = [
         "next-to-build-files-with-claude-label",
         'Create it with the `claude` label, to let the "Issue to PR" routine take over' in NEXT_TO_BUILD,
         "next-to-build.md should still file the new issue with the claude label",
+    ),
+    (
+        "pinned-major-consistent",
+        None not in (README_MAJOR, BIN_INSTALL_MAJOR, BIN_UPGRADE_MAJOR)
+        and README_MAJOR == BIN_INSTALL_MAJOR == BIN_UPGRADE_MAJOR,
+        f"README.md ({README_MAJOR}), bin/install ({BIN_INSTALL_MAJOR}), and bin/upgrade ({BIN_UPGRADE_MAJOR}) "
+        "should all pin the same harness major release tag",
     ),
 ]
 
