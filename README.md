@@ -158,8 +158,6 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 
 The harness is tagged: `main` moves as work lands, but `src` points at `v1`, a floating tag resolving to the latest `v1.x.y` release, cut with `bin/release`. Setup and upgrade pin the tag they fetched to `.claude/HARNESS_VERSION`; the upgrade block below diffs it against the latest tag and opens the compare view first.
 
-Run the following to checkout the diff between your version and the source repo's latest release:
-
 ```bash
 current=$(cat .claude/HARNESS_VERSION 2>/dev/null || true)
 latest=$(curl -fsSL https://api.github.com/repos/Eschults/harness/tags | jq -r '.[].name' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
