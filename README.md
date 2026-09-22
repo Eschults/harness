@@ -23,7 +23,7 @@ Put your project's own rules in `CLAUDE.md`, not `harness-rules.md`, so an upgra
 
 ## Setup
 
-Install is five files, one routine, one label, and two repo values. Step 5 adds a second routine to start triggering Claude without human intervention.
+Install is five files, two routines, one label, and two repo values.
 
 #### 1. Copy the files
 
