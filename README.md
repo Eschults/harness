@@ -27,7 +27,7 @@ Install is eight files, two routines, one label, and two repo values.
 
 #### 1. Install the harness
 
-Run this from the root of your project repo:
+Run this from the root of your project repo. It's a curl-then-run of one script, [`bin/install`](bin/install), worth reading before you run it:
 
 ```bash
 src=https://raw.githubusercontent.com/Eschults/harness/v1
