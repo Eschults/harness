@@ -36,7 +36,7 @@ if [ -n "$last_tag" ]; then
   echo "Last release: $last_tag"
   last_version="${last_tag#v}"
   IFS=. read -r suggest_major suggest_minor suggest_patch <<<"$last_version"
-  suggested="$suggest_major.$suggest_minor.$((suggest_patch + 1))"
+  suggested="$suggest_major.$suggest_minor.$((10#$suggest_patch + 1))"
 else
   echo "No releases yet."
   suggested="1.0.0"
