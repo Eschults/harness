@@ -84,4 +84,6 @@ git tag -f "$major" "$tag" >/dev/null
 git push origin "$tag"
 git push origin "$major" --force
 
+gh release create "$tag" --title "$tag" --generate-notes
+
 echo "Released $tag, moved $major to point at it."
