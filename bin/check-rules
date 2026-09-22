@@ -11,6 +11,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HARNESS_RULES = (ROOT / ".claude" / "harness-rules.md").read_text()
 CLAUDE_MD = (ROOT / "CLAUDE.md").read_text()
+ISSUE_TO_PR = (ROOT / ".claude" / "prompts" / "issue-to-pr.md").read_text()
+NEXT_TO_BUILD = (ROOT / ".claude" / "prompts" / "next-to-build.md").read_text()
 
 CHECKS = [
     (
@@ -52,6 +54,27 @@ CHECKS = [
         "this-repo-test-suite-is-bin-ci",
         "The test suite is `bin/ci`" in CLAUDE_MD,
         "CLAUDE.md should still point to bin/ci as this repo's test suite",
+    ),
+    (
+        "remove-claude-label-as-last-action",
+        "Remove the `claude` label as your last action." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require removing the claude label as the last action",
+    ),
+    (
+        "recap-review-no-approve-no-request-changes",
+        "Never approve, since you cannot be the approval gate, and never request changes, since you already pushed every fix you were going to make."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still ban approving or requesting changes on the self-review",
+    ),
+    (
+        "findings-on-pr-never-in-diff",
+        "Findings belong on the pull request, never in the diff." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require findings to live on the PR, not in the diff",
+    ),
+    (
+        "next-to-build-files-with-claude-label",
+        'Create it with the `claude` label, to let the "Issue to PR" routine take over' in NEXT_TO_BUILD,
+        "next-to-build.md should still file the new issue with the claude label",
     ),
 ]
 
