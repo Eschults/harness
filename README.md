@@ -27,17 +27,17 @@ Install is eight files, two routines, one label, and two repo values.
 
 #### 1. Install the harness
 
-Run this from the root of your project repo. It's a curl-then-run of one script, [`bin/install`](bin/install), worth reading before you run it:
+Run this from the root of your project repo. It's a curl-then-run of one script, [`bin/harness-install`](bin/harness-install), worth reading before you run it:
 
 ```bash
 src=https://raw.githubusercontent.com/Eschults/harness/v1
 mkdir -p bin
-curl -fsSL "$src/bin/install" -o bin/install
-chmod +x bin/install
-./bin/install
+curl -fsSL "$src/bin/harness-install" -o bin/harness-install
+chmod +x bin/harness-install
+./bin/harness-install
 ```
 
-This pulls in the workflow, prompts, harness rules, and the `bin/install`/`bin/upgrade` tooling, then adds a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md` (which otherwise stays yours). Safe to re-run.
+This pulls in the workflow, prompts, harness rules, and the `bin/harness-install`/`bin/harness-upgrade` tooling, then adds a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md` (which otherwise stays yours). Safe to re-run.
 
 #### 2. Create the "Issue to PR" routine
 
@@ -157,7 +157,7 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 The harness is tagged: `main` moves as work lands, but `src` points at `v1`, a floating tag resolving to the latest `v1.x.y` release, cut with `bin/release`. Setup pins the tag it fetched to `.claude/HARNESS_VERSION`.
 
 ```bash
-bin/upgrade
+bin/harness-upgrade
 ```
 
 It diffs your pinned version against the latest tag, opens the compare view, and, if you confirm, pulls in the updated files. Already on the latest release: it says so and exits. Review the diff and commit the changes.

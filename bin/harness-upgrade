@@ -11,7 +11,7 @@ source bin/lib/fetch-files.sh
 
 current=$(cat .claude/HARNESS_VERSION 2>/dev/null || true)
 if [ -z "$current" ]; then
-  echo "No .claude/HARNESS_VERSION found; run bin/install first." >&2
+  echo "No .claude/HARNESS_VERSION found; run bin/harness-install first." >&2
   exit 1
 fi
 
@@ -28,7 +28,7 @@ open "$compare" 2>/dev/null || xdg-open "$compare" 2>/dev/null || true
 
 read -rp "Pull in $latest now? [y/N] " confirm
 if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-  echo "Skipped. Re-run bin/upgrade when you're ready."
+  echo "Skipped. Re-run bin/harness-upgrade when you're ready."
   exit 0
 fi
 
@@ -36,10 +36,10 @@ fetch_harness_files
 curl -fsSL "$src/bin/lib/fetch-files.sh" -o bin/lib/fetch-files.sh
 
 # Downloaded to a temp file and moved into place, never written to directly:
-# this script is still running from bin/upgrade, and overwriting that file
-# in place mid-run corrupts the running process.
-curl -fsSL "$src/bin/upgrade" -o bin/upgrade.new
-chmod +x bin/upgrade.new
-mv bin/upgrade.new bin/upgrade
+# this script is still running from bin/harness-upgrade, and overwriting that
+# file in place mid-run corrupts the running process.
+curl -fsSL "$src/bin/harness-upgrade" -o bin/harness-upgrade.new
+chmod +x bin/harness-upgrade.new
+mv bin/harness-upgrade.new bin/harness-upgrade
 
 echo "Pulled in $latest. Review the diff and commit."

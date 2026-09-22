@@ -13,8 +13,8 @@ curl -fsSL "$src/bin/lib/fetch-files.sh" -o bin/lib/fetch-files.sh
 source bin/lib/fetch-files.sh
 
 fetch_harness_files
-curl -fsSL "$src/bin/upgrade" -o bin/upgrade
-chmod +x bin/upgrade
+curl -fsSL "$src/bin/harness-upgrade" -o bin/harness-upgrade
+chmod +x bin/harness-upgrade
 
 if ! grep -qF '@.claude/harness-rules.md' CLAUDE.md 2>/dev/null; then
   printf '\n@.claude/harness-rules.md\n' >> CLAUDE.md
