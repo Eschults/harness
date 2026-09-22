@@ -2,8 +2,9 @@
 """Zero-cost regression checks on this repo's own rules text.
 
 No model calls: each check asserts a load-bearing sentence is still present
-in .claude/harness-rules.md or CLAUDE.md, catching accidental deletion or
-rewording of a rule during an edit to these files.
+in .claude/harness-rules.md, CLAUDE.md, .claude/prompts/issue-to-pr.md, or
+.claude/prompts/next-to-build.md, catching accidental deletion or rewording
+of a rule during an edit to these files.
 """
 import pathlib
 import sys

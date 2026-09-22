@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Zero-cost regression checks on this repo's own rules (.claude/harness-rules.md, CLAUDE.md).
+# Zero-cost regression checks on this repo's own rules text (harness-rules.md,
+# CLAUDE.md, and the issue-to-pr / next-to-build prompts).
 # No model calls.
 set -euo pipefail
 cd "$(dirname "$0")/.."
