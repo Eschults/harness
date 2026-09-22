@@ -23,7 +23,7 @@ Put your project's own rules in `CLAUDE.md`, not `harness-rules.md`, so an upgra
 
 ## Setup
 
-Install is five files, two routines, one label, and two repo values.
+Install is six files, two routines, one label, and two repo values.
 
 #### 1. Copy the files
 
@@ -32,12 +32,14 @@ Run this from the root of your project repo:
 ```bash
 src=https://raw.githubusercontent.com/Eschults/harness/v1
 
-mkdir -p .github/workflows .claude/prompts
+mkdir -p .github/workflows .claude/prompts bin
 curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
 curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md
 curl -fsSL "$src/.claude/prompts/next-to-build.md" -o .claude/prompts/next-to-build.md
 curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
 curl -fsSL "$src/.claude/HARNESS_VERSION" -o .claude/HARNESS_VERSION
+curl -fsSL "$src/bin/upgrade" -o bin/upgrade
+chmod +x bin/upgrade
 printf '\n@.claude/harness-rules.md\n' >> CLAUDE.md   # one line; your CLAUDE.md stays yours
 ```
 
@@ -156,31 +158,13 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 
 ## Upgrading
 
-The harness is tagged: `main` moves as work lands, but `src` points at `v1`, a floating tag resolving to the latest `v1.x.y` release, cut with `bin/release`. Setup and upgrade pin the tag they fetched to `.claude/HARNESS_VERSION`; the upgrade block below diffs it against the latest tag and opens the compare view first.
+The harness is tagged: `main` moves as work lands, but `src` points at `v1`, a floating tag resolving to the latest `v1.x.y` release, cut with `bin/release`. Setup pins the tag it fetched to `.claude/HARNESS_VERSION`.
 
 ```bash
-current=$(cat .claude/HARNESS_VERSION 2>/dev/null || true)
-latest=$(curl -fsSL https://api.github.com/repos/Eschults/harness/tags | jq -r '.[].name' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
-if [ -n "$current" ] && [ "$current" != "$latest" ]; then
-  compare="https://github.com/Eschults/harness/compare/$current...$latest"
-  echo "Upgrading $current -> $latest: $compare"
-  open "$compare" 2>/dev/null || xdg-open "$compare" 2>/dev/null || true
-elif [ -n "$current" ]; then
-  echo "Already up to date: $current"
-fi
+bin/upgrade
 ```
 
-To confirm upgrade, run the following and commit the changes:
-
-```bash
-src=https://raw.githubusercontent.com/Eschults/harness/v1
-
-curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
-curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md
-curl -fsSL "$src/.claude/prompts/next-to-build.md" -o .claude/prompts/next-to-build.md
-curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
-curl -fsSL "$src/.claude/HARNESS_VERSION" -o .claude/HARNESS_VERSION
-```
+It diffs your pinned version against the latest tag, opens the compare view, and, if you confirm, pulls in the updated files. Already on the latest release: it says so and exits. Review the diff and commit the changes.
 
 ## License
 
