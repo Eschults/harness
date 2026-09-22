@@ -31,10 +31,7 @@ Run this from the root of your project repo. It's a curl-then-run of one script,
 
 ```bash
 src=https://raw.githubusercontent.com/Eschults/harness/v1
-mkdir -p bin
-curl -fsSL "$src/bin/harness-install" -o bin/harness-install
-chmod +x bin/harness-install
-./bin/harness-install
+mkdir -p bin && curl -fsSL "$src/bin/harness-install" -o bin/harness-install && chmod +x bin/harness-install && ./bin/harness-install
 ```
 
 This pulls in the workflow, prompts, harness rules, and the `bin/harness-install`/`bin/harness-upgrade` tooling, then adds a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md` (which otherwise stays yours). Safe to re-run.
