@@ -23,25 +23,21 @@ Put your project's own rules in `CLAUDE.md`, not `harness-rules.md`, so an upgra
 
 ## Setup
 
-Install is six files, two routines, one label, and two repo values.
+Install is eight files, two routines, one label, and two repo values.
 
-#### 1. Copy the files
+#### 1. Install the harness
 
 Run this from the root of your project repo:
 
 ```bash
 src=https://raw.githubusercontent.com/Eschults/harness/v1
-
-mkdir -p .github/workflows .claude/prompts bin
-curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
-curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md
-curl -fsSL "$src/.claude/prompts/next-to-build.md" -o .claude/prompts/next-to-build.md
-curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
-curl -fsSL "$src/.claude/HARNESS_VERSION" -o .claude/HARNESS_VERSION
-curl -fsSL "$src/bin/upgrade" -o bin/upgrade
-chmod +x bin/upgrade
-printf '\n@.claude/harness-rules.md\n' >> CLAUDE.md   # one line; your CLAUDE.md stays yours
+mkdir -p bin
+curl -fsSL "$src/bin/install" -o bin/install
+chmod +x bin/install
+./bin/install
 ```
+
+This pulls in the workflow, prompts, harness rules, and the `bin/install`/`bin/upgrade` tooling, then adds a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md` (which otherwise stays yours). Safe to re-run.
 
 #### 2. Create the "Issue to PR" routine
 

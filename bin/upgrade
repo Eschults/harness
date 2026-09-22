@@ -5,9 +5,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+src=https://raw.githubusercontent.com/Eschults/harness/v1
+# shellcheck source=lib/fetch-files.sh
+source bin/lib/fetch-files.sh
+
 current=$(cat .claude/HARNESS_VERSION 2>/dev/null || true)
 if [ -z "$current" ]; then
-  echo "No .claude/HARNESS_VERSION found; run the harness setup first." >&2
+  echo "No .claude/HARNESS_VERSION found; run bin/install first." >&2
   exit 1
 fi
 
@@ -28,12 +32,8 @@ if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
   exit 0
 fi
 
-src=https://raw.githubusercontent.com/Eschults/harness/v1
-curl -fsSL "$src/.github/workflows/claude.yml" -o .github/workflows/claude.yml
-curl -fsSL "$src/.claude/prompts/issue-to-pr.md" -o .claude/prompts/issue-to-pr.md
-curl -fsSL "$src/.claude/prompts/next-to-build.md" -o .claude/prompts/next-to-build.md
-curl -fsSL "$src/.claude/harness-rules.md" -o .claude/harness-rules.md
-curl -fsSL "$src/.claude/HARNESS_VERSION" -o .claude/HARNESS_VERSION
+fetch_harness_files
+curl -fsSL "$src/bin/lib/fetch-files.sh" -o bin/lib/fetch-files.sh
 
 # Downloaded to a temp file and moved into place, never written to directly:
 # this script is still running from bin/upgrade, and overwriting that file
