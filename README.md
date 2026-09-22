@@ -165,6 +165,8 @@ if [ -n "$current" ] && [ "$current" != "$latest" ]; then
   compare="https://github.com/Eschults/harness/compare/$current...$latest"
   echo "Upgrading $current -> $latest: $compare"
   open "$compare" 2>/dev/null || xdg-open "$compare" 2>/dev/null || true
+elif [ -n "$current" ]; then
+  echo "Already up to date: $current"
 fi
 ```
 
