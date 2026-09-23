@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 src=https://raw.githubusercontent.com/Eschults/harness/v1
-# shellcheck source=lib/fetch-files.sh
+# shellcheck source=bin/lib/fetch-files.sh
 source bin/lib/fetch-files.sh
 
 current=$(cat .claude/HARNESS_VERSION 2>/dev/null || true)
