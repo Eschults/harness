@@ -11,6 +11,8 @@ if ! command -v shellcheck >/dev/null; then
   exit 1
 fi
 
+echo "Running shellcheck ($(shellcheck --version | grep ^version:)) over bin/ci bin/harness-install bin/harness-upgrade bin/release bin/lib/fetch-files.sh"
 shellcheck bin/ci bin/harness-install bin/harness-upgrade bin/release bin/lib/fetch-files.sh
+echo "shellcheck: no issues"
 
 exec ./bin/check-rules
