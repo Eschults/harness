@@ -6,6 +6,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-shellcheck bin/harness-install bin/harness-upgrade bin/release bin/lib/fetch-files.sh
+if ! command -v shellcheck >/dev/null; then
+  echo "shellcheck not found; install it (https://github.com/koalaman/shellcheck#installing) to run bin/ci locally." >&2
+  exit 1
+fi
+
+shellcheck bin/ci bin/harness-install bin/harness-upgrade bin/release bin/lib/fetch-files.sh
 
 exec ./bin/check-rules
