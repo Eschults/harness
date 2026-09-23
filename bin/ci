@@ -1,8 +1,28 @@
 #!/usr/bin/env bash
 # Zero-cost regression checks on this repo's own rules text (harness-rules.md,
-# CLAUDE.md, and the issue-to-pr / next-to-build prompts).
+# CLAUDE.md, and the issue-to-pr / next-to-build prompts), plus shellcheck
+# over the bin/ scripts every adopter curls and runs unreviewed.
 # No model calls.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+if ! command -v shellcheck >/dev/null; then
+  echo "shellcheck not found; install it (https://github.com/koalaman/shellcheck#installing) to run bin/ci locally." >&2
+  exit 1
+fi
+
+echo "Running shellcheck ($(shellcheck --version | grep ^version:))"
+shellcheck_failed=0
+for f in bin/ci bin/harness-install bin/harness-upgrade bin/release bin/lib/fetch-files.sh; do
+  if shellcheck_output=$(shellcheck -x "$f" 2>&1); then
+    echo "✓ shellcheck: $f"
+  else
+    echo "✗ shellcheck: $f"
+    echo "$shellcheck_output"
+    shellcheck_failed=1
+  fi
+done
+[ "$shellcheck_failed" -eq 0 ] || exit 1
+echo
 
 exec ./bin/check-rules
