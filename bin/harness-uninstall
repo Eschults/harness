@@ -17,9 +17,12 @@ for f in "${files[@]}"; do
   rm -f "$f"
 done
 
+# Adopters may keep their own files in these folders, so only remove one
+# once it's explicitly confirmed empty, rather than trying rmdir and
+# swallowing whatever error comes back.
 for d in .claude/prompts bin/lib; do
-  if [ -d "$d" ]; then
-    rmdir "$d" 2>/dev/null || true
+  if [ -d "$d" ] && [ -z "$(find "$d" -mindepth 1 -print -quit)" ]; then
+    rmdir "$d"
   fi
 done
 
