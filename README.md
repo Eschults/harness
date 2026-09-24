@@ -170,7 +170,7 @@ mkdir -p bin && curl -fsSL "$src/bin/harness-uninstall" -o bin/harness-uninstall
 
 It deletes every file step 1 wrote, drops the `@.claude/harness-rules.md` import from `CLAUDE.md` without touching the rest of the file, and removes `.claude/prompts` and `bin/lib` if that empties them. Safe to re-run, including on a repo that was never installed. Review the diff and commit the changes.
 
-It can't reach GitHub, so it prints the steps to finish there yourself:
+Last steps are printed in the terminal (the routine API does not have a delete endpoint yet):
 
 - Delete the "Issue to PR" and "Next to Build" routines from the [routines page](https://claude.ai/code/routines).
 - Delete the label: `gh label delete claude --yes`
