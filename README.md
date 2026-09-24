@@ -159,6 +159,21 @@ bin/harness-upgrade
 
 It diffs your pinned version against the latest tag, opens the compare view, and, if you confirm, pulls in the updated files. Already on the latest release: it says so and exits. Review the diff and commit the changes.
 
+## Uninstalling
+
+```bash
+bin/harness-uninstall
+```
+
+It deletes every file step 1 wrote, drops the `@.claude/harness-rules.md` import from `CLAUDE.md` without touching the rest of the file, and removes `.claude/prompts` and `bin/lib` if that empties them. Safe to re-run, including on a repo that was never installed. Review the diff and commit the changes.
+
+It can't reach GitHub, so it prints the steps to finish there yourself:
+
+- Delete the "Issue to PR" and "Next to Build" routines from the [routines page](https://claude.ai/code/routines).
+- Delete the label: `gh label delete claude --yes`
+- Remove the repo variable: `gh variable delete CLAUDE_ROUTINE_ID`
+- Remove the repo secret: `gh secret delete CLAUDE_ROUTINE_TOKEN`
+
 ## License
 
 [MIT](LICENSE). The files you copy in step 1 are yours to use, edit and redistribute. Step 1 doesn't copy this `LICENSE`, so if you pass the harness files on, carry the copyright and permission notice with them.
