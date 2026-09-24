@@ -161,8 +161,11 @@ It diffs your pinned version against the latest tag, opens the compare view, and
 
 ## Uninstalling
 
+`bin/harness-uninstall` isn't one of the files step 1 fetches, so pull it in the same way you first fetched `bin/harness-install`, then run it:
+
 ```bash
-bin/harness-uninstall
+src=https://raw.githubusercontent.com/Eschults/harness/v1
+mkdir -p bin && curl -fsSL "$src/bin/harness-uninstall" -o bin/harness-uninstall && chmod +x bin/harness-uninstall && ./bin/harness-uninstall
 ```
 
 It deletes every file step 1 wrote, drops the `@.claude/harness-rules.md` import from `CLAUDE.md` without touching the rest of the file, and removes `.claude/prompts` and `bin/lib` if that empties them. Safe to re-run, including on a repo that was never installed. Review the diff and commit the changes.
