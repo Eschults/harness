@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Removes everything bin/harness-install wrote: the fetched harness files,
+# its own tooling, and the CLAUDE.md import. Safe to re-run, including on a
+# repo that was never installed. Only prints the GitHub-side cleanup (routines,
+# label, repo variable/secret), since none of that is reachable from here.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+files=(bin/harness-install bin/harness-upgrade bin/lib/fetch-files.sh)
+if [ -f bin/lib/fetch-files.sh ]; then
+  # shellcheck source=bin/lib/fetch-files.sh
+  source bin/lib/fetch-files.sh
+  files+=("${HARNESS_FILES[@]}")
+fi
+
+for f in "${files[@]}"; do
+  rm -f "$f"
+done
+
+# Adopters may keep their own files in these folders, so only remove one
+# once it's explicitly confirmed empty, rather than trying rmdir and
+# swallowing whatever error comes back.
+for d in .claude/prompts bin/lib; do
+  if [ -d "$d" ] && [ -z "$(find "$d" -mindepth 1 -print -quit)" ]; then
+    rmdir "$d"
+  fi
+done
+
+if [ -f CLAUDE.md ] && grep -qxF '@.claude/harness-rules.md' CLAUDE.md; then
+  # grep exits 1 (not just non-zero on error) when -v filters out every line,
+  # e.g. CLAUDE.md contains only the import: that's success here, not a failure.
+  grep -vxF '@.claude/harness-rules.md' CLAUDE.md > CLAUDE.md.harness-uninstall-tmp || true
+  mv CLAUDE.md.harness-uninstall-tmp CLAUDE.md
+fi
+
+cat <<'EOF'
+Removed the local harness files. Finish the cleanup on GitHub:
+  - Delete the "Issue to PR" and "Next to Build" routines: https://claude.ai/code/routines
+  - Delete the label:     gh label delete claude --yes
+  - Remove the variable:  gh variable delete CLAUDE_ROUTINE_ID
+  - Remove the secret:    gh secret delete CLAUDE_ROUTINE_TOKEN
+EOF
