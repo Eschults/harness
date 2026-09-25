@@ -27,9 +27,18 @@ for d in .claude/prompts bin/lib; do
 done
 
 if [ -f CLAUDE.md ] && grep -qxF '@.claude/harness-rules.md' CLAUDE.md; then
-  # grep exits 1 (not just non-zero on error) when -v filters out every line,
-  # e.g. CLAUDE.md contains only the import: that's success here, not a failure.
-  grep -vxF '@.claude/harness-rules.md' CLAUDE.md > CLAUDE.md.harness-uninstall-tmp || true
+  # install appends the import behind a blank line it inserts (`printf
+  # '\n@.claude/harness-rules.md\n'`); drop that blank line along with the
+  # import, or a plain grep -v leaves it behind and CLAUDE.md never quite
+  # returns to its pre-install content.
+  awk '
+    $0 == "@.claude/harness-rules.md" {
+      if (have && pending == "") have = 0
+      next
+    }
+    { if (have) print pending; pending = $0; have = 1 }
+    END { if (have) print pending }
+  ' CLAUDE.md > CLAUDE.md.harness-uninstall-tmp
   mv CLAUDE.md.harness-uninstall-tmp CLAUDE.md
 fi
 
