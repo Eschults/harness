@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 
 mkdir -p .github/workflows .claude/prompts bin/lib
 
-src=https://raw.githubusercontent.com/Eschults/harness/v1
+src=${HARNESS_SRC:-https://raw.githubusercontent.com/Eschults/harness/v1}
 curl -fsSL "$src/bin/lib/fetch-files.sh" -o bin/lib/fetch-files.sh
 # shellcheck source=bin/lib/fetch-files.sh
 source bin/lib/fetch-files.sh

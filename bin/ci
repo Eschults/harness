@@ -13,7 +13,7 @@ fi
 
 echo "Running shellcheck ($(shellcheck --version | grep ^version:))"
 shellcheck_failed=0
-for f in bin/ci bin/harness-install bin/harness-upgrade bin/harness-uninstall bin/release bin/lib/fetch-files.sh; do
+for f in bin/ci bin/harness-install bin/harness-upgrade bin/harness-uninstall bin/release bin/lib/fetch-files.sh bin/check-install-uninstall; do
   if shellcheck_output=$(shellcheck -x "$f" 2>&1); then
     echo "✓ shellcheck: $f"
   else
@@ -25,4 +25,18 @@ done
 [ "$shellcheck_failed" -eq 0 ] || exit 1
 echo
 
-exec ./bin/check-rules
+echo "Running the install/uninstall round trip"
+if ./bin/check-install-uninstall; then
+  round_trip_failed=0
+else
+  round_trip_failed=1
+fi
+echo
+
+if ./bin/check-rules; then
+  rules_failed=0
+else
+  rules_failed=1
+fi
+
+[ "$round_trip_failed" -eq 0 ] && [ "$rules_failed" -eq 0 ]
