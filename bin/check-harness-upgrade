@@ -53,6 +53,17 @@ chmod +x "$repo/bin/harness-install"
 export http_proxy="http://127.0.0.1:1"
 export https_proxy="http://127.0.0.1:1"
 
+# bin/harness-upgrade shells out to open/xdg-open to show the compare URL;
+# stub both so the round trip doesn't depend on whatever the host happens to
+# have installed (a real browser opener, or a text browser that would eat the
+# "y" meant for the confirmation prompt).
+stub_bin="$scratch/stub_bin"
+mkdir -p "$stub_bin"
+printf '#!/usr/bin/env bash\ntrue\n' > "$stub_bin/open"
+cp "$stub_bin/open" "$stub_bin/xdg-open"
+chmod +x "$stub_bin/open" "$stub_bin/xdg-open"
+export PATH="$stub_bin:$PATH"
+
 run_upgrade() {
   (
     cd "$repo" || exit 1
