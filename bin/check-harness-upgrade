@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Functional round trip for bin/harness-upgrade: installs a scratch repo at a
+# fake older release, then upgrades it against a fake newer release fixture
+# (never this repo's real tags or raw content), and asserts the harness
+# files, .claude/HARNESS_VERSION, and bin/harness-upgrade itself all land
+# correctly. No model calls. http(s)_proxy is poisoned the same way
+# check-install-uninstall does, so a hardcoded fallback URL (i.e.
+# $HARNESS_TAGS_URL or $HARNESS_SRC support missing or broken) fails fast
+# instead of quietly reaching the real network; file:// fetches never go
+# through a proxy.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# shellcheck source=bin/lib/fetch-files.sh
+source bin/lib/fetch-files.sh
+
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+
+fail() {
+  echo "✗ $1" >&2
+  exit 1
+}
+
+old_src="$scratch/old_src"
+new_src="$scratch/new_src"
+tags_json="$scratch/tags.json"
+repo="$scratch/repo"
+
+build_fixture() {
+  local dir=$1 version=$2
+  mkdir -p "$dir/bin/lib"
+  cp bin/harness-upgrade "$dir/bin/harness-upgrade"
+  cp bin/lib/fetch-files.sh "$dir/bin/lib/fetch-files.sh"
+  chmod +x "$dir/bin/harness-upgrade"
+  for f in "${HARNESS_FILES[@]}"; do
+    mkdir -p "$dir/$(dirname "$f")"
+    cp "$f" "$dir/$f"
+  done
+  echo "$version" > "$dir/.claude/HARNESS_VERSION"
+}
+
+build_fixture "$old_src" "v0.0.1"
+build_fixture "$new_src" "v9.9.9"
+printf '\n<!-- check-harness-upgrade fixture marker: v9.9.9 -->\n' >> "$new_src/.claude/harness-rules.md"
+
+printf '[{"name":"v0.0.1"},{"name":"v9.9.9"}]' > "$tags_json"
+
+mkdir -p "$repo/bin"
+cp bin/harness-install "$repo/bin/harness-install"
+chmod +x "$repo/bin/harness-install"
+
+export http_proxy="http://127.0.0.1:1"
+export https_proxy="http://127.0.0.1:1"
+
+run_upgrade() {
+  (
+    cd "$repo" || exit 1
+    export HARNESS_SRC="$1" HARNESS_TAGS_URL="$2"
+    printf 'y\n' | ./bin/harness-upgrade
+  )
+}
+
+if ! output=$(cd "$repo" && HARNESS_SRC="file://$old_src" ./bin/harness-install 2>&1); then
+  echo "$output" >&2
+  fail "bin/harness-install failed priming the scratch repo at the old fixture release"
+fi
+[ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v0.0.1" ] || fail "expected the primed repo to start at v0.0.1"
+grep -q "check-harness-upgrade fixture marker" "$repo/.claude/harness-rules.md" && fail "expected the primed repo to not yet carry the newer fixture's marker"
+
+if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "bin/harness-upgrade failed pulling in the fake newer release; check it honors \$HARNESS_TAGS_URL instead of hitting the real GitHub API"
+fi
+echo "$output" | grep -q "Upgrading v0.0.1 -> v9.9.9" || fail "expected upgrade output to report the v0.0.1 -> v9.9.9 transition, got: $output"
+
+[ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v9.9.9" ] || fail "expected .claude/HARNESS_VERSION to read v9.9.9 after upgrading, got $(cat "$repo/.claude/HARNESS_VERSION" 2>/dev/null)"
+echo "✓ upgrade bumped .claude/HARNESS_VERSION to the new tag"
+
+for f in "${HARNESS_FILES[@]}" bin/harness-upgrade bin/lib/fetch-files.sh; do
+  cmp -s "$repo/$f" "$new_src/$f" || fail "expected $f to match the fake newer release's content after upgrading"
+done
+grep -q "check-harness-upgrade fixture marker" "$repo/.claude/harness-rules.md" || fail "expected the newer fixture's marker to show up after upgrading"
+echo "✓ upgrade pulled every harness file's newer content"
+
+[ -x "$repo/bin/harness-upgrade" ] || fail "expected bin/harness-upgrade to remain executable after upgrading itself"
+bash -n "$repo/bin/harness-upgrade" || fail "expected bin/harness-upgrade to still be valid bash after its temp-file-then-move self-replace"
+echo "✓ bin/harness-upgrade replaced itself without corrupting the running script"
+
+snapshot() {
+  find "$repo" -type f -print0 | sort -z | xargs -0 sha256sum
+}
+
+before=$(snapshot)
+if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "bin/harness-upgrade failed re-running against a repo already on the latest fake release"
+fi
+echo "$output" | grep -q "Already up to date: v9.9.9" || fail "expected a no-op re-run to report already up to date, got: $output"
+after=$(snapshot)
+[ "$before" = "$after" ] || fail "expected re-running bin/harness-upgrade on an up-to-date repo to leave every file untouched"
+echo "✓ re-running upgrade on an up-to-date repo left every file untouched"
+
+echo
+echo "harness-upgrade round trip: all passed"

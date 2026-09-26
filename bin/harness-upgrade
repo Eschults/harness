@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Checks for a newer harness release and, on confirmation, pulls the
 # updated harness files in from the `v1` tag. Safe to re-run: it's a
-# no-op once you're on the latest release.
+# no-op once you're on the latest release. Honors $HARNESS_SRC for the
+# file fetch and $HARNESS_TAGS_URL for the tag lookup, same idea as
+# fetch_harness_files honoring $HARNESS_SRC, so a test can point both
+# at fixtures instead of the real GitHub API.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -15,7 +18,8 @@ if [ -z "$current" ]; then
   exit 1
 fi
 
-latest=$(curl -fsSL https://api.github.com/repos/Eschults/harness/tags | jq -r '.[].name' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+tags_url=${HARNESS_TAGS_URL:-https://api.github.com/repos/Eschults/harness/tags}
+latest=$(curl -fsSL "$tags_url" | jq -r '.[].name' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
 
 if [ "$current" = "$latest" ]; then
   echo "Already up to date: $current"
