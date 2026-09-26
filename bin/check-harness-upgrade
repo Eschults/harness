@@ -13,14 +13,11 @@ cd "$(dirname "$0")/.."
 
 # shellcheck source=bin/lib/fetch-files.sh
 source bin/lib/fetch-files.sh
+# shellcheck source=bin/lib/check-helpers.sh
+source bin/lib/check-helpers.sh
 
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
-
-fail() {
-  echo "✗ $1" >&2
-  exit 1
-}
 
 old_src="$scratch/old_src"
 new_src="$scratch/new_src"
@@ -50,8 +47,7 @@ mkdir -p "$repo/bin"
 cp bin/harness-install "$repo/bin/harness-install"
 chmod +x "$repo/bin/harness-install"
 
-export http_proxy="http://127.0.0.1:1"
-export https_proxy="http://127.0.0.1:1"
+poison_network
 
 # bin/harness-upgrade shells out to open/xdg-open to show the compare URL;
 # stub both so the round trip doesn't depend on whatever the host happens to

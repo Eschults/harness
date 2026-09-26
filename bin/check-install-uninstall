@@ -10,14 +10,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 root=$(pwd)
 
+# shellcheck source=bin/lib/check-helpers.sh
+source bin/lib/check-helpers.sh
+
 scratch=$(mktemp -d)
 original_claude_md=$(mktemp)
 trap 'rm -rf "$scratch" "$original_claude_md"' EXIT
-
-fail() {
-  echo "✗ $1" >&2
-  exit 1
-}
 
 git init -q "$scratch"
 mkdir -p "$scratch/bin"
@@ -29,8 +27,7 @@ printf '# Adopter rules\n\nKeep doing the thing.\n' > "$original_claude_md"
 cp "$original_claude_md" "$scratch/CLAUDE.md"
 
 export HARNESS_SRC="file://$root"
-export http_proxy="http://127.0.0.1:1"
-export https_proxy="http://127.0.0.1:1"
+poison_network
 
 run_install() {
   (cd "$scratch" && ./bin/harness-install)
