@@ -15,7 +15,14 @@ if [ -z "$current" ]; then
   exit 1
 fi
 
-latest=$(curl -fsSL https://api.github.com/repos/Eschults/harness/tags | jq -r '.[].name' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+tags_url=${HARNESS_TAGS_URL:-https://api.github.com/repos/Eschults/harness/tags}
+# grep matching nothing is fine; pipefail would otherwise abort with no message.
+latest=$(curl -fsSL "$tags_url" | jq -r '.[].name' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -1)
+
+if [ -z "$latest" ]; then
+  echo "No release tag matching vX.Y.Z found at $tags_url" >&2
+  exit 1
+fi
 
 if [ "$current" = "$latest" ]; then
   echo "Already up to date: $current"
