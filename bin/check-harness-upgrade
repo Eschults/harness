@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
-# Functional round trip for bin/harness-upgrade: installs a scratch repo at a
-# fake older release, then upgrades it against a fake newer release fixture
-# (never this repo's real tags or raw content), and asserts the harness
-# files, .claude/HARNESS_VERSION, and bin/harness-upgrade itself all land
-# correctly. No model calls. http(s)_proxy is poisoned the same way
-# check-install-uninstall does, so a hardcoded fallback URL (i.e.
-# $HARNESS_TAGS_URL or $HARNESS_SRC support missing or broken) fails fast
-# instead of quietly reaching the real network; file:// fetches never go
-# through a proxy.
+# Functional round trip for bin/harness-upgrade against fake fixtures, never
+# this repo's real tags or raw content. No model calls.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -52,10 +45,7 @@ chmod +x "$repo/bin/harness-install"
 
 poison_network
 
-# bin/harness-upgrade shells out to open/xdg-open to show the compare URL;
-# stub both so the round trip doesn't depend on whatever the host happens to
-# have installed (a real browser opener, or a text browser that would eat the
-# "y" meant for the confirmation prompt).
+# Stub open/xdg-open: a host's text-mode opener could eat the "y" meant for harness-upgrade's prompt.
 stub_bin="$scratch/stub_bin"
 mkdir -p "$stub_bin"
 printf '#!/usr/bin/env bash\ntrue\n' > "$stub_bin/open"
