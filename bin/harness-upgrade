@@ -19,7 +19,15 @@ if [ -z "$current" ]; then
 fi
 
 tags_url=${HARNESS_TAGS_URL:-https://api.github.com/repos/Eschults/harness/tags}
-latest=$(curl -fsSL "$tags_url" | jq -r '.[].name' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+# grep is allowed to match nothing here (pipefail would otherwise kill the
+# script right here with no message); the emptiness check below is what
+# reports it clearly instead.
+latest=$(curl -fsSL "$tags_url" | jq -r '.[].name' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -1)
+
+if [ -z "$latest" ]; then
+  echo "No release tag matching vX.Y.Z found at $tags_url" >&2
+  exit 1
+fi
 
 if [ "$current" = "$latest" ]; then
   echo "Already up to date: $current"

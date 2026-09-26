@@ -43,6 +43,9 @@ printf '\n<!-- check-harness-upgrade fixture marker: v9.9.9 -->\n' >> "$new_src/
 
 printf '[{"name":"v0.0.1"},{"name":"v9.9.9"}]' > "$tags_json"
 
+bad_tags_json="$scratch/bad-tags.json"
+printf '[{"name":"latest"},{"name":"vNext"}]' > "$bad_tags_json"
+
 mkdir -p "$repo/bin"
 cp bin/harness-install "$repo/bin/harness-install"
 chmod +x "$repo/bin/harness-install"
@@ -107,6 +110,15 @@ echo "$output" | grep -q "Already up to date: v9.9.9" || fail "expected a no-op 
 after=$(snapshot)
 [ "$before" = "$after" ] || fail "expected re-running bin/harness-upgrade on an up-to-date repo to leave every file untouched"
 echo "✓ re-running upgrade on an up-to-date repo left every file untouched"
+
+before=$(snapshot)
+if output=$(run_upgrade "file://$new_src" "file://$bad_tags_json" 2>&1); then
+  fail "expected bin/harness-upgrade to fail when no tag at \$HARNESS_TAGS_URL matches vX.Y.Z, got: $output"
+fi
+echo "$output" | grep -q "No release tag matching vX.Y.Z found" || fail "expected a clear error when no tag matches vX.Y.Z, got: $output"
+after=$(snapshot)
+[ "$before" = "$after" ] || fail "expected a failed tag lookup to leave every file untouched"
+echo "✓ a tags response with no matching vX.Y.Z tag fails clearly and touches nothing"
 
 echo
 echo "harness-upgrade round trip: all passed"
