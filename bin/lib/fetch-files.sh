@@ -4,6 +4,7 @@
 # repo root already.
 HARNESS_FILES=(
   ".github/workflows/claude.yml"
+  ".github/workflows/harness-upgrade-check.yml"
   ".claude/prompts/issue-to-pr.md"
   ".claude/prompts/next-to-build.md"
   ".claude/harness-rules.md"

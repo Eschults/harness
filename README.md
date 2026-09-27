@@ -23,7 +23,7 @@ Put your project's own rules in `CLAUDE.md`, not `harness-rules.md`, so an upgra
 
 ## Setup
 
-Install is eight files, two routines, one label, and two repo values.
+Install is nine files, two routines, one label, and two repo values.
 
 #### 1. Install the harness
 
@@ -34,7 +34,9 @@ src=https://raw.githubusercontent.com/Eschults/harness/v1
 mkdir -p bin && curl -fsSL "$src/bin/harness-install" -o bin/harness-install && chmod +x bin/harness-install && ./bin/harness-install
 ```
 
-This pulls in the workflow, prompts, harness rules, and the `bin/harness-install`/`bin/harness-upgrade` tooling, then adds a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md` (which otherwise stays yours). Safe to re-run.
+This pulls in the workflows, prompts, harness rules, and the `bin/harness-install`/`bin/harness-upgrade` tooling, then adds a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md` (which otherwise stays yours). Safe to re-run.
+
+One of the workflows, [`.github/workflows/harness-upgrade-check.yml`](.github/workflows/harness-upgrade-check.yml), runs on a weekly schedule using only the default `GITHUB_TOKEN`: it checks whether you're behind the latest release and, if so, opens or updates a single tracking issue naming the versions and the upgrade command to run. No routine, no token, and no other setup step needed for it.
 
 #### 2. Create the "Issue to PR" routine
 
@@ -158,6 +160,8 @@ bin/harness-upgrade
 ```
 
 It diffs your pinned version against the latest tag, opens the compare view, and, if you confirm, pulls in the updated files. Already on the latest release: it says so and exits. Review the diff and commit the changes.
+
+You don't have to remember to run it: `harness-upgrade-check.yml` runs `bin/harness-upgrade --check` on a schedule and opens a tracking issue when you drift behind, so a nudge shows up on its own instead of only on a manual check. `--check` reports "up to date" or "update available: current -> latest" and exits non-interactively, without prompting, opening a browser, or writing any file.
 
 ## Uninstalling
 

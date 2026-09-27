@@ -2,8 +2,18 @@
 # Checks for a newer harness release and, on confirmation, pulls the
 # updated harness files in from the `v1` tag. Safe to re-run: it's a
 # no-op once you're on the latest release.
+#
+# --check runs the same lookup non-interactively for scripts and CI: it
+# never prompts, opens a browser, or writes a file, and reports which case
+# it found through its exit status (0 up to date, 2 update available, 1
+# error) as well as stdout.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+check_mode=false
+if [ "${1:-}" = "--check" ]; then
+  check_mode=true
+fi
 
 src=${HARNESS_SRC:-https://raw.githubusercontent.com/Eschults/harness/v1}
 # shellcheck source=bin/lib/fetch-files.sh
@@ -25,8 +35,17 @@ if [ -z "$latest" ]; then
 fi
 
 if [ "$current" = "$latest" ]; then
-  echo "Already up to date: $current"
+  if $check_mode; then
+    echo "up to date: $current"
+  else
+    echo "Already up to date: $current"
+  fi
   exit 0
+fi
+
+if $check_mode; then
+  echo "update available: $current -> $latest"
+  exit 2
 fi
 
 compare="https://github.com/Eschults/harness/compare/$current...$latest"

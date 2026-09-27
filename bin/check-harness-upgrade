@@ -45,10 +45,16 @@ chmod +x "$repo/bin/harness-install"
 
 poison_network
 
-# Stub open/xdg-open: a host's text-mode opener could eat the "y" meant for harness-upgrade's prompt.
+# Stub open/xdg-open: a host's text-mode opener could eat the "y" meant for
+# harness-upgrade's prompt. Each call is logged so --check's "never opens a
+# browser" claim is actually verified, not just assumed.
+open_log="$scratch/open-calls.log"
 stub_bin="$scratch/stub_bin"
 mkdir -p "$stub_bin"
-printf '#!/usr/bin/env bash\ntrue\n' > "$stub_bin/open"
+cat > "$stub_bin/open" <<EOF
+#!/usr/bin/env bash
+echo "\$0 \$*" >> "$open_log"
+EOF
 cp "$stub_bin/open" "$stub_bin/xdg-open"
 chmod +x "$stub_bin/open" "$stub_bin/xdg-open"
 export PATH="$stub_bin:$PATH"
@@ -61,12 +67,33 @@ run_upgrade() {
   )
 }
 
+run_check() {
+  (
+    cd "$repo" || exit 1
+    HARNESS_SRC="$1" HARNESS_TAGS_URL="$2" ./bin/harness-upgrade --check </dev/null
+  )
+}
+
+snapshot() {
+  find "$repo" -type f -print0 | sort -z | xargs -0 sha256sum
+}
+
 if ! output=$(cd "$repo" && HARNESS_SRC="file://$old_src" ./bin/harness-install 2>&1); then
   echo "$output" >&2
   fail "bin/harness-install failed priming the scratch repo at the old fixture release"
 fi
 [ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v0.0.1" ] || fail "expected the primed repo to start at v0.0.1"
 grep -q "check-harness-upgrade fixture marker" "$repo/.claude/harness-rules.md" && fail "expected the primed repo to not yet carry the newer fixture's marker"
+
+before=$(snapshot)
+status=0
+output=$(run_check "file://$new_src" "file://$tags_json" 2>&1) || status=$?
+[ "$status" -eq 2 ] || fail "expected --check to exit 2 when an update is available, got $status: $output"
+echo "$output" | grep -q "update available: v0.0.1 -> v9.9.9" || fail "expected --check to report the v0.0.1 -> v9.9.9 update, got: $output"
+after=$(snapshot)
+[ "$before" = "$after" ] || fail "expected --check to leave every file untouched"
+[ -e "$open_log" ] && fail "expected --check to never open a browser, but got: $(cat "$open_log")"
+echo "✓ --check reports an available update, without prompting, opening a browser, or touching any file"
 
 if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" 2>&1); then
   echo "$output" >&2
@@ -87,10 +114,6 @@ echo "✓ upgrade pulled every harness file's newer content"
 bash -n "$repo/bin/harness-upgrade" || fail "expected bin/harness-upgrade to still be valid bash after its temp-file-then-move self-replace"
 echo "✓ bin/harness-upgrade replaced itself without corrupting the running script"
 
-snapshot() {
-  find "$repo" -type f -print0 | sort -z | xargs -0 sha256sum
-}
-
 before=$(snapshot)
 if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" 2>&1); then
   echo "$output" >&2
@@ -102,6 +125,15 @@ after=$(snapshot)
 echo "✓ re-running upgrade on an up-to-date repo left every file untouched"
 
 before=$(snapshot)
+status=0
+output=$(run_check "file://$new_src" "file://$tags_json" 2>&1) || status=$?
+[ "$status" -eq 0 ] || fail "expected --check to exit 0 on an up-to-date repo, got $status: $output"
+echo "$output" | grep -q "up to date: v9.9.9" || fail "expected --check to report up to date on an up-to-date repo, got: $output"
+after=$(snapshot)
+[ "$before" = "$after" ] || fail "expected --check to leave an up-to-date repo untouched"
+echo "✓ --check reports up to date on an up-to-date repo and touches nothing"
+
+before=$(snapshot)
 if output=$(run_upgrade "file://$new_src" "file://$bad_tags_json" 2>&1); then
   fail "expected bin/harness-upgrade to fail when no tag at \$HARNESS_TAGS_URL matches vX.Y.Z, got: $output"
 fi
@@ -109,6 +141,12 @@ echo "$output" | grep -q "No release tag matching vX.Y.Z found" || fail "expecte
 after=$(snapshot)
 [ "$before" = "$after" ] || fail "expected a failed tag lookup to leave every file untouched"
 echo "✓ a tags response with no matching vX.Y.Z tag fails clearly and touches nothing"
+
+status=0
+output=$(run_check "file://$new_src" "file://$bad_tags_json" 2>&1) || status=$?
+[ "$status" -eq 1 ] || fail "expected --check to exit 1, distinct from its up-to-date/update-available codes, on a tag lookup failure, got $status: $output"
+echo "$output" | grep -q "No release tag matching vX.Y.Z found" || fail "expected --check to report the same clear error on a tag lookup failure, got: $output"
+echo "✓ --check exits 1 on a tag lookup failure, distinct from up to date (0) and update available (2)"
 
 echo
 echo "harness-upgrade round trip: all passed"
