@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v shellcheck >/dev/null 2>&1 || apt-get install -y -qq shellcheck >/dev/null 2>&1"
+          }
+        ]
+      }
+    ]
+  }
+}
