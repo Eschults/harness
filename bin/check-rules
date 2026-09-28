@@ -21,6 +21,7 @@ NEXT_TO_BUILD = (ROOT / ".claude" / "prompts" / "next-to-build.md").read_text()
 README = (ROOT / "README.md").read_text()
 BIN_INSTALL = (ROOT / "bin" / "harness-install").read_text()
 BIN_UPGRADE = (ROOT / "bin" / "harness-upgrade").read_text()
+SETTINGS_JSON = (ROOT / ".claude" / "settings.json").read_text()
 
 
 def _pinned_major(text: str) -> str | None:
@@ -93,6 +94,11 @@ CHECKS = [
         "next-to-build-files-with-claude-label",
         'Create it with the `claude` label, to let the "Issue to PR" routine take over' in NEXT_TO_BUILD,
         "next-to-build.md should still file the new issue with the claude label",
+    ),
+    (
+        "sessionstart-installs-shellcheck",
+        "apt-get install" in SETTINGS_JSON and "shellcheck" in SETTINGS_JSON,
+        ".claude/settings.json should still have a SessionStart hook installing shellcheck when missing",
     ),
     (
         "pinned-major-consistent",
