@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# Functional test for the "Fire the routine" step in .github/workflows/claude.yml.
+# Extracts that step's run: block out of the real workflow file and executes
+# it with a stubbed curl on PATH, so the four branches that matter (empty
+# id/token, HTTP >= 300, 2xx with no session URL, the happy path) are
+# exercised without a network call or a real routine token. No model calls.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# shellcheck source=bin/lib/check-helpers.sh
+source bin/lib/check-helpers.sh
+
+workflow=.github/workflows/claude.yml
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+
+# Pulls the "Fire the routine" step's run: block out of claude.yml, dedented
+# to plain shell. Exits on the next step (a line back at the step-list
+# indentation) so only that one step's script is captured.
+extract_fire_step() {
+  awk '
+    /^      - name: Fire the routine$/ { instep=1; next }
+    instep && !inrun && /^        run: \|/ { inrun=1; next }
+    instep && !inrun && /^      - name:/ { exit }
+    inrun {
+      if ($0 ~ /^[[:space:]]*$/) { print ""; next }
+      if (!contentindent) {
+        match($0, /^[ ]*/)
+        contentindent = RLENGTH
+      }
+      match($0, /^[ ]*/)
+      li = RLENGTH
+      if (li < contentindent) exit
+      print substr($0, contentindent + 1)
+    }
+  ' "$workflow"
+}
+
+fire_script="$scratch/fire.sh"
+extract_fire_step > "$fire_script"
+[ -s "$fire_script" ] || fail "extracted an empty run: block for the \"Fire the routine\" step; check its name or indentation in $workflow"
+grep -q 'session-url=' "$fire_script" || fail "extracted script doesn't look like the fire step (no session-url write); check the extractor against $workflow"
+
+# Stub curl: records one line per call (plus one per --retry attempt, since a
+# retrying curl would send the non-idempotent POST again) and, given the
+# desired status/body via env vars, mimics `curl -o <file> -w '%{http_code}'`
+# without touching the network.
+stub_bin="$scratch/stub_bin"
+mkdir -p "$stub_bin"
+calls_file="$scratch/curl-calls"
+cat > "$stub_bin/curl" <<'STUB'
+#!/usr/bin/env bash
+echo call >> "$STUB_CURL_CALLS"
+out=""
+retry=0
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  if [ "${args[i]}" = "-o" ]; then
+    out="${args[i + 1]}"
+  fi
+  if [ "${args[i]}" = "--retry" ]; then
+    retry="${args[i + 1]}"
+  fi
+done
+for ((r = 0; r < retry; r++)); do
+  echo call >> "$STUB_CURL_CALLS"
+done
+[ -n "$out" ] && printf '%s' "$STUB_CURL_BODY" > "$out"
+printf '%s' "$STUB_CURL_STATUS"
+STUB
+chmod +x "$stub_bin/curl"
+
+# Runs the extracted fire step against stubbed curl. Sets the globals
+# run_exit, run_stdout, run_output (the $GITHUB_OUTPUT file's content) and
+# run_calls (curl invocation count) rather than returning them through stdout,
+# so a response body can't be mistaken for the harness's own output framing.
+output_file="$scratch/github-output"
+run_fire_step() {
+  local id=$1 token=$2 status=$3 body=$4
+  rm -f "$calls_file"
+  : > "$output_file"
+  run_exit=0
+  run_stdout=$(
+    PATH="$stub_bin:$PATH" \
+    STUB_CURL_CALLS="$calls_file" STUB_CURL_STATUS="$status" STUB_CURL_BODY="$body" \
+    ROUTINE_ID="$id" ROUTINE_TOKEN="$token" \
+    ISSUE_NUMBER=50 ISSUE_URL="https://github.com/Eschults/harness/issues/50" \
+    GITHUB_REPOSITORY="Eschults/harness" RUNNER_TEMP="$scratch" GITHUB_OUTPUT="$output_file" \
+    bash "$fire_script" 2>&1
+  ) || run_exit=$?
+  run_output=$(cat "$output_file")
+  run_calls=$([ -f "$calls_file" ] && wc -l < "$calls_file" || echo 0)
+}
+
+assert_no_curl_call() {
+  [ "$run_calls" -eq 0 ] || fail "$1: expected curl not to be called, but it was called $run_calls time(s)"
+}
+
+assert_curl_called_once() {
+  [ "$run_calls" -eq 1 ] || fail "$1: expected curl to be called exactly once, got $run_calls (a future --retry would start a second session)"
+}
+
+happy_body='{"claude_code_session_url":"https://claude.ai/code/session_test123"}'
+
+# Empty routine id
+run_fire_step "" "token" 200 "$happy_body"
+[ "$run_exit" -ne 0 ] || fail "expected an empty CLAUDE_ROUTINE_ID to fail the fire step, but it exited 0"
+assert_no_curl_call "empty CLAUDE_ROUTINE_ID"
+echo "✓ empty CLAUDE_ROUTINE_ID fails without calling curl"
+
+# Empty routine token
+run_fire_step "id" "" 200 "$happy_body"
+[ "$run_exit" -ne 0 ] || fail "expected an empty CLAUDE_ROUTINE_TOKEN to fail the fire step, but it exited 0"
+assert_no_curl_call "empty CLAUDE_ROUTINE_TOKEN"
+echo "✓ empty CLAUDE_ROUTINE_TOKEN fails without calling curl"
+
+# HTTP >= 300. Body still carries a session URL, so a broken >= 300 check
+# would fall through the "no session URL" check too and wrongly succeed,
+# instead of masking the break this test is meant to catch.
+run_fire_step "id" "token" 404 "$happy_body"
+[ "$run_exit" -ne 0 ] || fail "expected an HTTP 404 response to fail the fire step, but it exited 0"
+assert_curl_called_once "HTTP 404"
+echo "✓ HTTP >= 300 fails, after calling curl exactly once"
+
+# 2xx with no session URL
+run_fire_step "id" "token" 200 '{"status":"ok"}'
+[ "$run_exit" -ne 0 ] || fail "expected a 200 response with no session URL to fail the fire step, but it exited 0"
+[ -z "$run_output" ] || fail "expected no output written to \$GITHUB_OUTPUT when the response has no session URL, got: $run_output"
+assert_curl_called_once "200 with no session URL"
+echo "✓ 200 with no session URL fails and writes no output, after calling curl exactly once"
+
+# Happy path
+run_fire_step "id" "token" 200 "$happy_body"
+[ "$run_exit" -eq 0 ] || fail "expected a 200 response with a session URL to succeed, got exit $run_exit: $run_stdout"
+[ "$run_output" = "session-url=https://claude.ai/code/session_test123" ] \
+  || fail "expected \$GITHUB_OUTPUT to read session-url=<url>, got: $run_output"
+assert_curl_called_once "happy path"
+echo "✓ 200 with a session URL succeeds and writes session-url=<url>, after calling curl exactly once"
+
+echo
+echo "claude.yml fire step: all passed"
