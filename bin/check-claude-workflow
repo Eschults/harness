@@ -42,15 +42,17 @@ extract_fire_step > "$fire_script"
 grep -q 'session-url=' "$fire_script" || fail "extracted script doesn't look like the fire step (no session-url write); check the extractor against $workflow"
 
 # Stub curl: records one line per call (plus one per --retry attempt, since a
-# retrying curl would send the non-idempotent POST again) and, given the
-# desired status/body via env vars, mimics `curl -o <file> -w '%{http_code}'`
-# without touching the network.
+# retrying curl would send the non-idempotent POST again), dumps its full
+# argv one arg per line so the request itself can be asserted on, and, given
+# the desired status/body via env vars, mimics `curl -o <file> -w
+# '%{http_code}'` without touching the network.
 stub_bin="$scratch/stub_bin"
 mkdir -p "$stub_bin"
 calls_file="$scratch/curl-calls"
 cat > "$stub_bin/curl" <<'STUB'
 #!/usr/bin/env bash
 echo call >> "$STUB_CURL_CALLS"
+printf '%s\n' "$@" > "$STUB_CURL_REQUEST"
 out=""
 retry=0
 args=("$@")
@@ -71,18 +73,20 @@ STUB
 chmod +x "$stub_bin/curl"
 
 # Runs the extracted fire step against stubbed curl. Sets the globals
-# run_exit, run_stdout, run_output (the $GITHUB_OUTPUT file's content) and
-# run_calls (curl invocation count) rather than returning them through stdout,
-# so a response body can't be mistaken for the harness's own output framing.
+# run_exit, run_stdout, run_output (the $GITHUB_OUTPUT file's content),
+# run_calls (curl invocation count) and run_request (the stubbed curl's argv,
+# one per line) rather than returning them through stdout, so a response body
+# can't be mistaken for the harness's own output framing.
 output_file="$scratch/github-output"
+request_file="$scratch/curl-request"
 run_fire_step() {
   local id=$1 token=$2 status=$3 body=$4
-  rm -f "$calls_file"
+  rm -f "$calls_file" "$request_file"
   : > "$output_file"
   run_exit=0
   run_stdout=$(
     PATH="$stub_bin:$PATH" \
-    STUB_CURL_CALLS="$calls_file" STUB_CURL_STATUS="$status" STUB_CURL_BODY="$body" \
+    STUB_CURL_CALLS="$calls_file" STUB_CURL_STATUS="$status" STUB_CURL_BODY="$body" STUB_CURL_REQUEST="$request_file" \
     ROUTINE_ID="$id" ROUTINE_TOKEN="$token" \
     ISSUE_NUMBER=50 ISSUE_URL="https://github.com/Eschults/harness/issues/50" \
     GITHUB_REPOSITORY="Eschults/harness" RUNNER_TEMP="$scratch" GITHUB_OUTPUT="$output_file" \
@@ -90,6 +94,7 @@ run_fire_step() {
   ) || run_exit=$?
   run_output=$(cat "$output_file")
   run_calls=$([ -f "$calls_file" ] && wc -l < "$calls_file" || echo 0)
+  run_request=$([ -f "$request_file" ] && cat "$request_file" || echo "")
 }
 
 assert_no_curl_call() {
@@ -98,6 +103,24 @@ assert_no_curl_call() {
 
 assert_curl_called_once() {
   [ "$run_calls" -eq 1 ] || fail "$1: expected curl to be called exactly once, got $run_calls (a future --retry would start a second session)"
+}
+
+# Confirms the request curl was actually asked to send, not just that curl
+# ran: the endpoint URL, the bearer token (missing "Bearer " would be a
+# silent 401 in production), the JSON content type, and that the body names
+# the issue.
+assert_request_well_formed() {
+  local id=$1 token=$2 context=$3
+  echo "$run_request" | grep -qxF "https://api.anthropic.com/v1/claude_code/routines/${id}/fire" \
+    || fail "$context: expected the request to POST to routines/${id}/fire, got: $run_request"
+  echo "$run_request" | grep -qxF "Authorization: Bearer ${token}" \
+    || fail "$context: expected an \"Authorization: Bearer ${token}\" header, got: $run_request"
+  echo "$run_request" | grep -qxF "Content-Type: application/json" \
+    || fail "$context: expected a \"Content-Type: application/json\" header, got: $run_request"
+  echo "$run_request" | grep -qF 'Repository: Eschults/harness' \
+    || fail "$context: expected the JSON body to name the repository, got: $run_request"
+  echo "$run_request" | grep -qF 'Issue: #50' \
+    || fail "$context: expected the JSON body to name the issue, got: $run_request"
 }
 
 happy_body='{"claude_code_session_url":"https://claude.ai/code/session_test123"}'
@@ -135,6 +158,7 @@ run_fire_step "id" "token" 200 "$happy_body"
 [ "$run_output" = "session-url=https://claude.ai/code/session_test123" ] \
   || fail "expected \$GITHUB_OUTPUT to read session-url=<url>, got: $run_output"
 assert_curl_called_once "happy path"
+assert_request_well_formed "id" "token" "happy path"
 echo "✓ 200 with a session URL succeeds and writes session-url=<url>, after calling curl exactly once"
 
 echo
