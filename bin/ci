@@ -13,7 +13,7 @@ fi
 
 echo "Running shellcheck ($(shellcheck --version | grep ^version:))"
 shellcheck_failed=0
-for f in bin/ci bin/harness-install bin/harness-upgrade bin/harness-uninstall bin/release bin/lib/fetch-files.sh bin/lib/check-helpers.sh bin/check-install-uninstall bin/check-harness-upgrade; do
+for f in bin/ci bin/harness-install bin/harness-upgrade bin/harness-uninstall bin/release bin/lib/fetch-files.sh bin/lib/check-helpers.sh bin/check-install-uninstall bin/check-harness-upgrade bin/check-claude-workflow; do
   if shellcheck_output=$(shellcheck -x "$f" 2>&1); then
     echo "✓ shellcheck: $f"
   else
@@ -41,10 +41,18 @@ else
 fi
 echo
 
+echo "Running the claude.yml fire step check"
+if ./bin/check-claude-workflow; then
+  claude_workflow_failed=0
+else
+  claude_workflow_failed=1
+fi
+echo
+
 if ./bin/check-rules; then
   rules_failed=0
 else
   rules_failed=1
 fi
 
-[ "$round_trip_failed" -eq 0 ] && [ "$upgrade_round_trip_failed" -eq 0 ] && [ "$rules_failed" -eq 0 ]
+[ "$round_trip_failed" -eq 0 ] && [ "$upgrade_round_trip_failed" -eq 0 ] && [ "$claude_workflow_failed" -eq 0 ] && [ "$rules_failed" -eq 0 ]
