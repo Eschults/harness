@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+# Functional round trip for bin/release: runs the real script against a
+# scratch git repo whose origin is a local bare repo, with a stubbed `gh`
+# and a stubbed bin/ci on the scratch side, so no network call and no real
+# tag or release is ever touched. No model calls.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# shellcheck source=bin/lib/check-helpers.sh
+source bin/lib/check-helpers.sh
+
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+
+poison_network
+
+stub_bin="$scratch/stub_bin"
+mkdir -p "$stub_bin"
+gh_calls_file="$scratch/gh-calls"
+cat > "$stub_bin/gh" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >> "$GH_CALLS_FILE"
+STUB
+chmod +x "$stub_bin/gh"
+
+fixture_count=0
+
+# Builds a fresh repo + bare origin pair, primed with one commit tagged
+# $1 (e.g. "v1.0.0") and its major tag (e.g. "v1"), both pushed to origin.
+# Sets $repo and $origin for the caller.
+make_fixture() {
+  local tag=$1
+  local n=$fixture_count
+  fixture_count=$((fixture_count + 1))
+  origin="$scratch/origin-$n.git"
+  repo="$scratch/repo-$n"
+
+  git init -q --bare "$origin"
+  git init -q -b main "$repo"
+  git -C "$repo" config user.email "check-release@example.com"
+  git -C "$repo" config user.name "check-release"
+  git -C "$repo" remote add origin "$origin"
+
+  mkdir -p "$repo/bin" "$repo/.claude"
+  cp bin/release "$repo/bin/release"
+  chmod +x "$repo/bin/release"
+  # Stubbed: the real bin/ci shellchecks the whole bin/ tree, which has
+  # nothing to do with what this round trip is exercising.
+  printf '#!/usr/bin/env bash\necho "stub bin/ci: ok"\n' > "$repo/bin/ci"
+  chmod +x "$repo/bin/ci"
+  echo "fixture" > "$repo/README.md"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "Initial commit"
+
+  local version="${tag#v}"
+  local major="v${version%%.*}"
+  git -C "$repo" tag -a "$tag" -m "$tag"
+  git -C "$repo" tag "$major"
+
+  # push.negotiate can print a harmless "push negotiation failed;
+  # proceeding anyway" warning on some git configs; capture and only
+  # surface it if the push actually failed.
+  if ! out=$(git -C "$repo" push -q -u origin main 2>&1); then
+    echo "$out" >&2
+    fail "make_fixture: git push -u origin main failed"
+  fi
+  if ! out=$(git -C "$repo" push -q --tags origin 2>&1); then
+    echo "$out" >&2
+    fail "make_fixture: git push --tags origin failed"
+  fi
+}
+
+snapshot_origin() {
+  git -C "$1" for-each-ref --format='%(refname) %(objectname)' | sort
+}
+
+# Runs bin/release inside $1, feeding it $2 on stdin, with gh stubbed and
+# real network access poisoned. Sets release_exit, release_output and
+# release_calls (number of stubbed `gh` invocations).
+run_release() {
+  local repo_dir=$1 stdin_input=$2
+  : > "$gh_calls_file"
+  release_exit=0
+  release_output=$(
+    {
+      cd "$repo_dir" || exit 1
+      PATH="$stub_bin:$PATH" GH_CALLS_FILE="$gh_calls_file" bash -c 'printf "%s" "$1" | ./bin/release' _ "$stdin_input"
+    } 2>&1
+  ) || release_exit=$?
+  release_calls=$(wc -l < "$gh_calls_file")
+}
+
+# Like run_release, but attaches bin/release to a pty via `script`: bash's
+# `read -rp` only ever prints its prompt when stdin is a terminal, so a
+# plain pipe (as run_release uses) never shows the suggested-version text.
+run_release_pty() {
+  local repo_dir=$1 stdin_input=$2
+  : > "$gh_calls_file"
+  release_exit=0
+  release_output=$(
+    {
+      cd "$repo_dir" || exit 1
+      PATH="$stub_bin:$PATH" GH_CALLS_FILE="$gh_calls_file" script -qec "./bin/release" /dev/null <<<"$stdin_input"
+    } 2>&1
+  ) || release_exit=$?
+  release_calls=$(wc -l < "$gh_calls_file")
+}
+
+assert_guard_untouched() {
+  local origin_dir=$1 before=$2 label=$3
+  local after
+  after=$(snapshot_origin "$origin_dir")
+  [ "$before" = "$after" ] || fail "$label: expected origin to be left untouched"
+  [ "$release_calls" -eq 0 ] || fail "$label: expected gh not to be called, got $release_calls call(s)"
+}
+
+# --- Happy path ---
+make_fixture "v1.0.0"
+run_release "$repo" "1.0.1
+"
+[ "$release_exit" -eq 0 ] || fail "expected the happy path to succeed, got exit $release_exit: $release_output"
+[ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v1.0.1" ] || fail "expected .claude/HARNESS_VERSION to read v1.0.1, got $(cat "$repo/.claude/HARNESS_VERSION" 2>/dev/null)"
+[ "$(git -C "$repo" log -1 --format=%s)" = "Release v1.0.1" ] || fail "expected the release commit's subject to be 'Release v1.0.1'"
+# ^{commit}: v1.0.1 is an annotated tag, so a bare rev-parse would return
+# the tag object's own sha rather than the commit it points at.
+origin_main=$(git -C "$origin" rev-parse "main^{commit}")
+origin_v101=$(git -C "$origin" rev-parse "v1.0.1^{commit}")
+origin_v1=$(git -C "$origin" rev-parse "v1^{commit}")
+if [ "$origin_main" != "$origin_v101" ] || [ "$origin_v1" != "$origin_v101" ]; then
+  fail "expected origin's main, v1.0.1 and v1 to all point at the same commit"
+fi
+[ "$release_calls" -eq 1 ] || fail "expected gh to be called exactly once on success, got $release_calls"
+grep -qxF "release create v1.0.1 --title v1.0.1 --generate-notes" "$gh_calls_file" \
+  || fail "expected gh to be called with 'release create v1.0.1 --title v1.0.1 --generate-notes', got: $(cat "$gh_calls_file")"
+echo "✓ happy path: v1.0.0 -> 1.0.1 commits, tags and releases, calling gh exactly once"
+
+# --- Suggested next version is a numeric increment, and doubles as the
+# non-X.Y.Z guard: feeding a malformed version after seeing the suggestion. ---
+make_fixture "v1.0.9"
+before=$(snapshot_origin "$origin")
+run_release_pty "$repo" "not-a-version"
+echo "$release_output" | grep -qF "Next version (e.g. 1.0.10):" \
+  || fail "expected the suggested next version after v1.0.9 to be 1.0.10, got: $release_output"
+echo "✓ suggested next version after v1.0.9 is 1.0.10 (numeric, not string, increment)"
+[ "$release_exit" -ne 0 ] || fail "expected a non-X.Y.Z version to fail"
+echo "$release_output" | grep -qi "Version must be X.Y.Z" || fail "expected a clear error for a malformed version, got: $release_output"
+assert_guard_untouched "$origin" "$before" "malformed version"
+echo "✓ a non-X.Y.Z version fails and leaves origin untouched"
+
+# --- Dirty working tree guard ---
+make_fixture "v1.0.0"
+echo "uncommitted" >> "$repo/README.md"
+before=$(snapshot_origin "$origin")
+run_release "$repo" "1.0.1
+"
+[ "$release_exit" -ne 0 ] || fail "expected a dirty working tree to fail"
+echo "$release_output" | grep -qi "dirty" || fail "expected a clear dirty-tree error, got: $release_output"
+assert_guard_untouched "$origin" "$before" "dirty working tree"
+echo "✓ a dirty working tree fails and leaves origin untouched"
+
+# --- Branch other than main guard ---
+make_fixture "v1.0.0"
+git -C "$repo" checkout -q -b feature
+before=$(snapshot_origin "$origin")
+run_release "$repo" "1.0.1
+"
+[ "$release_exit" -ne 0 ] || fail "expected a non-main branch to fail"
+echo "$release_output" | grep -qi "Must be on main" || fail "expected a clear wrong-branch error, got: $release_output"
+assert_guard_untouched "$origin" "$before" "branch other than main"
+echo "✓ a branch other than main fails and leaves origin untouched"
+
+# --- HEAD not up to date with origin/main guard ---
+# A purely-behind local is not a useful fixture here: bin/release's own
+# `git pull --quiet` would just fast-forward past it before the explicit
+# check runs. What the check actually catches is local history that pull
+# cannot reconcile into origin/main's tip, so the fixture gives main an
+# unpushed local commit instead.
+make_fixture "v1.0.0"
+echo "unpushed" >> "$repo/README.md"
+git -C "$repo" commit -q -am "Unpushed local commit"
+before=$(snapshot_origin "$origin")
+run_release "$repo" "1.0.1
+"
+[ "$release_exit" -ne 0 ] || fail "expected HEAD out of sync with origin/main to fail"
+echo "$release_output" | grep -qi "not up to date with origin/main" || fail "expected a clear out-of-sync error, got: $release_output"
+assert_guard_untouched "$origin" "$before" "HEAD not up to date with origin/main"
+echo "✓ HEAD out of sync with origin/main fails and leaves origin untouched"
+
+# --- Existing tag guard ---
+make_fixture "v1.0.0"
+before=$(snapshot_origin "$origin")
+run_release "$repo" "1.0.0
+"
+[ "$release_exit" -ne 0 ] || fail "expected an already-existing tag to fail"
+echo "$release_output" | grep -qi "already exists" || fail "expected a clear existing-tag error, got: $release_output"
+assert_guard_untouched "$origin" "$before" "existing tag"
+echo "✓ an already-existing tag fails and leaves origin untouched"
+
+# --- Major bump declined ---
+make_fixture "v1.0.0"
+before=$(snapshot_origin "$origin")
+run_release "$repo" "2.0.0
+n
+"
+[ "$release_exit" -ne 0 ] || fail "expected a declined major bump to fail"
+echo "$release_output" | grep -qF "This is a major bump: v1 -> v2." || fail "expected a clear major-bump prompt, got: $release_output"
+git -C "$repo" rev-parse -q --verify v2.0.0 >/dev/null && fail "expected no v2.0.0 tag to be created on a declined major bump"
+assert_guard_untouched "$origin" "$before" "declined major bump"
+echo "✓ a major bump answered with anything other than y fails and creates no tag"
+
+echo
+echo "release round trip: all passed"
