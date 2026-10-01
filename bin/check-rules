@@ -7,7 +7,11 @@ in .claude/harness-rules.md, CLAUDE.md, .claude/prompts/issue-to-pr.md, or
 of a rule during an edit to these files. One check instead asserts that
 README.md, bin/harness-install, and bin/harness-upgrade all pin the same
 major release tag, catching a stale reference left behind after bin/release
-cuts a new major.
+cuts a new major. Another set of checks extracts every relative link (and
+the "Install is N files" count) out of README.md and verifies them against
+the working tree, catching link rot and a stale file count left behind by a
+rename or a file added to HARNESS_FILES. No network calls: absolute
+http(s) links are left alone.
 """
 import pathlib
 import re
@@ -22,6 +26,7 @@ README = (ROOT / "README.md").read_text()
 BIN_INSTALL = (ROOT / "bin" / "harness-install").read_text()
 BIN_UPGRADE = (ROOT / "bin" / "harness-upgrade").read_text()
 SETTINGS_JSON = (ROOT / ".claude" / "settings.json").read_text()
+FETCH_FILES = (ROOT / "bin" / "lib" / "fetch-files.sh").read_text()
 
 
 def _pinned_major(text: str) -> str | None:
@@ -32,6 +37,80 @@ def _pinned_major(text: str) -> str | None:
 README_MAJOR = _pinned_major(README)
 BIN_INSTALL_MAJOR = _pinned_major(BIN_INSTALL)
 BIN_UPGRADE_MAJOR = _pinned_major(BIN_UPGRADE)
+
+_ABSOLUTE_LINK = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
+_NUMBER_WORDS = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12,
+}
+
+
+def _heading_anchors(text: str) -> set[str]:
+    """GitHub-style heading slugs: lowercase, drop punctuation, spaces to hyphens."""
+    anchors = set()
+    for heading in re.findall(r"(?m)^#{1,6}\s+(.+?)\s*$", text):
+        slug = re.sub(r"[^\w\s-]", "", heading.lower())
+        anchors.add(re.sub(r"\s+", "-", slug.strip()))
+    return anchors
+
+
+def _readme_relative_links() -> list[str]:
+    links = set()
+    links.update(re.findall(r"\]\(([^)]+)\)", README))
+    links.update(re.findall(r'(?:src|srcset)="([^"]+)"', README))
+    return sorted(link for link in links if not _ABSOLUTE_LINK.match(link))
+
+
+def _readme_link_checks() -> list[tuple[str, bool, str]]:
+    checks = []
+    for link in _readme_relative_links():
+        path, _, anchor = link.partition("#")
+        if not path:
+            ok = not anchor or anchor in _heading_anchors(README)
+            checks.append((
+                f"readme-link:#{anchor}",
+                ok,
+                f"README.md links to #{anchor}, but README.md has no heading matching it",
+            ))
+            continue
+        target = ROOT / path
+        if not target.is_file():
+            checks.append((
+                f"readme-link:{link}",
+                False,
+                f"README.md links to {path!r}, which does not exist in the working tree",
+            ))
+            continue
+        if anchor:
+            ok = anchor in _heading_anchors(target.read_text())
+            checks.append((
+                f"readme-link:{link}",
+                ok,
+                f"README.md links to {path}#{anchor}, but {path} has no heading matching #{anchor}",
+            ))
+        else:
+            checks.append((f"readme-link:{link}", True, ""))
+    return checks
+
+
+def _harness_files() -> list[str]:
+    match = re.search(r"HARNESS_FILES=\((.*?)\)", FETCH_FILES, re.DOTALL)
+    return re.findall(r'"([^"]+)"', match.group(1)) if match else []
+
+
+def _readme_install_file_count_check() -> tuple[str, bool, str]:
+    match = re.search(r"Install is (\w+) files", README)
+    word = match.group(1).lower() if match else None
+    readme_count = _NUMBER_WORDS.get(word) if word else None
+    expected_count = len(_harness_files()) + 3  # bin/harness-install, bin/harness-upgrade, bin/lib/fetch-files.sh
+    ok = readme_count is not None and readme_count == expected_count
+    return (
+        "readme-install-file-count",
+        ok,
+        f"README.md says 'Install is {word} files' ({readme_count}), but HARNESS_FILES plus "
+        f"bin/harness-install, bin/harness-upgrade, and bin/lib/fetch-files.sh total {expected_count} file(s)",
+    )
 
 CHECKS = [
     (
@@ -108,6 +187,8 @@ CHECKS = [
         "should all pin the same harness major release tag",
     ),
 ]
+CHECKS.extend(_readme_link_checks())
+CHECKS.append(_readme_install_file_count_check())
 
 
 def main() -> int:
