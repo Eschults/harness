@@ -46,19 +46,26 @@ _NUMBER_WORDS = {
 }
 
 
+def _strip_fenced_code_blocks(text: str) -> str:
+    """Drop ```...``` blocks so example headings/links inside them (e.g. the
+    sample harness-rules.md snippet in README.md) aren't mistaken for real ones."""
+    return re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+
+
 def _heading_anchors(text: str) -> set[str]:
     """GitHub-style heading slugs: lowercase, drop punctuation, spaces to hyphens."""
     anchors = set()
-    for heading in re.findall(r"(?m)^#{1,6}\s+(.+?)\s*$", text):
+    for heading in re.findall(r"(?m)^#{1,6}\s+(.+?)\s*$", _strip_fenced_code_blocks(text)):
         slug = re.sub(r"[^\w\s-]", "", heading.lower())
         anchors.add(re.sub(r"\s+", "-", slug.strip()))
     return anchors
 
 
 def _readme_relative_links() -> list[str]:
+    text = _strip_fenced_code_blocks(README)
     links = set()
-    links.update(re.findall(r"\]\(([^)]+)\)", README))
-    links.update(re.findall(r'(?:src|srcset)="([^"]+)"', README))
+    links.update(re.findall(r"\]\(([^)]+)\)", text))
+    links.update(re.findall(r'(?:src|srcset)="([^"]+)"', text))
     return sorted(link for link in links if not _ABSOLUTE_LINK.match(link))
 
 
