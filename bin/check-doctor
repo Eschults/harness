@@ -136,9 +136,21 @@ echo "✓ a missing CLAUDE_ROUTINE_TOKEN secret fails the check that names it"
 echo "$output" | grep -q 'sk-ant' && fail "expected no secret value to ever appear in doctor output"
 
 # --- gh missing entirely ---
+# A hardcoded PATH (e.g. "/usr/bin:/bin") can't stand in for "no gh": GitHub
+# Actions' runner image ships gh in /usr/bin, right alongside bash and grep,
+# so excluding that whole directory breaks the test in a different way
+# (env can't find bash). Symlink in only what bin/harness-doctor itself
+# calls, gh deliberately left out, so it holds on a laptop and a runner alike.
+no_gh_bin="$scratch/no_gh_bin"
+mkdir -p "$no_gh_bin"
+for cmd in bash dirname grep git; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_gh_bin/$cmd"
+done
+
 repo="$scratch/no-gh"
 build_healthy_repo "$repo"
-if ! output=$(cd "$repo" && PATH="/usr/bin:/bin" ./bin/harness-doctor); then
+if ! output=$(cd "$repo" && PATH="$no_gh_bin" ./bin/harness-doctor); then
   echo "$output" >&2
   fail "expected bin/harness-doctor to exit 0 when gh is missing and every local check passes"
 fi
