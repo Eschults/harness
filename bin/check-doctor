@@ -94,6 +94,19 @@ fi
 assert_contains "$output" '✗ CLAUDE.md does not import' "missing import"
 echo "✓ a missing CLAUDE.md import fails the check that names it"
 
+# --- CLAUDE.md import on a line with trailing content ---
+# bin/harness-install only checks that the import is present as a substring
+# (grep -qF, no -x), so it never re-appends to a line like this; the doctor
+# check has to agree or it reports a failure its own suggested fix can't clear.
+repo="$scratch/import-trailing-content"
+build_healthy_repo "$repo"
+printf '@.claude/harness-rules.md some trailing note\n' > "$repo/CLAUDE.md"
+if ! output=$(run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor to accept a CLAUDE.md import line harness-install itself treats as already present"
+fi
+echo "✓ a CLAUDE.md import line harness-install already accepts passes the check too"
+
 # --- missing label ---
 repo="$scratch/missing-label"
 build_healthy_repo "$repo"
