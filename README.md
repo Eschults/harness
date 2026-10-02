@@ -97,6 +97,13 @@ If the response looks like :point_down: it worked :tada:
 
 Anything else is an error naming the reason: bad token, wrong id, or daily routine cap. Note that the session itself does no work, which is expected until the new files are merged.
 
+Setup spans five places this curl alone doesn't cover: the harness files, the `CLAUDE.md` import, the `claude` label, and the `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` repo values. [`bin/harness-doctor`](bin/harness-doctor) checks all five in one command and never prints a secret value, only whether one is set. It isn't one of the files step 1 fetches, so pull it in the same way as `bin/harness-uninstall`, then run it:
+
+```bash
+src=https://raw.githubusercontent.com/Eschults/harness/v1
+mkdir -p bin && curl -fsSL "$src/bin/harness-doctor" -o bin/harness-doctor && chmod +x bin/harness-doctor && ./bin/harness-doctor
+```
+
 #### 4. Create the label
 
 ```bash

@@ -13,7 +13,7 @@ fi
 
 echo "Running shellcheck ($(shellcheck --version | grep ^version:))"
 shellcheck_failed=0
-for f in bin/ci bin/harness-install bin/harness-upgrade bin/harness-uninstall bin/release bin/lib/fetch-files.sh bin/lib/check-helpers.sh bin/check-install-uninstall bin/check-harness-upgrade bin/check-claude-workflow bin/check-release; do
+for f in bin/ci bin/harness-install bin/harness-upgrade bin/harness-uninstall bin/harness-doctor bin/release bin/lib/fetch-files.sh bin/lib/check-helpers.sh bin/check-install-uninstall bin/check-harness-upgrade bin/check-claude-workflow bin/check-release bin/check-doctor; do
   if shellcheck_output=$(shellcheck -x "$f" 2>&1); then
     echo "✓ shellcheck: $f"
   else
@@ -57,10 +57,18 @@ else
 fi
 echo
 
+echo "Running the harness-doctor check"
+if ./bin/check-doctor; then
+  doctor_failed=0
+else
+  doctor_failed=1
+fi
+echo
+
 if ./bin/check-rules; then
   rules_failed=0
 else
   rules_failed=1
 fi
 
-[ "$round_trip_failed" -eq 0 ] && [ "$upgrade_round_trip_failed" -eq 0 ] && [ "$claude_workflow_failed" -eq 0 ] && [ "$release_failed" -eq 0 ] && [ "$rules_failed" -eq 0 ]
+[ "$round_trip_failed" -eq 0 ] && [ "$upgrade_round_trip_failed" -eq 0 ] && [ "$claude_workflow_failed" -eq 0 ] && [ "$release_failed" -eq 0 ] && [ "$doctor_failed" -eq 0 ] && [ "$rules_failed" -eq 0 ]

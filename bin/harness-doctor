@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Verifies an adopter's harness install end to end: the local files step 1
+# wrote, the CLAUDE.md import, the GitHub-side label/variable/secret from
+# steps 2-4, and a gitignored .env if one exists. Never prints a secret
+# value, only whether one is set. Not part of HARNESS_FILES: fetch and run it
+# the way bin/harness-uninstall is fetched, not via bin/harness-install.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+failed=0
+
+ok() { echo "✓ $1"; }
+bad() { echo "✗ $1"; failed=1; }
+skip() { echo "- $1 (skipped: $2)"; }
+
+if [ -f bin/lib/fetch-files.sh ]; then
+  # shellcheck source=bin/lib/fetch-files.sh
+  source bin/lib/fetch-files.sh
+else
+  bad "bin/lib/fetch-files.sh is missing; run bin/harness-install"
+  HARNESS_FILES=()
+fi
+
+for f in "${HARNESS_FILES[@]}"; do
+  if [ -f "$f" ]; then
+    ok "$f exists"
+  else
+    bad "$f is missing; run bin/harness-install"
+  fi
+done
+
+if [ -f CLAUDE.md ] && grep -qxF '@.claude/harness-rules.md' CLAUDE.md; then
+  ok "CLAUDE.md imports @.claude/harness-rules.md"
+else
+  bad "CLAUDE.md does not import @.claude/harness-rules.md; run bin/harness-install"
+fi
+
+if ! command -v gh >/dev/null 2>&1; then
+  skip "claude label" "gh is not installed"
+  skip "CLAUDE_ROUTINE_ID variable" "gh is not installed"
+  skip "CLAUDE_ROUTINE_TOKEN secret" "gh is not installed"
+elif ! gh auth status >/dev/null 2>&1; then
+  skip "claude label" "gh is not authenticated; run gh auth login"
+  skip "CLAUDE_ROUTINE_ID variable" "gh is not authenticated; run gh auth login"
+  skip "CLAUDE_ROUTINE_TOKEN secret" "gh is not authenticated; run gh auth login"
+else
+  labels=$(gh label list --json name --jq '.[].name' 2>/dev/null || true)
+  if echo "$labels" | grep -qxF claude; then
+    ok "claude label exists"
+  else
+    bad "claude label is missing; run: gh label create claude --color D97757 --description \"starts a Claude Code run\" --force"
+  fi
+
+  variables=$(gh variable list --json name --jq '.[].name' 2>/dev/null || true)
+  if echo "$variables" | grep -qxF CLAUDE_ROUTINE_ID; then
+    ok "CLAUDE_ROUTINE_ID variable is set"
+  else
+    bad "CLAUDE_ROUTINE_ID variable is not set; see README.md, 'Set two repo values'"
+  fi
+
+  secrets=$(gh secret list --json name --jq '.[].name' 2>/dev/null || true)
+  if echo "$secrets" | grep -qxF CLAUDE_ROUTINE_TOKEN; then
+    ok "CLAUDE_ROUTINE_TOKEN secret is set"
+  else
+    bad "CLAUDE_ROUTINE_TOKEN secret is not set; see README.md, 'Set two repo values'"
+  fi
+fi
+
+if [ -f .env ]; then
+  if ! command -v git >/dev/null 2>&1; then
+    skip ".env gitignored" "git is not installed"
+  elif git ls-files --error-unmatch .env >/dev/null 2>&1; then
+    bad ".env is tracked by git; remove it with: git rm --cached .env"
+  elif git check-ignore -q .env; then
+    ok ".env is gitignored"
+  else
+    bad ".env is not gitignored; add .env to .gitignore"
+  fi
+fi
+
+exit "$failed"
