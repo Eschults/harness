@@ -105,6 +105,13 @@ gh label create claude --color D97757 --description "starts a Claude Code run" -
 
 `--force` makes this safe to re-run: it creates the label if missing and updates its color/description in place if it already exists, so re-running the install doesn't fail on a label you already have.
 
+Setup spans five places this curl alone doesn't cover: the harness files, the `CLAUDE.md` import, the `claude` label, and the `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` repo values. [`bin/harness-doctor`](bin/harness-doctor) checks all five in one command and never prints a secret value, only whether one is set. It isn't one of the files step 1 fetches, so pull it in the same way as `bin/harness-uninstall`, then run it:
+
+```bash
+src=https://raw.githubusercontent.com/Eschults/harness/v1
+mkdir -p bin && curl -fsSL "$src/bin/harness-doctor" -o bin/harness-doctor && chmod +x bin/harness-doctor && ./bin/harness-doctor
+```
+
 #### 5. (Opt) Create the "Next to build" routine
 
 So far only a human opens the gate. A second routine closes that loop: it wakes on a schedule, reads the repo, works out the capability it should gain next, and files that as one issue with the `claude` label, which fires the "Issue to PR" workflow and starts an implementation run with nobody in the loop until review.

@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+# Functional check for bin/harness-doctor: runs it against a scratch git repo
+# (never this checkout) with a stubbed gh on PATH, covering a healthy install
+# and at least one failure per category it checks. No model calls, no real
+# gh/network calls.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# shellcheck source=bin/lib/fetch-files.sh
+source bin/lib/fetch-files.sh
+# shellcheck source=bin/lib/check-helpers.sh
+source bin/lib/check-helpers.sh
+
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+
+# Stub gh: routes on the first two args, answers from env vars the caller
+# sets, and never touches the network or a real repo.
+stub_bin="$scratch/stub_bin"
+mkdir -p "$stub_bin"
+cat > "$stub_bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "auth status") exit "${STUB_GH_AUTH_EXIT:-0}" ;;
+  "label list") printf '%s\n' "${STUB_GH_LABELS:-}" ;;
+  "variable list") printf '%s\n' "${STUB_GH_VARIABLES:-}" ;;
+  "secret list") printf '%s\n' "${STUB_GH_SECRETS:-}" ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$stub_bin/gh"
+
+# Builds a scratch repo with every HARNESS_FILES entry, the CLAUDE.md import,
+# and bin/harness-doctor itself, all copied from this checkout's real content.
+build_healthy_repo() {
+  local dir=$1
+  mkdir -p "$dir/bin/lib"
+  git init -q "$dir"
+  for f in "${HARNESS_FILES[@]}"; do
+    mkdir -p "$dir/$(dirname "$f")"
+    cp "$f" "$dir/$f"
+  done
+  cp bin/lib/fetch-files.sh "$dir/bin/lib/fetch-files.sh"
+  cp bin/harness-doctor "$dir/bin/harness-doctor"
+  chmod +x "$dir/bin/harness-doctor"
+  printf '# Adopter rules\n\n@.claude/harness-rules.md\n' > "$dir/CLAUDE.md"
+}
+
+run_doctor() {
+  local dir=$1
+  (
+    cd "$dir"
+    PATH="$stub_bin:$PATH" \
+    STUB_GH_AUTH_EXIT="${STUB_GH_AUTH_EXIT:-0}" \
+    STUB_GH_LABELS="${STUB_GH_LABELS-claude}" \
+    STUB_GH_VARIABLES="${STUB_GH_VARIABLES-CLAUDE_ROUTINE_ID}" \
+    STUB_GH_SECRETS="${STUB_GH_SECRETS-CLAUDE_ROUTINE_TOKEN}" \
+    ./bin/harness-doctor
+  )
+}
+
+assert_contains() {
+  local output=$1 needle=$2 context=$3
+  echo "$output" | grep -qF -- "$needle" || fail "$context: expected output to contain '$needle', got: $output"
+}
+
+# --- healthy install ---
+repo="$scratch/healthy"
+build_healthy_repo "$repo"
+if ! output=$(run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor to exit 0 against a healthy install"
+fi
+echo "$output" | grep -q '✗' && fail "expected no failing checks against a healthy install, got: $output"
+echo "✓ healthy install passes every check"
+
+# --- missing file ---
+repo="$scratch/missing-file"
+build_healthy_repo "$repo"
+rm "$repo/.claude/harness-rules.md"
+if output=$(run_doctor "$repo"); then
+  fail "expected bin/harness-doctor to fail when a harness file is missing"
+fi
+assert_contains "$output" '✗ .claude/harness-rules.md is missing' "missing file"
+echo "✓ a missing harness file fails the check that names it"
+
+# --- missing CLAUDE.md import ---
+repo="$scratch/missing-import"
+build_healthy_repo "$repo"
+printf '# Adopter rules\n' > "$repo/CLAUDE.md"
+if output=$(run_doctor "$repo"); then
+  fail "expected bin/harness-doctor to fail when CLAUDE.md has no harness-rules.md import"
+fi
+assert_contains "$output" '✗ CLAUDE.md does not import' "missing import"
+echo "✓ a missing CLAUDE.md import fails the check that names it"
+
+# --- CLAUDE.md import on a line with trailing content ---
+# bin/harness-install only checks that the import is present as a substring
+# (grep -qF, no -x), so it never re-appends to a line like this; the doctor
+# check has to agree or it reports a failure its own suggested fix can't clear.
+repo="$scratch/import-trailing-content"
+build_healthy_repo "$repo"
+printf '@.claude/harness-rules.md some trailing note\n' > "$repo/CLAUDE.md"
+if ! output=$(run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor to accept a CLAUDE.md import line harness-install itself treats as already present"
+fi
+echo "✓ a CLAUDE.md import line harness-install already accepts passes the check too"
+
+# --- missing label ---
+repo="$scratch/missing-label"
+build_healthy_repo "$repo"
+if output=$(STUB_GH_LABELS="" run_doctor "$repo"); then
+  fail "expected bin/harness-doctor to fail when the claude label is missing"
+fi
+assert_contains "$output" '✗ claude label is missing' "missing label"
+echo "✓ a missing claude label fails the check that names it"
+
+# --- missing variable ---
+repo="$scratch/missing-variable"
+build_healthy_repo "$repo"
+if output=$(STUB_GH_VARIABLES="" run_doctor "$repo"); then
+  fail "expected bin/harness-doctor to fail when CLAUDE_ROUTINE_ID is unset"
+fi
+assert_contains "$output" '✗ CLAUDE_ROUTINE_ID variable is not set' "missing variable"
+echo "✓ a missing CLAUDE_ROUTINE_ID variable fails the check that names it"
+
+# --- missing secret ---
+repo="$scratch/missing-secret"
+build_healthy_repo "$repo"
+if output=$(STUB_GH_SECRETS="" run_doctor "$repo"); then
+  fail "expected bin/harness-doctor to fail when CLAUDE_ROUTINE_TOKEN is unset"
+fi
+assert_contains "$output" '✗ CLAUDE_ROUTINE_TOKEN secret is not set' "missing secret"
+echo "✓ a missing CLAUDE_ROUTINE_TOKEN secret fails the check that names it"
+echo "$output" | grep -q 'sk-ant' && fail "expected no secret value to ever appear in doctor output"
+
+# --- gh missing entirely ---
+# A hardcoded PATH (e.g. "/usr/bin:/bin") can't stand in for "no gh": GitHub
+# Actions' runner image ships gh in /usr/bin, right alongside bash and grep,
+# so excluding that whole directory breaks the test in a different way
+# (env can't find bash). Symlink in only what bin/harness-doctor itself
+# calls, gh deliberately left out, so it holds on a laptop and a runner alike.
+no_gh_bin="$scratch/no_gh_bin"
+mkdir -p "$no_gh_bin"
+for cmd in bash dirname grep git; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_gh_bin/$cmd"
+done
+
+repo="$scratch/no-gh"
+build_healthy_repo "$repo"
+if ! output=$(cd "$repo" && PATH="$no_gh_bin" ./bin/harness-doctor); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor to exit 0 when gh is missing and every local check passes"
+fi
+assert_contains "$output" '- claude label (skipped: gh is not installed)' "gh missing"
+echo "✓ a missing gh reports the repo-side checks as skipped, not passed, without failing the run"
+
+# --- gh unauthenticated ---
+repo="$scratch/gh-unauthed"
+build_healthy_repo "$repo"
+if ! output=$(STUB_GH_AUTH_EXIT=1 run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor to exit 0 when gh is unauthenticated and every local check passes"
+fi
+assert_contains "$output" '- CLAUDE_ROUTINE_ID variable (skipped: gh is not authenticated' "gh unauthenticated"
+echo "✓ an unauthenticated gh reports the repo-side checks as skipped, not passed, without failing the run"
+
+# --- .env untracked and not gitignored ---
+repo="$scratch/env-not-ignored"
+build_healthy_repo "$repo"
+echo "CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test" > "$repo/.env"
+if output=$(run_doctor "$repo"); then
+  fail "expected bin/harness-doctor to fail when .env exists and is not gitignored"
+fi
+assert_contains "$output" '✗ .env is not gitignored' "untracked .env"
+echo "$output" | grep -q 'sk-ant' && fail "expected no .env content to ever appear in doctor output"
+echo "✓ an untracked, non-ignored .env fails the check that names it"
+
+# --- .env tracked by git ---
+repo="$scratch/env-tracked"
+build_healthy_repo "$repo"
+echo "CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test" > "$repo/.env"
+(cd "$repo" && git add .env && git -c user.email=t@t -c user.name=t commit -q -m "oops")
+if output=$(run_doctor "$repo"); then
+  fail "expected bin/harness-doctor to fail when .env is tracked by git"
+fi
+assert_contains "$output" '✗ .env is tracked by git' "tracked .env"
+echo "✓ a tracked .env fails the check that names it"
+
+# --- .env gitignored ---
+repo="$scratch/env-ignored"
+build_healthy_repo "$repo"
+echo "CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test" > "$repo/.env"
+echo ".env" > "$repo/.gitignore"
+if ! output=$(run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor to exit 0 when .env is gitignored"
+fi
+assert_contains "$output" '✓ .env is gitignored' "gitignored .env"
+echo "✓ a gitignored .env passes the check"
+
+echo
+echo "harness-doctor check: all passed"
