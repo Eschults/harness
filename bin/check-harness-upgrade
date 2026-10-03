@@ -110,5 +110,24 @@ after=$(snapshot)
 [ "$before" = "$after" ] || fail "expected a failed tag lookup to leave every file untouched"
 echo "✓ a tags response with no matching vX.Y.Z tag fails clearly and touches nothing"
 
+# A PATH with curl but not jq: the prerequisite check must fire before the
+# first network call (and the "y" below never gets read), naming jq and how
+# to install it, and touching nothing.
+no_jq_bin="$scratch/no_jq_bin"
+mkdir -p "$no_jq_bin"
+for cmd in bash dirname curl; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_jq_bin/$cmd"
+done
+
+before=$(snapshot)
+if output=$(cd "$repo" && PATH="$no_jq_bin" ./bin/harness-upgrade 2>&1); then
+  fail "expected bin/harness-upgrade to fail when jq is missing from PATH"
+fi
+echo "$output" | grep -q "jq not found; install it" || fail "expected a one-line error naming jq and how to install it, got: $output"
+after=$(snapshot)
+[ "$before" = "$after" ] || fail "expected a missing jq to leave every file untouched"
+echo "✓ a PATH without jq fails fast, before any network call, and touches nothing"
+
 echo
 echo "harness-upgrade round trip: all passed"
