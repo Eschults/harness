@@ -5,6 +5,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+for tool in curl jq; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "$tool not found; install it (e.g. apt-get install $tool, or brew install $tool) to run bin/harness-upgrade." >&2
+    exit 1
+  fi
+done
+
 src=${HARNESS_SRC:-https://raw.githubusercontent.com/Eschults/harness/v1}
 # shellcheck source=bin/lib/fetch-files.sh
 source bin/lib/fetch-files.sh

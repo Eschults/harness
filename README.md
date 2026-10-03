@@ -25,6 +25,8 @@ Put your project's own rules in `CLAUDE.md`, not `harness-rules.md`, so an upgra
 
 Install is eight files, two routines, one label, and two repo values.
 
+Prerequisites: `bash`, `git`, `gh`, `curl`, and `jq` on `PATH`. `bin/harness-doctor` (step 4) checks for `curl` and `jq` explicitly, and `bin/harness-upgrade` refuses to run without them.
+
 #### 1. Install the harness
 
 Run this from the root of your project repo. It's a curl-then-run of one script, [`bin/harness-install`](bin/harness-install), worth reading before you run it:

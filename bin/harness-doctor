@@ -13,6 +13,14 @@ ok() { echo "✓ $1"; }
 bad() { echo "✗ $1"; failed=1; }
 skip() { echo "- $1 (skipped: $2)"; }
 
+for tool in curl jq; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    ok "$tool is on PATH"
+  else
+    bad "$tool is missing; install it (e.g. apt-get install $tool, or brew install $tool)"
+  fi
+done
+
 if [ -f bin/lib/fetch-files.sh ]; then
   # shellcheck source=bin/lib/fetch-files.sh
   source bin/lib/fetch-files.sh
