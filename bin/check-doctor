@@ -72,7 +72,41 @@ if ! output=$(run_doctor "$repo"); then
   fail "expected bin/harness-doctor to exit 0 against a healthy install"
 fi
 echo "$output" | grep -q '✗' && fail "expected no failing checks against a healthy install, got: $output"
+assert_contains "$output" '✓ curl is on PATH' "healthy install"
+assert_contains "$output" '✓ jq is on PATH' "healthy install"
 echo "✓ healthy install passes every check"
+
+# --- missing curl ---
+# Excludes curl from PATH entirely, rather than hiding it behind a stub, so
+# the check can only pass by actually finding the real binary.
+repo="$scratch/missing-curl"
+build_healthy_repo "$repo"
+no_curl_bin="$scratch/no_curl_bin"
+mkdir -p "$no_curl_bin"
+for cmd in bash dirname grep jq; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_curl_bin/$cmd"
+done
+if output=$(cd "$repo" && PATH="$no_curl_bin" ./bin/harness-doctor); then
+  fail "expected bin/harness-doctor to fail when curl is missing"
+fi
+assert_contains "$output" '✗ curl is missing' "missing curl"
+echo "✓ a missing curl fails the check that names it"
+
+# --- missing jq ---
+repo="$scratch/missing-jq"
+build_healthy_repo "$repo"
+no_jq_bin="$scratch/no_jq_bin"
+mkdir -p "$no_jq_bin"
+for cmd in bash dirname grep curl; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_jq_bin/$cmd"
+done
+if output=$(cd "$repo" && PATH="$no_jq_bin" ./bin/harness-doctor); then
+  fail "expected bin/harness-doctor to fail when jq is missing"
+fi
+assert_contains "$output" '✗ jq is missing' "missing jq"
+echo "✓ a missing jq fails the check that names it"
 
 # --- missing file ---
 repo="$scratch/missing-file"
@@ -143,7 +177,7 @@ echo "$output" | grep -q 'sk-ant' && fail "expected no secret value to ever appe
 # calls, gh deliberately left out, so it holds on a laptop and a runner alike.
 no_gh_bin="$scratch/no_gh_bin"
 mkdir -p "$no_gh_bin"
-for cmd in bash dirname grep git; do
+for cmd in bash dirname grep git curl jq; do
   cmd_path=$(command -v "$cmd") || continue
   ln -sf "$cmd_path" "$no_gh_bin/$cmd"
 done
