@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Verifies an adopter's harness install end to end: the local files step 1
 # wrote, the CLAUDE.md import, the GitHub-side label/variable/secret from
-# steps 2-4, and a gitignored .env if one exists. Never prints a secret
-# value, only whether one is set. Not part of HARNESS_FILES: fetch and run it
-# the way bin/harness-uninstall is fetched, not via bin/harness-install.
+# steps 2-4, that those files are merged to the default branch (where the
+# routine actually reads them from), and a gitignored .env if one exists.
+# Never prints a secret value, only whether one is set. Not part of
+# HARNESS_FILES: fetch and run it the way bin/harness-uninstall is fetched,
+# not via bin/harness-install.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -46,33 +48,64 @@ else
   bad "CLAUDE.md does not import @.claude/harness-rules.md; run bin/harness-install"
 fi
 
-gh_checks=("claude label" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret")
+gh_checks=("claude label" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret" "harness files on the default branch")
 if ! command -v gh >/dev/null 2>&1; then
   for c in "${gh_checks[@]}"; do skip "$c" "gh is not installed"; done
 elif ! gh auth status >/dev/null 2>&1; then
   for c in "${gh_checks[@]}"; do skip "$c" "gh is not authenticated; run gh auth login"; done
 else
   # --limit: gh label list defaults to 30 and the claude label can sort past
-  # that on a repo that already has many labels.
-  labels=$(gh label list --limit 1000 --json name --jq '.[].name' 2>/dev/null || true)
-  if echo "$labels" | grep -qxF claude; then
-    ok "claude label exists"
+  # that on a repo that already has many labels. A failed list call (rate
+  # limit, a token without label read access) is a lookup problem, not
+  # evidence the label is missing, so it must skip rather than report a
+  # false failure.
+  if labels=$(gh label list --limit 1000 --json name --jq '.[].name' 2>/dev/null); then
+    if echo "$labels" | grep -qxF claude; then
+      ok "claude label exists"
+    else
+      bad "claude label is missing; run: gh label create claude --color D97757 --description \"starts a Claude Code run\" --force"
+    fi
   else
-    bad "claude label is missing; run: gh label create claude --color D97757 --description \"starts a Claude Code run\" --force"
+    skip "claude label" "could not list labels"
   fi
 
-  variables=$(gh variable list --json name --jq '.[].name' 2>/dev/null || true)
-  if echo "$variables" | grep -qxF CLAUDE_ROUTINE_ID; then
-    ok "CLAUDE_ROUTINE_ID variable is set"
+  # A failed list call (rate limit, a fine-grained PAT missing the
+  # Variables/Secrets scope) is a lookup problem, not evidence the variable
+  # or secret is unset, so it must skip rather than report a false failure.
+  if variables=$(gh variable list --json name --jq '.[].name' 2>/dev/null); then
+    if echo "$variables" | grep -qxF CLAUDE_ROUTINE_ID; then
+      ok "CLAUDE_ROUTINE_ID variable is set"
+    else
+      bad "CLAUDE_ROUTINE_ID variable is not set; see README.md, 'Set two repo values'"
+    fi
   else
-    bad "CLAUDE_ROUTINE_ID variable is not set; see README.md, 'Set two repo values'"
+    skip "CLAUDE_ROUTINE_ID variable" "could not list variables"
   fi
 
-  secrets=$(gh secret list --json name --jq '.[].name' 2>/dev/null || true)
-  if echo "$secrets" | grep -qxF CLAUDE_ROUTINE_TOKEN; then
-    ok "CLAUDE_ROUTINE_TOKEN secret is set"
+  if secrets=$(gh secret list --json name --jq '.[].name' 2>/dev/null); then
+    if echo "$secrets" | grep -qxF CLAUDE_ROUTINE_TOKEN; then
+      ok "CLAUDE_ROUTINE_TOKEN secret is set"
+    else
+      bad "CLAUDE_ROUTINE_TOKEN secret is not set; see README.md, 'Set two repo values'"
+    fi
   else
-    bad "CLAUDE_ROUTINE_TOKEN secret is not set; see README.md, 'Set two repo values'"
+    skip "CLAUDE_ROUTINE_TOKEN secret" "could not list secrets"
+  fi
+
+  # The routine reads the harness files from the default branch, not from
+  # whatever's checked out locally, so a two-call failure (branch name, then
+  # its tree) is a lookup problem, not evidence the files are missing.
+  if default_branch=$(gh api 'repos/{owner}/{repo}' --jq .default_branch 2>/dev/null) && [ -n "$default_branch" ] &&
+    default_branch_tree=$(gh api "repos/{owner}/{repo}/git/trees/$default_branch?recursive=true" --jq '.tree[].path' 2>/dev/null); then
+    for f in "${HARNESS_FILES[@]}"; do
+      if printf '%s\n' "$default_branch_tree" | grep -qxF "$f"; then
+        ok "$f exists on the default branch ($default_branch)"
+      else
+        bad "$f is missing on the default branch ($default_branch); merge the harness files to $default_branch"
+      fi
+    done
+  else
+    skip "harness files on the default branch" "could not look up the default branch"
   fi
 fi
 
