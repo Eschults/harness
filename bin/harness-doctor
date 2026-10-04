@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Verifies an adopter's harness install end to end: the local files step 1
 # wrote, the CLAUDE.md import, the GitHub-side label/variable/secret from
-# steps 2-4, and a gitignored .env if one exists. Never prints a secret
-# value, only whether one is set. Not part of HARNESS_FILES: fetch and run it
-# the way bin/harness-uninstall is fetched, not via bin/harness-install.
+# steps 2-4, that those files are merged to the default branch (where the
+# routine actually reads them from), and a gitignored .env if one exists.
+# Never prints a secret value, only whether one is set. Not part of
+# HARNESS_FILES: fetch and run it the way bin/harness-uninstall is fetched,
+# not via bin/harness-install.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -38,7 +40,7 @@ else
   bad "CLAUDE.md does not import @.claude/harness-rules.md; run bin/harness-install"
 fi
 
-gh_checks=("claude label" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret")
+gh_checks=("claude label" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret" "harness files on the default branch")
 if ! command -v gh >/dev/null 2>&1; then
   for c in "${gh_checks[@]}"; do skip "$c" "gh is not installed"; done
 elif ! gh auth status >/dev/null 2>&1; then
@@ -65,6 +67,22 @@ else
     ok "CLAUDE_ROUTINE_TOKEN secret is set"
   else
     bad "CLAUDE_ROUTINE_TOKEN secret is not set; see README.md, 'Set two repo values'"
+  fi
+
+  # The routine reads the harness files from the default branch, not from
+  # whatever's checked out locally, so a two-call failure (branch name, then
+  # its tree) is a lookup problem, not evidence the files are missing.
+  if default_branch=$(gh api 'repos/{owner}/{repo}' --jq .default_branch 2>/dev/null) && [ -n "$default_branch" ] &&
+    default_branch_tree=$(gh api "repos/{owner}/{repo}/git/trees/$default_branch?recursive=true" --jq '.tree[].path' 2>/dev/null); then
+    for f in "${HARNESS_FILES[@]}"; do
+      if printf '%s\n' "$default_branch_tree" | grep -qxF "$f"; then
+        ok "$f exists on the default branch ($default_branch)"
+      else
+        bad "$f is missing on the default branch ($default_branch); merge the harness files to $default_branch"
+      fi
+    done
+  else
+    skip "harness files on the default branch" "could not look up the default branch"
   fi
 fi
 

@@ -25,6 +25,14 @@ case "$1 $2" in
   "label list") printf '%s\n' "${STUB_GH_LABELS:-}" ;;
   "variable list") printf '%s\n' "${STUB_GH_VARIABLES:-}" ;;
   "secret list") printf '%s\n' "${STUB_GH_SECRETS:-}" ;;
+  "api repos/{owner}/{repo}")
+    [ "${STUB_GH_DEFAULT_BRANCH_EXIT:-0}" = 0 ] || exit "${STUB_GH_DEFAULT_BRANCH_EXIT}"
+    printf '%s\n' "${STUB_GH_DEFAULT_BRANCH-main}"
+    ;;
+  "api repos/{owner}/{repo}/git/trees/"*)
+    [ "${STUB_GH_TREE_EXIT:-0}" = 0 ] || exit "${STUB_GH_TREE_EXIT}"
+    printf '%s\n' "${STUB_GH_TREE-}"
+    ;;
   *) exit 1 ;;
 esac
 STUB
@@ -55,6 +63,9 @@ run_doctor() {
     STUB_GH_LABELS="${STUB_GH_LABELS-claude}" \
     STUB_GH_VARIABLES="${STUB_GH_VARIABLES-CLAUDE_ROUTINE_ID}" \
     STUB_GH_SECRETS="${STUB_GH_SECRETS-CLAUDE_ROUTINE_TOKEN}" \
+    STUB_GH_DEFAULT_BRANCH="${STUB_GH_DEFAULT_BRANCH-main}" \
+    STUB_GH_DEFAULT_BRANCH_EXIT="${STUB_GH_DEFAULT_BRANCH_EXIT:-0}" \
+    STUB_GH_TREE="${STUB_GH_TREE-$(printf '%s\n' "${HARNESS_FILES[@]}")}" \
     ./bin/harness-doctor
   )
 }
@@ -135,6 +146,27 @@ assert_contains "$output" '✗ CLAUDE_ROUTINE_TOKEN secret is not set' "missing 
 echo "✓ a missing CLAUDE_ROUTINE_TOKEN secret fails the check that names it"
 echo "$output" | grep -q 'sk-ant' && fail "expected no secret value to ever appear in doctor output"
 
+# --- harness file missing on the default branch ---
+repo="$scratch/missing-on-default-branch"
+build_healthy_repo "$repo"
+tree_without_rules=$(printf '%s\n' "${HARNESS_FILES[@]}" | grep -vxF '.claude/harness-rules.md')
+if output=$(STUB_GH_TREE="$tree_without_rules" run_doctor "$repo"); then
+  fail "expected bin/harness-doctor to fail when a harness file is only on a feature branch, not the default branch"
+fi
+assert_contains "$output" '✗ .claude/harness-rules.md is missing on the default branch (main); merge the harness files to main' "file missing on default branch"
+echo "✓ a harness file missing from the default branch fails the check that names it"
+
+# --- default branch lookup fails (no network, no remote) ---
+repo="$scratch/default-branch-lookup-fails"
+build_healthy_repo "$repo"
+if ! output=$(STUB_GH_DEFAULT_BRANCH_EXIT=1 run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor to exit 0 when the default branch lookup fails but every other check passes"
+fi
+assert_contains "$output" '- harness files on the default branch (skipped: could not look up the default branch)' "default branch lookup failure"
+echo "$output" | grep -q '✗' && fail "expected a failed default branch lookup to be a skip, never a false failure, got: $output"
+echo "✓ a failed default branch lookup is skipped rather than reported as missing"
+
 # --- gh missing entirely ---
 # A hardcoded PATH (e.g. "/usr/bin:/bin") can't stand in for "no gh": GitHub
 # Actions' runner image ships gh in /usr/bin, right alongside bash and grep,
@@ -155,6 +187,7 @@ if ! output=$(cd "$repo" && PATH="$no_gh_bin" ./bin/harness-doctor); then
   fail "expected bin/harness-doctor to exit 0 when gh is missing and every local check passes"
 fi
 assert_contains "$output" '- claude label (skipped: gh is not installed)' "gh missing"
+assert_contains "$output" '- harness files on the default branch (skipped: gh is not installed)' "gh missing"
 echo "✓ a missing gh reports the repo-side checks as skipped, not passed, without failing the run"
 
 # --- gh unauthenticated ---
@@ -165,6 +198,7 @@ if ! output=$(STUB_GH_AUTH_EXIT=1 run_doctor "$repo"); then
   fail "expected bin/harness-doctor to exit 0 when gh is unauthenticated and every local check passes"
 fi
 assert_contains "$output" '- CLAUDE_ROUTINE_ID variable (skipped: gh is not authenticated' "gh unauthenticated"
+assert_contains "$output" '- harness files on the default branch (skipped: gh is not authenticated' "gh unauthenticated"
 echo "✓ an unauthenticated gh reports the repo-side checks as skipped, not passed, without failing the run"
 
 # --- .env untracked and not gitignored ---
