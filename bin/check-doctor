@@ -22,9 +22,18 @@ cat > "$stub_bin/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$1 $2" in
   "auth status") exit "${STUB_GH_AUTH_EXIT:-0}" ;;
-  "label list") printf '%s\n' "${STUB_GH_LABELS:-}" ;;
-  "variable list") printf '%s\n' "${STUB_GH_VARIABLES:-}" ;;
-  "secret list") printf '%s\n' "${STUB_GH_SECRETS:-}" ;;
+  "label list")
+    [ "${STUB_GH_LABEL_LIST_EXIT:-0}" = 0 ] || exit "${STUB_GH_LABEL_LIST_EXIT}"
+    printf '%s\n' "${STUB_GH_LABELS:-}"
+    ;;
+  "variable list")
+    [ "${STUB_GH_VARIABLE_LIST_EXIT:-0}" = 0 ] || exit "${STUB_GH_VARIABLE_LIST_EXIT}"
+    printf '%s\n' "${STUB_GH_VARIABLES:-}"
+    ;;
+  "secret list")
+    [ "${STUB_GH_SECRET_LIST_EXIT:-0}" = 0 ] || exit "${STUB_GH_SECRET_LIST_EXIT}"
+    printf '%s\n' "${STUB_GH_SECRETS:-}"
+    ;;
   "api repos/{owner}/{repo}")
     [ "${STUB_GH_DEFAULT_BRANCH_EXIT:-0}" = 0 ] || exit "${STUB_GH_DEFAULT_BRANCH_EXIT}"
     printf '%s\n' "${STUB_GH_DEFAULT_BRANCH-main}"
@@ -61,8 +70,11 @@ run_doctor() {
     PATH="$stub_bin:$PATH" \
     STUB_GH_AUTH_EXIT="${STUB_GH_AUTH_EXIT:-0}" \
     STUB_GH_LABELS="${STUB_GH_LABELS-claude}" \
+    STUB_GH_LABEL_LIST_EXIT="${STUB_GH_LABEL_LIST_EXIT:-0}" \
     STUB_GH_VARIABLES="${STUB_GH_VARIABLES-CLAUDE_ROUTINE_ID}" \
+    STUB_GH_VARIABLE_LIST_EXIT="${STUB_GH_VARIABLE_LIST_EXIT:-0}" \
     STUB_GH_SECRETS="${STUB_GH_SECRETS-CLAUDE_ROUTINE_TOKEN}" \
+    STUB_GH_SECRET_LIST_EXIT="${STUB_GH_SECRET_LIST_EXIT:-0}" \
     STUB_GH_DEFAULT_BRANCH="${STUB_GH_DEFAULT_BRANCH-main}" \
     STUB_GH_DEFAULT_BRANCH_EXIT="${STUB_GH_DEFAULT_BRANCH_EXIT:-0}" \
     STUB_GH_TREE="${STUB_GH_TREE-$(printf '%s\n' "${HARNESS_FILES[@]}")}" \
@@ -166,6 +178,23 @@ fi
 assert_contains "$output" '- harness files on the default branch (skipped: could not look up the default branch)' "default branch lookup failure"
 echo "$output" | grep -q '✗' && fail "expected a failed default branch lookup to be a skip, never a false failure, got: $output"
 echo "✓ a failed default branch lookup is skipped rather than reported as missing"
+
+# --- gh label/variable/secret list fails for a reason other than missing/unauthenticated ---
+# e.g. a fine-grained PAT without the Labels/Variables/Secrets scope, or a
+# transient API error. That's a lookup problem, same as the default-branch
+# lookup failing above, and must not be reported as "missing"/"not set" when
+# it might well be set.
+repo="$scratch/list-fails"
+build_healthy_repo "$repo"
+if ! output=$(STUB_GH_LABEL_LIST_EXIT=1 STUB_GH_VARIABLE_LIST_EXIT=1 STUB_GH_SECRET_LIST_EXIT=1 run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor to exit 0 when gh label/variable/secret list fails but every other check passes"
+fi
+assert_contains "$output" '- claude label (skipped: could not list labels)' "label list failure"
+assert_contains "$output" '- CLAUDE_ROUTINE_ID variable (skipped: could not list variables)' "variable list failure"
+assert_contains "$output" '- CLAUDE_ROUTINE_TOKEN secret (skipped: could not list secrets)' "secret list failure"
+echo "$output" | grep -q '✗' && fail "expected a failed label/variable/secret list to be a skip, never a false failure, got: $output"
+echo "✓ a failed gh label/variable/secret list is skipped rather than reported as missing/not set"
 
 # --- gh missing entirely ---
 # A hardcoded PATH (e.g. "/usr/bin:/bin") can't stand in for "no gh": GitHub
