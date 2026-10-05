@@ -48,7 +48,7 @@ else
   bad "CLAUDE.md does not import @.claude/harness-rules.md; run bin/harness-install"
 fi
 
-gh_checks=("claude label" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret" "harness files on the default branch")
+gh_checks=("claude label" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret" "harness files on the default branch" "GitHub Actions enabled" "claude.yml workflow active")
 if ! command -v gh >/dev/null 2>&1; then
   for c in "${gh_checks[@]}"; do skip "$c" "gh is not installed"; done
 elif ! gh auth status >/dev/null 2>&1; then
@@ -106,6 +106,32 @@ else
     done
   else
     skip "harness files on the default branch" "could not look up the default branch"
+  fi
+
+  # A failed lookup (no admin permission to read the Actions settings, no
+  # network) is a lookup problem, not evidence Actions is disabled, so it
+  # must skip rather than report a false failure.
+  if actions_enabled=$(gh api 'repos/{owner}/{repo}/actions/permissions' --jq .enabled 2>/dev/null); then
+    if [ "$actions_enabled" = "true" ]; then
+      ok "GitHub Actions is enabled for this repo"
+    else
+      bad "GitHub Actions is disabled for this repo; enable it: Settings → Actions → General"
+    fi
+  else
+    skip "GitHub Actions enabled" "could not read the Actions permissions setting"
+  fi
+
+  # A failed lookup (the workflow not yet merged to the default branch, no
+  # network) is a lookup problem, not evidence the workflow is disabled, so
+  # it must skip rather than report a false failure.
+  if workflow_state=$(gh api 'repos/{owner}/{repo}/actions/workflows/claude.yml' --jq .state 2>/dev/null); then
+    if [ "$workflow_state" = "active" ]; then
+      ok "claude.yml workflow is active"
+    else
+      bad "claude.yml workflow is disabled; run: gh workflow enable claude.yml"
+    fi
+  else
+    skip "claude.yml workflow active" "could not look up the workflow"
   fi
 fi
 
