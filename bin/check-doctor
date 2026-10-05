@@ -42,6 +42,14 @@ case "$1 $2" in
     [ "${STUB_GH_TREE_EXIT:-0}" = 0 ] || exit "${STUB_GH_TREE_EXIT}"
     printf '%s\n' "${STUB_GH_TREE-}"
     ;;
+  "api repos/{owner}/{repo}/actions/permissions")
+    [ "${STUB_GH_ACTIONS_ENABLED_EXIT:-0}" = 0 ] || exit "${STUB_GH_ACTIONS_ENABLED_EXIT}"
+    printf '%s\n' "${STUB_GH_ACTIONS_ENABLED-true}"
+    ;;
+  "api repos/{owner}/{repo}/actions/workflows/claude.yml")
+    [ "${STUB_GH_WORKFLOW_STATE_EXIT:-0}" = 0 ] || exit "${STUB_GH_WORKFLOW_STATE_EXIT}"
+    printf '%s\n' "${STUB_GH_WORKFLOW_STATE-active}"
+    ;;
   *) exit 1 ;;
 esac
 STUB
@@ -78,6 +86,10 @@ run_doctor() {
     STUB_GH_DEFAULT_BRANCH="${STUB_GH_DEFAULT_BRANCH-main}" \
     STUB_GH_DEFAULT_BRANCH_EXIT="${STUB_GH_DEFAULT_BRANCH_EXIT:-0}" \
     STUB_GH_TREE="${STUB_GH_TREE-$(printf '%s\n' "${HARNESS_FILES[@]}")}" \
+    STUB_GH_ACTIONS_ENABLED="${STUB_GH_ACTIONS_ENABLED-true}" \
+    STUB_GH_ACTIONS_ENABLED_EXIT="${STUB_GH_ACTIONS_ENABLED_EXIT:-0}" \
+    STUB_GH_WORKFLOW_STATE="${STUB_GH_WORKFLOW_STATE-active}" \
+    STUB_GH_WORKFLOW_STATE_EXIT="${STUB_GH_WORKFLOW_STATE_EXIT:-0}" \
     ./bin/harness-doctor
   )
 }
@@ -97,6 +109,8 @@ fi
 echo "$output" | grep -q '✗' && fail "expected no failing checks against a healthy install, got: $output"
 assert_contains "$output" '✓ curl is on PATH' "healthy install"
 assert_contains "$output" '✓ jq is on PATH' "healthy install"
+assert_contains "$output" '✓ GitHub Actions is enabled for this repo' "healthy install"
+assert_contains "$output" '✓ claude.yml workflow is active' "healthy install"
 echo "✓ healthy install passes every check"
 
 # --- missing curl ---
@@ -230,6 +244,46 @@ assert_contains "$output" '- CLAUDE_ROUTINE_TOKEN secret (skipped: could not lis
 echo "$output" | grep -q '✗' && fail "expected a failed label/variable/secret list to be a skip, never a false failure, got: $output"
 echo "✓ a failed gh label/variable/secret list is skipped rather than reported as missing/not set"
 
+# --- GitHub Actions disabled ---
+repo="$scratch/actions-disabled"
+build_healthy_repo "$repo"
+if output=$(STUB_GH_ACTIONS_ENABLED="false" run_doctor "$repo"); then
+  fail "expected bin/harness-doctor to fail when GitHub Actions is disabled for the repo"
+fi
+assert_contains "$output" '✗ GitHub Actions is disabled for this repo; enable it: Settings → Actions → General' "Actions disabled"
+echo "✓ GitHub Actions disabled for the repo fails the check that names it"
+
+# --- GitHub Actions permissions lookup fails ---
+repo="$scratch/actions-lookup-fails"
+build_healthy_repo "$repo"
+if ! output=$(STUB_GH_ACTIONS_ENABLED_EXIT=1 run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor to exit 0 when the Actions permissions lookup fails but every other check passes"
+fi
+assert_contains "$output" '- GitHub Actions enabled (skipped: could not read the Actions permissions setting)' "Actions lookup failure"
+echo "$output" | grep -q '✗' && fail "expected a failed Actions permissions lookup to be a skip, never a false failure, got: $output"
+echo "✓ a failed GitHub Actions permissions lookup is skipped rather than reported as disabled"
+
+# --- claude.yml workflow disabled ---
+repo="$scratch/workflow-disabled"
+build_healthy_repo "$repo"
+if output=$(STUB_GH_WORKFLOW_STATE="disabled_manually" run_doctor "$repo"); then
+  fail "expected bin/harness-doctor to fail when the claude.yml workflow is disabled"
+fi
+assert_contains "$output" '✗ claude.yml workflow is disabled; run: gh workflow enable claude.yml' "workflow disabled"
+echo "✓ a disabled claude.yml workflow fails the check that names it"
+
+# --- claude.yml workflow lookup fails (e.g. not yet on the default branch) ---
+repo="$scratch/workflow-lookup-fails"
+build_healthy_repo "$repo"
+if ! output=$(STUB_GH_WORKFLOW_STATE_EXIT=1 run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor to exit 0 when the claude.yml workflow lookup fails but every other check passes"
+fi
+assert_contains "$output" '- claude.yml workflow active (skipped: could not look up the workflow)' "workflow lookup failure"
+echo "$output" | grep -q '✗' && fail "expected a failed claude.yml workflow lookup to be a skip, never a false failure, got: $output"
+echo "✓ a failed claude.yml workflow lookup is skipped rather than reported as disabled"
+
 # --- gh missing entirely ---
 # A hardcoded PATH (e.g. "/usr/bin:/bin") can't stand in for "no gh": GitHub
 # Actions' runner image ships gh in /usr/bin, right alongside bash and grep,
@@ -251,6 +305,8 @@ if ! output=$(cd "$repo" && PATH="$no_gh_bin" ./bin/harness-doctor); then
 fi
 assert_contains "$output" '- claude label (skipped: gh is not installed)' "gh missing"
 assert_contains "$output" '- harness files on the default branch (skipped: gh is not installed)' "gh missing"
+assert_contains "$output" '- GitHub Actions enabled (skipped: gh is not installed)' "gh missing"
+assert_contains "$output" '- claude.yml workflow active (skipped: gh is not installed)' "gh missing"
 echo "✓ a missing gh reports the repo-side checks as skipped, not passed, without failing the run"
 
 # --- gh unauthenticated ---
@@ -262,6 +318,8 @@ if ! output=$(STUB_GH_AUTH_EXIT=1 run_doctor "$repo"); then
 fi
 assert_contains "$output" '- CLAUDE_ROUTINE_ID variable (skipped: gh is not authenticated' "gh unauthenticated"
 assert_contains "$output" '- harness files on the default branch (skipped: gh is not authenticated' "gh unauthenticated"
+assert_contains "$output" '- GitHub Actions enabled (skipped: gh is not authenticated' "gh unauthenticated"
+assert_contains "$output" '- claude.yml workflow active (skipped: gh is not authenticated' "gh unauthenticated"
 echo "✓ an unauthenticated gh reports the repo-side checks as skipped, not passed, without failing the run"
 
 # --- .env untracked and not gitignored ---
