@@ -100,7 +100,21 @@ run_release_pty() {
   release_output=$(
     {
       cd "$repo_dir" || exit 1
-      PATH="$stub_bin:$PATH" GH_CALLS_FILE="$gh_calls_file" script -qec "./bin/release" /dev/null <<<"$stdin_input"
+      if script -qec true /dev/null </dev/null >/dev/null 2>&1; then
+        PATH="$stub_bin:$PATH" GH_CALLS_FILE="$gh_calls_file" script -qec "./bin/release" /dev/null <<<"$stdin_input"
+      else
+        # BSD script (macOS) has no -c/-e and hangs up the child on stdin EOF, so hold its stdin pipe open until it exits.
+        local stdin_fifo="$scratch/release-stdin"
+        rm -f "$stdin_fifo" && mkfifo "$stdin_fifo"
+        PATH="$stub_bin:$PATH" GH_CALLS_FILE="$gh_calls_file" script -q /dev/null ./bin/release < <(cat "$stdin_fifo") &
+        local script_pid=$!
+        exec 3>"$stdin_fifo"
+        printf '%s\n' "$stdin_input" >&3
+        wait "$script_pid"
+        local script_exit=$?
+        exec 3>&-
+        return "$script_exit"
+      fi
     } 2>&1
   ) || release_exit=$?
   release_calls=$(wc -l < "$gh_calls_file")
