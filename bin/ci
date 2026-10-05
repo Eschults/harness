@@ -71,4 +71,18 @@ else
   rules_failed=1
 fi
 
-[ "$round_trip_failed" -eq 0 ] && [ "$upgrade_round_trip_failed" -eq 0 ] && [ "$claude_workflow_failed" -eq 0 ] && [ "$release_failed" -eq 0 ] && [ "$doctor_failed" -eq 0 ] && [ "$rules_failed" -eq 0 ]
+failed_suites=()
+[ "$round_trip_failed" -eq 0 ] || failed_suites+=("install/uninstall round trip")
+[ "$upgrade_round_trip_failed" -eq 0 ] || failed_suites+=("harness-upgrade round trip")
+[ "$claude_workflow_failed" -eq 0 ] || failed_suites+=("claude.yml fire step check")
+[ "$release_failed" -eq 0 ] || failed_suites+=("release round trip")
+[ "$doctor_failed" -eq 0 ] || failed_suites+=("harness-doctor check")
+[ "$rules_failed" -eq 0 ] || failed_suites+=("rules check")
+
+echo
+if [ "${#failed_suites[@]}" -gt 0 ]; then
+  failed_list=$(printf '%s, ' "${failed_suites[@]}")
+  echo "bin/ci FAILED (scroll up for ✗): ${failed_list%, }" >&2
+  exit 1
+fi
+echo "bin/ci: all suites passed"
