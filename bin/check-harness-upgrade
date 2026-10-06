@@ -34,9 +34,7 @@ build_fixture "$old_src" "v0.0.1"
 build_fixture "$new_src" "v9.9.9"
 printf '\n<!-- check-harness-upgrade fixture marker: v9.9.9 -->\n' >> "$new_src/.claude/harness-rules.md"
 
-# A file the new release's HARNESS_FILES adds that the old release's list
-# never named, so fetch_harness_files must come from the refreshed list, not
-# the one loaded before bin/lib/fetch-files.sh was pulled from the new tag.
+# A file only the newer release's HARNESS_FILES names, to catch a stale list.
 extra_file=".claude/new-fixture-file.txt"
 mkdir -p "$new_src/$(dirname "$extra_file")"
 echo "added in v9.9.9" > "$new_src/$extra_file"
