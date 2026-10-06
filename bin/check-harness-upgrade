@@ -34,6 +34,17 @@ build_fixture "$old_src" "v0.0.1"
 build_fixture "$new_src" "v9.9.9"
 printf '\n<!-- check-harness-upgrade fixture marker: v9.9.9 -->\n' >> "$new_src/.claude/harness-rules.md"
 
+# A file the new release's HARNESS_FILES adds that the old release's list
+# never named, so fetch_harness_files must come from the refreshed list, not
+# the one loaded before bin/lib/fetch-files.sh was pulled from the new tag.
+extra_file=".claude/new-fixture-file.txt"
+mkdir -p "$new_src/$(dirname "$extra_file")"
+echo "added in v9.9.9" > "$new_src/$extra_file"
+awk -v extra="$extra_file" '
+  index($0, "\".claude/HARNESS_VERSION\"") { print "  \"" extra "\"" }
+  { print }
+' bin/lib/fetch-files.sh > "$new_src/bin/lib/fetch-files.sh"
+
 printf '[{"name":"v0.0.1"},{"name":"v9.9.9"}]' > "$tags_json"
 
 bad_tags_json="$scratch/bad-tags.json"
@@ -77,11 +88,12 @@ echo "$output" | grep -q "Upgrading v0.0.1 -> v9.9.9" || fail "expected upgrade 
 [ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v9.9.9" ] || fail "expected .claude/HARNESS_VERSION to read v9.9.9 after upgrading, got $(cat "$repo/.claude/HARNESS_VERSION" 2>/dev/null)"
 echo "✓ upgrade bumped .claude/HARNESS_VERSION to the new tag"
 
-for f in "${HARNESS_FILES[@]}" bin/harness-upgrade bin/lib/fetch-files.sh; do
+for f in "${HARNESS_FILES[@]}" "$extra_file" bin/harness-upgrade bin/lib/fetch-files.sh; do
   cmp -s "$repo/$f" "$new_src/$f" || fail "expected $f to match the fake newer release's content after upgrading"
 done
 grep -q "check-harness-upgrade fixture marker" "$repo/.claude/harness-rules.md" || fail "expected the newer fixture's marker to show up after upgrading"
 echo "✓ upgrade pulled every harness file's newer content"
+echo "✓ upgrade fetched $extra_file, which only the newer release's HARNESS_FILES named"
 
 [ -x "$repo/bin/harness-upgrade" ] || fail "expected bin/harness-upgrade to remain executable after upgrading itself"
 bash -n "$repo/bin/harness-upgrade" || fail "expected bin/harness-upgrade to still be valid bash after its temp-file-then-move self-replace"

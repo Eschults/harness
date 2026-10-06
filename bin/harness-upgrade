@@ -46,8 +46,10 @@ if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
   exit 0
 fi
 
-fetch_harness_files
 curl -fsSL "$src/bin/lib/fetch-files.sh" -o bin/lib/fetch-files.sh
+# shellcheck source=bin/lib/fetch-files.sh
+source bin/lib/fetch-files.sh
+fetch_harness_files
 
 # Downloaded to a temp file and moved into place, never written to directly:
 # this script is still running from bin/harness-upgrade, and overwriting that
