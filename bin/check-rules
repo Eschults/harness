@@ -10,12 +10,18 @@ major release tag, catching a stale reference left behind after bin/release
 cuts a new major. Another set of checks extracts every relative link (and
 the "Install is N files" count) out of README.md and verifies them against
 the working tree, catching link rot and a stale file count left behind by a
-rename or a file added to HARNESS_FILES. No network calls: absolute
+rename or a file added to HARNESS_FILES. A further check scans bin/ and
+bin/lib/ for every bash/sh script (by shebang or .sh extension) and fails,
+naming it, if it is missing from the shellcheck list in bin/ci, catching a
+new bin/ script nobody remembered to add to that list; a self-test proves
+that check actually detects a missing script, in a scratch tree, before
+trusting its result against the real repo. No network calls: absolute
 http(s) links are left alone.
 """
 import pathlib
 import re
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HARNESS_RULES = (ROOT / ".claude" / "harness-rules.md").read_text()
@@ -27,6 +33,7 @@ BIN_INSTALL = (ROOT / "bin" / "harness-install").read_text()
 BIN_UPGRADE = (ROOT / "bin" / "harness-upgrade").read_text()
 SETTINGS_JSON = (ROOT / ".claude" / "settings.json").read_text()
 FETCH_FILES = (ROOT / "bin" / "lib" / "fetch-files.sh").read_text()
+CI = (ROOT / "bin" / "ci").read_text()
 
 
 def _pinned_major(text: str) -> str | None:
@@ -119,6 +126,102 @@ def _readme_install_file_count_check() -> tuple[str, bool, str]:
         f"bin/harness-install, bin/harness-upgrade, and bin/lib/fetch-files.sh total {expected_count} file(s)",
     )
 
+def _shellcheck_list(ci_text: str) -> list[str]:
+    """The file list in bin/ci's `for f in ...; do` shellcheck loop."""
+    match = re.search(r"for f in (.*?); do", ci_text, re.DOTALL)
+    return match.group(1).split() if match else []
+
+
+def _shebang_interpreter(first_line: str) -> str | None:
+    if not first_line.startswith("#!"):
+        return None
+    parts = first_line[2:].split()
+    if not parts:
+        return None
+    exe = pathlib.PurePosixPath(parts[0]).name
+    if exe == "env" and len(parts) > 1:
+        exe = parts[1]
+    return exe
+
+
+def _is_shell_script(path: pathlib.Path) -> bool:
+    if path.suffix == ".sh":
+        return True
+    try:
+        with path.open(encoding="utf-8", errors="ignore") as fh:
+            first_line = fh.readline()
+    except OSError:
+        return False
+    return _shebang_interpreter(first_line) in ("bash", "sh")
+
+
+def _bin_shell_scripts(root: pathlib.Path) -> list[str]:
+    """Every bash/sh script under bin/ and bin/lib/, by shebang or .sh extension."""
+    scripts = []
+    for base in ("bin", "bin/lib"):
+        directory = root / base
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.iterdir()):
+            if path.is_file() and _is_shell_script(path):
+                scripts.append(f"{base}/{path.name}")
+    return scripts
+
+
+def _missing_from_shellcheck_list(root: pathlib.Path, ci_text: str) -> list[str]:
+    listed = set(_shellcheck_list(ci_text))
+    return [s for s in _bin_shell_scripts(root) if s not in listed]
+
+
+def _shellcheck_coverage_checks() -> list[tuple[str, bool, str]]:
+    missing = _missing_from_shellcheck_list(ROOT, CI)
+    if not missing:
+        return [("shellcheck-coverage", True, "")]
+    return [
+        (
+            f"shellcheck-coverage:{script}",
+            False,
+            f"{script} looks like a shell script (shebang or .sh extension) but is missing from the "
+            "shellcheck list in bin/ci",
+        )
+        for script in missing
+    ]
+
+
+def _shellcheck_coverage_self_test() -> tuple[str, bool, str]:
+    """Proves _missing_from_shellcheck_list() actually detects an uncovered script,
+    rather than vacuously passing, by adding then removing one in a scratch tree."""
+    name = "shellcheck-coverage-self-test"
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / "bin" / "lib").mkdir(parents=True)
+        (root / "bin" / "covered").write_text("#!/usr/bin/env bash\necho covered\n")
+        ci_text = "for f in bin/covered; do\n"
+
+        if _missing_from_shellcheck_list(root, ci_text):
+            return (name, False, "detection flagged bin/covered, which is on the shellcheck list")
+
+        # Two strays: one caught only by its .sh extension, one only by its shebang
+        # (like every real top-level bin/ script), so a regression in either
+        # detection path makes this test fail.
+        stray_sh = root / "bin" / "stray-check.sh"
+        stray_sh.write_text("#!/usr/bin/env bash\necho stray\n")
+        stray_shebang = root / "bin" / "stray-check"
+        stray_shebang.write_text("#!/usr/bin/env bash\necho stray\n")
+        missing = _missing_from_shellcheck_list(root, ci_text)
+        expected = ["bin/stray-check", "bin/stray-check.sh"]
+        if missing != expected:
+            return (name, False, f"expected detection to fail, naming {expected}; got {missing}")
+
+        stray_sh.unlink()
+        stray_shebang.unlink()
+        missing = _missing_from_shellcheck_list(root, ci_text)
+        if missing:
+            return (name, False, f"expected no missing scripts after removing the stray ones; got {missing}")
+
+        return (name, True, "")
+
+
 CHECKS = [
     (
         "stop-on-auth-pii",
@@ -196,6 +299,8 @@ CHECKS = [
 ]
 CHECKS.extend(_readme_link_checks())
 CHECKS.append(_readme_install_file_count_check())
+CHECKS.append(_shellcheck_coverage_self_test())
+CHECKS.extend(_shellcheck_coverage_checks())
 
 
 def main() -> int:
