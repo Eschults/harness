@@ -128,7 +128,7 @@ def _readme_install_file_count_check() -> tuple[str, bool, str]:
 
 def _shellcheck_list(ci_text: str) -> list[str]:
     """The file list in bin/ci's `for f in ...; do` shellcheck loop."""
-    match = re.search(r"for f in (.*?); do", ci_text)
+    match = re.search(r"for f in (.*?); do", ci_text, re.DOTALL)
     return match.group(1).split() if match else []
 
 
@@ -201,16 +201,23 @@ def _shellcheck_coverage_self_test() -> tuple[str, bool, str]:
         if _missing_from_shellcheck_list(root, ci_text):
             return (name, False, "detection flagged bin/covered, which is on the shellcheck list")
 
-        stray = root / "bin" / "stray-check.sh"
-        stray.write_text("#!/usr/bin/env bash\necho stray\n")
+        # Two strays: one caught only by its .sh extension, one only by its shebang
+        # (like every real top-level bin/ script), so a regression in either
+        # detection path makes this test fail.
+        stray_sh = root / "bin" / "stray-check.sh"
+        stray_sh.write_text("#!/usr/bin/env bash\necho stray\n")
+        stray_shebang = root / "bin" / "stray-check"
+        stray_shebang.write_text("#!/usr/bin/env bash\necho stray\n")
         missing = _missing_from_shellcheck_list(root, ci_text)
-        if missing != ["bin/stray-check.sh"]:
-            return (name, False, f"expected detection to fail, naming bin/stray-check.sh; got {missing}")
+        expected = ["bin/stray-check", "bin/stray-check.sh"]
+        if missing != expected:
+            return (name, False, f"expected detection to fail, naming {expected}; got {missing}")
 
-        stray.unlink()
+        stray_sh.unlink()
+        stray_shebang.unlink()
         missing = _missing_from_shellcheck_list(root, ci_text)
         if missing:
-            return (name, False, f"expected no missing scripts after removing the stray one; got {missing}")
+            return (name, False, f"expected no missing scripts after removing the stray ones; got {missing}")
 
         return (name, True, "")
 
