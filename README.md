@@ -23,7 +23,7 @@ Put your project's own rules in `CLAUDE.md`, not `harness-rules.md`, so an upgra
 
 ## Setup
 
-Install is eight files, two routines, one label, and two repo values.
+Install is nine files, two routines, one label, and two repo values.
 
 Prerequisites: `bash`, `git`, `gh`, `curl`, and `jq` on `PATH`. `bin/harness-doctor` (step 4) checks for `curl` and `jq` explicitly, and `bin/harness-upgrade` refuses to run without them.
 
@@ -107,7 +107,7 @@ gh label create claude --color D97757 --description "starts a Claude Code run" -
 
 `--force` makes this safe to re-run: it creates the label if missing and updates its color/description in place if it already exists, so re-running the install doesn't fail on a label you already have.
 
-Setup spans eight places this curl alone doesn't cover: the harness files, the `CLAUDE.md` import, the `claude` label, the `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` repo values, that the harness files are merged to the default branch, since the routine only ever reads them from there, and that GitHub Actions and the `claude.yml` workflow are both enabled, since either one disabled stops a labeled issue from starting a run silently. [`bin/harness-doctor`](bin/harness-doctor) checks all eight in one command and never prints a secret value, only whether one is set. It isn't one of the files step 1 fetches, so pull it in the same way as `bin/harness-uninstall`, then run it:
+Setup spans nine places this curl alone doesn't cover: the harness files, the `CLAUDE.md` import, the `claude` label, the `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` repo values, that the harness files are merged to the default branch, since the routine only ever reads them from there, that GitHub Actions and the `claude.yml` workflow are both enabled, since either one disabled stops a labeled issue from starting a run silently, and that the pinned `.claude/HARNESS_VERSION` still matches the latest release. [`bin/harness-doctor`](bin/harness-doctor) checks all nine in one command and never prints a secret value, only whether one is set. It isn't one of the files step 1 fetches, so pull it in the same way as `bin/harness-uninstall`, then run it:
 
 ```bash
 src=https://raw.githubusercontent.com/Eschults/harness/v1

@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-files=(bin/harness-install bin/harness-upgrade bin/lib/fetch-files.sh)
+files=(bin/harness-install bin/harness-upgrade bin/lib/fetch-files.sh bin/lib/version-check.sh)
 if [ -f bin/lib/fetch-files.sh ]; then
   # shellcheck source=bin/lib/fetch-files.sh
   source bin/lib/fetch-files.sh

@@ -22,6 +22,7 @@ build_fixture() {
   mkdir -p "$dir/bin/lib"
   cp bin/harness-upgrade "$dir/bin/harness-upgrade"
   cp bin/lib/fetch-files.sh "$dir/bin/lib/fetch-files.sh"
+  cp bin/lib/version-check.sh "$dir/bin/lib/version-check.sh"
   chmod +x "$dir/bin/harness-upgrade"
   for f in "${HARNESS_FILES[@]}"; do
     mkdir -p "$dir/$(dirname "$f")"
@@ -86,7 +87,7 @@ echo "$output" | grep -q "Upgrading v0.0.1 -> v9.9.9" || fail "expected upgrade 
 [ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v9.9.9" ] || fail "expected .claude/HARNESS_VERSION to read v9.9.9 after upgrading, got $(cat "$repo/.claude/HARNESS_VERSION" 2>/dev/null)"
 echo "✓ upgrade bumped .claude/HARNESS_VERSION to the new tag"
 
-for f in "${HARNESS_FILES[@]}" "$extra_file" bin/harness-upgrade bin/lib/fetch-files.sh; do
+for f in "${HARNESS_FILES[@]}" "$extra_file" bin/harness-upgrade bin/lib/fetch-files.sh bin/lib/version-check.sh; do
   cmp -s "$repo/$f" "$new_src/$f" || fail "expected $f to match the fake newer release's content after upgrading"
 done
 grep -q "check-harness-upgrade fixture marker" "$repo/.claude/harness-rules.md" || fail "expected the newer fixture's marker to show up after upgrading"
