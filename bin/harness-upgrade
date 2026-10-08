@@ -20,9 +20,16 @@ if [ -z "$current" ]; then
   exit 1
 fi
 
-curl -fsSL "$src/bin/lib/version-check.sh" -o bin/lib/version-check.sh
+# Fetched to a temp path and only moved into place once the user confirms
+# the upgrade below: the script must download this to know whether there's
+# anything to confirm, but checking for an upgrade must stay a true no-op
+# (per the top-of-file comment) when there's nothing to pull in or the user
+# declines, so nothing in the working tree changes before that point.
+version_check_new=bin/lib/version-check.sh.new
+trap 'rm -f "$version_check_new"' EXIT
+curl -fsSL "$src/bin/lib/version-check.sh" -o "$version_check_new"
 # shellcheck source=bin/lib/version-check.sh
-source bin/lib/version-check.sh
+source "$version_check_new"
 
 latest=$(latest_harness_version)
 
@@ -50,6 +57,7 @@ curl -fsSL "$src/bin/lib/fetch-files.sh" -o bin/lib/fetch-files.sh
 # shellcheck source=bin/lib/fetch-files.sh
 source bin/lib/fetch-files.sh
 fetch_harness_files
+mv "$version_check_new" bin/lib/version-check.sh
 
 # Downloaded to a temp file and moved into place, never written to directly:
 # this script is still running from bin/harness-upgrade, and overwriting that
