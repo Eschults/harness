@@ -114,6 +114,8 @@ src=https://raw.githubusercontent.com/Eschults/harness/v1
 mkdir -p bin && curl -fsSL "$src/bin/harness-doctor" -o bin/harness-doctor && chmod +x bin/harness-doctor && ./bin/harness-doctor
 ```
 
+Add `--fire` to also confirm `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` work end to end, the same check as the manual `curl` in step 3: `./bin/harness-doctor --fire`. It's opt-in because a passing run starts a real session, which counts against your daily routine cap.
+
 #### 5. (Opt) Create the "Next to build" routine
 
 So far only a human opens the gate. A second routine closes that loop: it wakes on a schedule, reads the repo, works out the capability it should gain next, and files that as one issue with the `claude` label, which fires the "Issue to PR" workflow and starts an implementation run with nobody in the loop until review.
