@@ -422,5 +422,29 @@ assert_contains "$output" '✗ routine fire failed with HTTP 401 (bad token)' "f
 echo "$output" | grep -qF 'sk-ant-oat01-bad-token-secret' && fail "expected the token to never appear in doctor output, got: $output"
 echo "✓ --fire on a 401 response fails and names a bad token, without printing it"
 
+# --- --fire: jq missing ---
+# Without this skip, a missing jq makes the --fire check misreport a real 2xx
+# response (with a session URL in the body) as "no session URL in the
+# response": jq is what's missing, not the field.
+no_jq_fire_bin="$scratch/no_jq_fire_bin"
+mkdir -p "$no_jq_fire_bin"
+for cmd in bash dirname grep mktemp rm; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_jq_fire_bin/$cmd"
+done
+cp "$stub_bin/curl" "$no_jq_fire_bin/curl"
+chmod +x "$no_jq_fire_bin/curl"
+
+repo="$scratch/fire-missing-jq"
+build_healthy_repo "$repo"
+if output=$(cd "$repo" && PATH="$no_jq_fire_bin" CLAUDE_ROUTINE_ID=trig_test CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test \
+  STUB_CURL_STATUS=200 STUB_CURL_BODY='{"claude_code_session_url":"https://claude.ai/code/cse_test"}' \
+  ./bin/harness-doctor --fire); then
+  fail "expected bin/harness-doctor to fail overall when jq is missing (the earlier jq check fails it)"
+fi
+assert_contains "$output" '- routine fire (skipped: jq is not installed)' "fire missing jq"
+echo "$output" | grep -qF 'no session URL in the response' && fail "expected a missing jq to be its own skip, not a misreported 'no session URL' failure, got: $output"
+echo "✓ --fire with jq missing is skipped and named, not misreported as a bad API response"
+
 echo
 echo "harness-doctor check: all passed"

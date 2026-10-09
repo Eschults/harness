@@ -143,6 +143,8 @@ fi
 if [ "$fire" -eq 1 ]; then
   if [ -z "${CLAUDE_ROUTINE_ID:-}" ] || [ -z "${CLAUDE_ROUTINE_TOKEN:-}" ]; then
     skip "routine fire" "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set; source .env first"
+  elif ! command -v jq >/dev/null 2>&1; then
+    skip "routine fire" "jq is not installed"
   else
     response=$(mktemp)
 
