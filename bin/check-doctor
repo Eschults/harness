@@ -61,9 +61,13 @@ esac
 STUB
 chmod +x "$stub_bin/gh"
 
-# Stub curl: only exercised by the --fire network check (a plain doctor run
-# never gets past `command -v curl`). Mimics `curl -o <file> -w
-# '%{http_code}'` from env-supplied status/body/exit, no network involved.
+# Stub curl: mimics `curl -o <file> -w '%{http_code}'` from env-supplied
+# status/body/exit, no network involved, but only for the --fire network
+# check's call shape (it always passes -o). A plain doctor run's version
+# check calls curl without -o (plain `-fsSL <url>`, e.g. a local file://
+# fixture), so the stub falls through to the real curl for that shape
+# instead of misreading its own fake exit status as fetched content.
+real_curl=$(command -v curl)
 cat > "$stub_bin/curl" <<'STUB'
 #!/usr/bin/env bash
 out=""
@@ -71,7 +75,10 @@ args=("$@")
 for ((i = 0; i < ${#args[@]}; i++)); do
   [ "${args[i]}" = "-o" ] && out="${args[i + 1]}"
 done
-[ -n "$out" ] && printf '%s' "${STUB_CURL_BODY:-}" > "$out"
+if [ -z "$out" ]; then
+  exec "$REAL_CURL" "$@"
+fi
+printf '%s' "${STUB_CURL_BODY:-}" > "$out"
 [ "${STUB_CURL_EXIT:-0}" = 0 ] || exit "${STUB_CURL_EXIT}"
 printf '%s' "${STUB_CURL_STATUS:-200}"
 STUB
@@ -117,6 +124,7 @@ run_doctor() {
     STUB_CURL_STATUS="${STUB_CURL_STATUS:-200}" \
     STUB_CURL_BODY="${STUB_CURL_BODY:-}" \
     STUB_CURL_EXIT="${STUB_CURL_EXIT:-0}" \
+    REAL_CURL="$real_curl" \
     CLAUDE_ROUTINE_ID="${CLAUDE_ROUTINE_ID-}" \
     CLAUDE_ROUTINE_TOKEN="${CLAUDE_ROUTINE_TOKEN-}" \
     ./bin/harness-doctor "$@"
