@@ -55,6 +55,22 @@ esac
 STUB
 chmod +x "$stub_bin/gh"
 
+# Stub curl: only exercised by the --fire network check (a plain doctor run
+# never gets past `command -v curl`). Mimics `curl -o <file> -w
+# '%{http_code}'` from env-supplied status/body/exit, no network involved.
+cat > "$stub_bin/curl" <<'STUB'
+#!/usr/bin/env bash
+out=""
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  [ "${args[i]}" = "-o" ] && out="${args[i + 1]}"
+done
+[ -n "$out" ] && printf '%s' "${STUB_CURL_BODY:-}" > "$out"
+[ "${STUB_CURL_EXIT:-0}" = 0 ] || exit "${STUB_CURL_EXIT}"
+printf '%s' "${STUB_CURL_STATUS:-200}"
+STUB
+chmod +x "$stub_bin/curl"
+
 # Builds a scratch repo with every HARNESS_FILES entry, the CLAUDE.md import,
 # and bin/harness-doctor itself, all copied from this checkout's real content.
 build_healthy_repo() {
@@ -73,6 +89,7 @@ build_healthy_repo() {
 
 run_doctor() {
   local dir=$1
+  shift
   (
     cd "$dir"
     PATH="$stub_bin:$PATH" \
@@ -90,7 +107,12 @@ run_doctor() {
     STUB_GH_ACTIONS_ENABLED_EXIT="${STUB_GH_ACTIONS_ENABLED_EXIT:-0}" \
     STUB_GH_WORKFLOW_STATE="${STUB_GH_WORKFLOW_STATE-active}" \
     STUB_GH_WORKFLOW_STATE_EXIT="${STUB_GH_WORKFLOW_STATE_EXIT:-0}" \
-    ./bin/harness-doctor
+    STUB_CURL_STATUS="${STUB_CURL_STATUS:-200}" \
+    STUB_CURL_BODY="${STUB_CURL_BODY:-}" \
+    STUB_CURL_EXIT="${STUB_CURL_EXIT:-0}" \
+    CLAUDE_ROUTINE_ID="${CLAUDE_ROUTINE_ID-}" \
+    CLAUDE_ROUTINE_TOKEN="${CLAUDE_ROUTINE_TOKEN-}" \
+    ./bin/harness-doctor "$@"
   )
 }
 
@@ -355,6 +377,50 @@ if ! output=$(run_doctor "$repo"); then
 fi
 assert_contains "$output" '✓ .env is gitignored' "gitignored .env"
 echo "✓ a gitignored .env passes the check"
+
+# --- --fire: no flag makes no network call ---
+repo="$scratch/fire-no-flag"
+build_healthy_repo "$repo"
+if ! output=$(CLAUDE_ROUTINE_ID=trig_test CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor to exit 0 without --fire"
+fi
+echo "$output" | grep -q 'routine fire' && fail "expected no routine fire check without --fire, got: $output"
+echo "✓ without --fire, no routine fire check runs and no network call is made"
+
+# --- --fire: CLAUDE_ROUTINE_ID/TOKEN missing from the environment ---
+repo="$scratch/fire-missing-vars"
+build_healthy_repo "$repo"
+if ! output=$(run_doctor "$repo" --fire); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor --fire to exit 0 when CLAUDE_ROUTINE_ID/TOKEN are unset"
+fi
+assert_contains "$output" '- routine fire (skipped: CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set; source .env first)' "fire missing vars"
+echo "✓ --fire with no CLAUDE_ROUTINE_ID/TOKEN in the environment is skipped, not a failure"
+
+# --- --fire: success ---
+repo="$scratch/fire-success"
+build_healthy_repo "$repo"
+if ! output=$(CLAUDE_ROUTINE_ID=trig_test CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test \
+  STUB_CURL_STATUS=200 STUB_CURL_BODY='{"claude_code_session_url":"https://claude.ai/code/cse_test"}' \
+  run_doctor "$repo" --fire); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor --fire to exit 0 on a 2xx response with a session URL"
+fi
+assert_contains "$output" '✓ routine fire succeeded: https://claude.ai/code/cse_test' "fire success"
+echo "✓ --fire reports a pass and the session URL on a 2xx response"
+
+# --- --fire: auth failure ---
+repo="$scratch/fire-auth-failure"
+build_healthy_repo "$repo"
+if output=$(CLAUDE_ROUTINE_ID=trig_test CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-bad-token-secret \
+  STUB_CURL_STATUS=401 STUB_CURL_BODY='{"error":{"message":"invalid x-api-key"}}' \
+  run_doctor "$repo" --fire); then
+  fail "expected bin/harness-doctor --fire to fail on a 401 response"
+fi
+assert_contains "$output" '✗ routine fire failed with HTTP 401 (bad token)' "fire auth failure"
+echo "$output" | grep -qF 'sk-ant-oat01-bad-token-secret' && fail "expected the token to never appear in doctor output, got: $output"
+echo "✓ --fire on a 401 response fails and names a bad token, without printing it"
 
 echo
 echo "harness-doctor check: all passed"

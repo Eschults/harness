@@ -9,6 +9,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+fire=0
+for arg in "$@"; do
+  [ "$arg" = "--fire" ] && fire=1
+done
+
 failed=0
 
 ok() { echo "✓ $1"; }
@@ -132,6 +137,49 @@ else
     fi
   else
     skip "claude.yml workflow active" "could not look up the workflow"
+  fi
+fi
+
+if [ "$fire" -eq 1 ]; then
+  if [ -z "${CLAUDE_ROUTINE_ID:-}" ] || [ -z "${CLAUDE_ROUTINE_TOKEN:-}" ]; then
+    skip "routine fire" "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set; source .env first"
+  else
+    response=$(mktemp)
+
+    # Disables xtrace for the call itself, then restores it, so a caller
+    # running this script under `bash -x` never gets the token echoed as
+    # part of the expanded curl command line.
+    case $- in *x*) xtrace_was_on=1 ;; *) xtrace_was_on=0 ;; esac
+    set +x
+    if ! status=$(curl -sS -o "$response" -w '%{http_code}' --max-time 60 \
+      -X POST "https://api.anthropic.com/v1/claude_code/routines/${CLAUDE_ROUTINE_ID}/fire" \
+      -H "Authorization: Bearer ${CLAUDE_ROUTINE_TOKEN}" \
+      -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+      -H "anthropic-version: 2023-06-01" \
+      -H "Content-Type: application/json" \
+      -d '{"text": "Setup check. Reply with the repo name and stop."}' 2>/dev/null); then
+      status=0
+    fi
+    [ "$xtrace_was_on" -eq 1 ] && set -x
+
+    if [ "$status" -ge 200 ] && [ "$status" -lt 300 ]; then
+      session_url=$(jq -r '.claude_code_session_url // empty' "$response" 2>/dev/null) || session_url=""
+      if [ -n "$session_url" ]; then
+        ok "routine fire succeeded: $session_url"
+      else
+        bad "routine fire returned HTTP $status with no session URL in the response"
+      fi
+    else
+      case "$status" in
+        0) reason="could not reach the API (network problem)" ;;
+        401 | 403) reason="bad token" ;;
+        404) reason="wrong routine id" ;;
+        429) reason="daily routine cap reached" ;;
+        *) reason="see README.md, 'Set two repo values', step 3" ;;
+      esac
+      bad "routine fire failed with HTTP $status ($reason)"
+    fi
+    rm -f "$response"
   fi
 fi
 
