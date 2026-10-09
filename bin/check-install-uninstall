@@ -45,7 +45,7 @@ fi
 mapfile -t harness_files < <(cd "$scratch" && source bin/lib/fetch-files.sh && printf '%s\n' "${HARNESS_FILES[@]}")
 [ "${#harness_files[@]}" -gt 0 ] || fail "expected HARNESS_FILES to list at least one file"
 
-for f in "${harness_files[@]}" bin/harness-upgrade; do
+for f in "${harness_files[@]}" bin/harness-upgrade bin/lib/version-check.sh; do
   [ -f "$scratch/$f" ] || fail "expected $f to exist after bin/harness-install"
 done
 echo "✓ install wrote every harness file"
@@ -65,7 +65,7 @@ if ! output=$(cd "$scratch" && ./bin/harness-uninstall 2>&1); then
   fail "bin/harness-uninstall failed"
 fi
 
-for f in "${harness_files[@]}" bin/harness-install bin/harness-upgrade bin/lib/fetch-files.sh; do
+for f in "${harness_files[@]}" bin/harness-install bin/harness-upgrade bin/lib/fetch-files.sh bin/lib/version-check.sh; do
   [ ! -e "$scratch/$f" ] || fail "expected $f to be removed by bin/harness-uninstall"
 done
 [ ! -d "$scratch/.claude/prompts" ] || fail "expected .claude/prompts to be removed once empty"

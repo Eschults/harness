@@ -117,13 +117,14 @@ def _readme_install_file_count_check() -> tuple[str, bool, str]:
     match = re.search(r"Install is (\w+) files", README)
     word = match.group(1).lower() if match else None
     readme_count = _NUMBER_WORDS.get(word) if word else None
-    expected_count = len(_harness_files()) + 3  # bin/harness-install, bin/harness-upgrade, bin/lib/fetch-files.sh
+    expected_count = len(_harness_files()) + 4  # bin/harness-install, bin/harness-upgrade, bin/lib/fetch-files.sh, bin/lib/version-check.sh
     ok = readme_count is not None and readme_count == expected_count
     return (
         "readme-install-file-count",
         ok,
         f"README.md says 'Install is {word} files' ({readme_count}), but HARNESS_FILES plus "
-        f"bin/harness-install, bin/harness-upgrade, and bin/lib/fetch-files.sh total {expected_count} file(s)",
+        f"bin/harness-install, bin/harness-upgrade, bin/lib/fetch-files.sh, and bin/lib/version-check.sh "
+        f"total {expected_count} file(s)",
     )
 
 def _shellcheck_list(ci_text: str) -> list[str]:

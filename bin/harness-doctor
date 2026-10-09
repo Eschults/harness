@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Verifies an adopter's harness install end to end: the local files step 1
-# wrote, the CLAUDE.md import, the GitHub-side label/variable/secret from
-# steps 2-4, that those files are merged to the default branch (where the
+# wrote, whether the pinned .claude/HARNESS_VERSION is the latest release,
+# the CLAUDE.md import, the GitHub-side label/variable/secret from steps
+# 2-4, that those files are merged to the default branch (where the
 # routine actually reads them from), and a gitignored .env if one exists.
 # Never prints a secret value, only whether one is set. Not part of
 # HARNESS_FILES: fetch and run it the way bin/harness-uninstall is fetched,
@@ -43,6 +44,30 @@ for f in "${HARNESS_FILES[@]}"; do
     bad "$f is missing; run bin/harness-install"
   fi
 done
+
+if [ -f bin/lib/version-check.sh ]; then
+  # shellcheck source=bin/lib/version-check.sh
+  source bin/lib/version-check.sh
+else
+  # A missing lib file is a lookup problem here, not a separate failure: the
+  # check below already reports "could not look up" when the function fails.
+  latest_harness_version() { return 1; }
+fi
+
+if [ -f .claude/HARNESS_VERSION ]; then
+  pinned=$(<.claude/HARNESS_VERSION)
+  if latest=$(latest_harness_version 2>/dev/null) && [ -n "$latest" ]; then
+    if [ "$pinned" = "$latest" ]; then
+      ok "harness is on the latest release ($pinned)"
+    else
+      bad "harness is on $pinned but $latest is the latest release; run bin/harness-upgrade"
+    fi
+  else
+    skip "harness version" "could not look up the latest release tag"
+  fi
+else
+  skip "harness version" ".claude/HARNESS_VERSION is missing"
+fi
 
 # Matches the substring check bin/harness-install itself uses to decide
 # whether to append the import, so a failure here is always fixable by

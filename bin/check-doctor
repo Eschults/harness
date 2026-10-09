@@ -14,6 +14,12 @@ source bin/lib/check-helpers.sh
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 
+# harness-doctor's version check hits $HARNESS_TAGS_URL with the real curl
+# (only gh is stubbed below); poison the network so a test that doesn't
+# override it with a local file:// fixture fails the lookup fast instead of
+# reaching the real GitHub API.
+poison_network
+
 # Stub gh: routes on the first two args, answers from env vars the caller
 # sets, and never touches the network or a real repo.
 stub_bin="$scratch/stub_bin"
@@ -82,6 +88,7 @@ build_healthy_repo() {
     cp "$f" "$dir/$f"
   done
   cp bin/lib/fetch-files.sh "$dir/bin/lib/fetch-files.sh"
+  cp bin/lib/version-check.sh "$dir/bin/lib/version-check.sh"
   cp bin/harness-doctor "$dir/bin/harness-doctor"
   chmod +x "$dir/bin/harness-doctor"
   printf '# Adopter rules\n\n@.claude/harness-rules.md\n' > "$dir/CLAUDE.md"
@@ -134,6 +141,43 @@ assert_contains "$output" '✓ jq is on PATH' "healthy install"
 assert_contains "$output" '✓ GitHub Actions is enabled for this repo' "healthy install"
 assert_contains "$output" '✓ claude.yml workflow is active' "healthy install"
 echo "✓ healthy install passes every check"
+
+# --- harness version up to date ---
+repo="$scratch/version-current"
+build_healthy_repo "$repo"
+echo "v1.2.3" > "$repo/.claude/HARNESS_VERSION"
+tags_current="$scratch/tags-current.json"
+printf '[{"name":"v1.2.3"}]' > "$tags_current"
+if ! output=$(HARNESS_TAGS_URL="file://$tags_current" run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor to exit 0 when the pinned harness version matches the latest release"
+fi
+assert_contains "$output" '✓ harness is on the latest release (v1.2.3)' "harness version up to date"
+echo "✓ a pinned harness version matching the latest release passes the check"
+
+# --- harness version behind ---
+repo="$scratch/version-behind"
+build_healthy_repo "$repo"
+echo "v1.2.3" > "$repo/.claude/HARNESS_VERSION"
+tags_behind="$scratch/tags-behind.json"
+printf '[{"name":"v1.2.3"},{"name":"v1.3.0"}]' > "$tags_behind"
+if output=$(HARNESS_TAGS_URL="file://$tags_behind" run_doctor "$repo"); then
+  fail "expected bin/harness-doctor to fail when the pinned harness version is behind the latest release"
+fi
+assert_contains "$output" '✗ harness is on v1.2.3 but v1.3.0 is the latest release; run bin/harness-upgrade' "harness version behind"
+echo "✓ a pinned harness version behind the latest release fails the check that names it"
+
+# --- harness version lookup fails (offline, rate limit) ---
+repo="$scratch/version-lookup-fails"
+build_healthy_repo "$repo"
+echo "v1.2.3" > "$repo/.claude/HARNESS_VERSION"
+if ! output=$(HARNESS_TAGS_URL="file://$scratch/no-such-tags.json" run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected bin/harness-doctor to exit 0 when the version tag lookup fails but every other check passes"
+fi
+assert_contains "$output" '- harness version (skipped: could not look up the latest release tag)' "version lookup failure"
+echo "$output" | grep -q '✗' && fail "expected a failed version lookup to be a skip, never a false failure, got: $output"
+echo "✓ a failed harness version lookup is skipped rather than reported as behind"
 
 # --- missing curl ---
 # Excludes curl from PATH entirely, rather than hiding it behind a stub, so
