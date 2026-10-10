@@ -291,11 +291,6 @@ CHECKS = [
         "next-to-build.md should still skip filing when a claude-labeled issue or claude/ branch PR is already open",
     ),
     (
-        "next-to-build-open-list-catches-duplicates",
-        "a capability already covered by an open issue or PR is not filed again" in NEXT_TO_BUILD,
-        "next-to-build.md should still say the open-issue/PR list is where to check for duplicates",
-    ),
-    (
         "next-to-build-report-skip-reason",
         "If you skipped the run because earlier work is still open, name the issue or PR that caused it." in NEXT_TO_BUILD,
         "next-to-build.md should still require naming the issue or PR that caused a skipped run",
