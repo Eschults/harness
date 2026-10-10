@@ -118,7 +118,7 @@ Add `--fire` to also confirm `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` work end
 
 #### 5. (Opt) Create the "Next to build" routine
 
-So far only a human opens the gate. A second routine closes that loop: it wakes on a schedule, reads the repo, works out the capability it should gain next, and files that as one issue with the `claude` label, which fires the "Issue to PR" workflow and starts an implementation run with nobody in the loop until review.
+So far only a human opens the gate. A second routine closes that loop: it wakes on a schedule, reads the repo, works out the capability it should gain next, and files that as one issue with the `claude` label, which fires the "Issue to PR" workflow and starts an implementation run with nobody in the loop until review. It first checks for open `claude`-labeled issues and open `claude/` branch PRs, and skips the run rather than file on top of a queue a human hasn't reviewed yet.
 
 It needs no workflow and no second token. Routines have their own schedule, so this runs on Anthropic's infrastructure and bills the same way as step 2.
 
