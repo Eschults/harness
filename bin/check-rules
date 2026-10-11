@@ -296,6 +296,11 @@ CHECKS = [
         "next-to-build.md should still require naming the issue or PR that caused a skipped run",
     ),
     (
+        "next-to-build-checks-closed-prs-for-rejection",
+        "Also list this account's closed, unmerged pull requests from `claude/` branches." in NEXT_TO_BUILD,
+        "next-to-build.md should still tell the routine to check closed, unmerged claude/ branch PRs for a human's prior rejection",
+    ),
+    (
         "sessionstart-installs-shellcheck",
         "apt-get install" in SETTINGS_JSON and "shellcheck" in SETTINGS_JSON,
         ".claude/settings.json should still have a SessionStart hook installing shellcheck when missing",
