@@ -13,7 +13,7 @@ fi
 
 echo "Running shellcheck ($(shellcheck --version | grep ^version:))"
 shellcheck_failed=0
-for f in bin/ci bin/harness-install bin/harness-upgrade bin/harness-uninstall bin/harness-doctor bin/release bin/lib/fetch-files.sh bin/lib/version-check.sh bin/lib/check-helpers.sh bin/check-install-uninstall bin/check-harness-upgrade bin/check-claude-workflow bin/check-release bin/check-doctor; do
+for f in bin/ci bin/harness-install bin/harness-upgrade bin/harness-uninstall bin/harness-doctor bin/fire-issue bin/release bin/lib/fetch-files.sh bin/lib/version-check.sh bin/lib/check-helpers.sh bin/check-install-uninstall bin/check-harness-upgrade bin/check-claude-workflow bin/check-release bin/check-doctor bin/check-fire-issue; do
   if shellcheck_output=$(shellcheck -x "$f" 2>&1); then
     echo "✓ shellcheck: $f"
   else
@@ -65,6 +65,14 @@ else
 fi
 echo
 
+echo "Running the fire-issue check"
+if ./bin/check-fire-issue; then
+  fire_issue_failed=0
+else
+  fire_issue_failed=1
+fi
+echo
+
 if ./bin/check-rules; then
   rules_failed=0
 else
@@ -77,6 +85,7 @@ failed_suites=()
 [ "$claude_workflow_failed" -eq 0 ] || failed_suites+=("claude.yml fire step check")
 [ "$release_failed" -eq 0 ] || failed_suites+=("release round trip")
 [ "$doctor_failed" -eq 0 ] || failed_suites+=("harness-doctor check")
+[ "$fire_issue_failed" -eq 0 ] || failed_suites+=("fire-issue check")
 [ "$rules_failed" -eq 0 ] || failed_suites+=("rules check")
 
 echo

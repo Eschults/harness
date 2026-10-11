@@ -23,7 +23,7 @@ Put your project's own rules in `CLAUDE.md`, not `harness-rules.md`, so an upgra
 
 ## Setup
 
-Install is nine files, two routines, one label, and two repo values.
+Install is ten files, two routines, one label, and two repo values.
 
 Prerequisites: `bash`, `git`, `gh`, `curl`, and `jq` on `PATH`. `bin/harness-doctor` (step 4) checks for `curl` and `jq` explicitly, and `bin/harness-upgrade` refuses to run without them.
 
@@ -159,6 +159,7 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 - **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as the GitHub user linked to your Claude account; commits appear as Claude.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
+- **If GitHub Actions can't run `claude.yml`** (no minutes left, Actions disabled), the `claude` label stops starting runs silently. [`bin/fire-issue`](bin/fire-issue) is the fallback: `source .env && bin/fire-issue <issue-number>` fires the routine directly from your machine, the same way the workflow does.
 
 ## Upgrading
 

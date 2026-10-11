@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Manually fires the "Issue to PR" routine for one issue, the same way
+# .github/workflows/claude.yml does when the claude label is applied.
+# The fallback for when GitHub Actions can't run the workflow (no minutes
+# left, Actions disabled) but the routine itself is still reachable.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+issue=${1:-}
+if [ -z "$issue" ] || ! [[ "$issue" =~ ^[0-9]+$ ]]; then
+  echo "Usage: bin/fire-issue <issue-number>" >&2
+  exit 1
+fi
+
+for tool in curl jq gh; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "$tool not found; install it to run bin/fire-issue." >&2
+    exit 1
+  fi
+done
+
+if [ -z "${CLAUDE_ROUTINE_ID:-}" ] || [ -z "${CLAUDE_ROUTINE_TOKEN:-}" ]; then
+  echo "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set; source .env first. See README.md, 'Set two repo values'." >&2
+  exit 1
+fi
+
+repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+issue_url=$(gh issue view "$issue" --json url -q .url)
+
+text=$(printf 'Repository: %s\nIssue: #%s\nURL: %s\n' "$repo" "$issue" "$issue_url")
+
+response=$(mktemp)
+trap 'rm -f "$response"' EXIT
+
+# Disables xtrace for the call itself, then restores it, so a caller
+# running this script under `bash -x` never gets the token echoed as
+# part of the expanded curl command line.
+case $- in *x*) xtrace_was_on=1 ;; *) xtrace_was_on=0 ;; esac
+set +x
+# No --retry: the POST is not idempotent, a re-send starts a second session.
+status=$(curl -sS -o "$response" -w '%{http_code}' --max-time 60 \
+  -X POST "https://api.anthropic.com/v1/claude_code/routines/${CLAUDE_ROUTINE_ID}/fire" \
+  -H "Authorization: Bearer ${CLAUDE_ROUTINE_TOKEN}" \
+  -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --arg text "$text" '{text: $text}')")
+[ "$xtrace_was_on" -eq 1 ] && set -x
+
+if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+  case "$status" in
+    401 | 403) reason="bad token" ;;
+    404) reason="wrong routine id" ;;
+    429) reason="daily routine cap reached" ;;
+    *) reason="see README.md, 'Set two repo values', step 3" ;;
+  esac
+  echo "Routine fire failed with HTTP $status ($reason)" >&2
+  jq . "$response" 2>/dev/null >&2 || cat "$response" >&2
+  exit 1
+fi
+
+session_url=$(jq -r '.claude_code_session_url // empty' "$response")
+if [ -z "$session_url" ]; then
+  echo "Routine fire returned HTTP $status with no session URL in the response" >&2
+  cat "$response" >&2
+  exit 1
+fi
+
+gh issue comment "$issue" --body "Claude is looking into it :point_right: $session_url incoming PR :hourglass_flowing_sand:"
+echo "Fired: $session_url"
