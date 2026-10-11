@@ -148,6 +148,13 @@ grep -qxF "release create v1.0.1 --title v1.0.1 --generate-notes" "$gh_calls_fil
   || fail "expected gh to be called with 'release create v1.0.1 --title v1.0.1 --generate-notes', got: $(cat "$gh_calls_file")"
 echo "✓ happy path: v1.0.0 -> 1.0.1 commits, tags and releases, calling gh exactly once"
 
+# --- Pasted version wrapped in bracketed-paste markers and stray whitespace ---
+make_fixture "v1.1.4"
+run_release "$repo" $' \e[200~1.2.0\e[201~ \r\n'
+[ "$release_exit" -eq 0 ] || fail "expected a pasted, padded 1.2.0 to be accepted, got exit $release_exit: $release_output"
+[ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v1.2.0" ] || fail "expected .claude/HARNESS_VERSION to read v1.2.0, got $(cat "$repo/.claude/HARNESS_VERSION" 2>/dev/null)"
+echo "✓ a version wrapped in bracketed-paste markers and whitespace is accepted"
+
 # --- Suggested next version is a numeric increment, and doubles as the
 # non-X.Y.Z guard: feeding a malformed version after seeing the suggestion. ---
 make_fixture "v1.0.9"
