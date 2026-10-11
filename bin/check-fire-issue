@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# Functional check for bin/fire-issue: runs it against a scratch copy with
+# stubbed gh and curl on PATH, covering the happy path and the failure
+# branches (bad args, missing credentials, a non-2xx response, a 2xx
+# response with no session URL). No model calls, no real gh/network calls.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# shellcheck source=bin/lib/check-helpers.sh
+source bin/lib/check-helpers.sh
+
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+
+repo="$scratch/repo"
+mkdir -p "$repo/bin"
+cp bin/fire-issue "$repo/bin/fire-issue"
+chmod +x "$repo/bin/fire-issue"
+
+# Stub gh: resolves the repo and issue URL from env, and records every
+# "issue comment" call (issue number plus body) so a test can assert
+# whether the "looking into it" comment was posted, without ever reaching
+# a real repo.
+stub_bin="$scratch/stub_bin"
+mkdir -p "$stub_bin"
+comment_calls="$scratch/gh-comment-calls"
+cat > "$stub_bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "repo view") printf '%s\n' "${STUB_GH_REPO:-Eschults/harness}" ;;
+  "issue view") printf '%s\n' "${STUB_GH_ISSUE_URL:-https://github.com/Eschults/harness/issues/99}" ;;
+  "issue comment")
+    issue=$3
+    shift 3
+    printf '%s %s\n' "$issue" "$*" >> "$STUB_GH_COMMENT_CALLS"
+    ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$stub_bin/gh"
+
+# Stub curl: records one call per invocation, dumps its full argv so the
+# request can be asserted on, and mimics `curl -o <file> -w '%{http_code}'`
+# from the configured status/body without touching the network.
+calls_file="$scratch/curl-calls"
+request_file="$scratch/curl-request"
+cat > "$stub_bin/curl" <<'STUB'
+#!/usr/bin/env bash
+echo call >> "$STUB_CURL_CALLS"
+printf '%s\n' "$@" > "$STUB_CURL_REQUEST"
+out=""
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  [ "${args[i]}" = "-o" ] && out="${args[i + 1]}"
+done
+[ -n "$out" ] && printf '%s' "${STUB_CURL_BODY:-}" > "$out"
+printf '%s' "${STUB_CURL_STATUS:-200}"
+STUB
+chmod +x "$stub_bin/curl"
+
+run_fire_issue() {
+  rm -f "$calls_file" "$request_file" "$comment_calls"
+  run_exit=0
+  run_output=$(
+    cd "$repo"
+    PATH="$stub_bin:$PATH" \
+      STUB_CURL_CALLS="$calls_file" STUB_CURL_REQUEST="$request_file" \
+      STUB_CURL_STATUS="${STUB_CURL_STATUS:-200}" STUB_CURL_BODY="${STUB_CURL_BODY:-}" \
+      STUB_GH_REPO="${STUB_GH_REPO:-Eschults/harness}" STUB_GH_ISSUE_URL="${STUB_GH_ISSUE_URL:-https://github.com/Eschults/harness/issues/99}" \
+      STUB_GH_COMMENT_CALLS="$comment_calls" \
+      CLAUDE_ROUTINE_ID="${CLAUDE_ROUTINE_ID-id}" CLAUDE_ROUTINE_TOKEN="${CLAUDE_ROUTINE_TOKEN-token}" \
+      ./bin/fire-issue "$@" 2>&1
+  ) || run_exit=$?
+  run_calls=$([ -f "$calls_file" ] && wc -l < "$calls_file" || echo 0)
+  run_request=$([ -f "$request_file" ] && cat "$request_file" || echo "")
+  run_comments=$([ -f "$comment_calls" ] && cat "$comment_calls" || echo "")
+}
+
+assert_contains() {
+  local haystack=$1 needle=$2 context=$3
+  echo "$haystack" | grep -qF -- "$needle" || fail "$context: expected to find '$needle' in: $haystack"
+}
+
+# --- no issue number ---
+run_fire_issue
+[ "$run_exit" -ne 0 ] || fail "expected no issue number to fail"
+assert_contains "$run_output" "Usage: bin/fire-issue" "no issue number"
+[ "$run_calls" -eq 0 ] || fail "no issue number: expected no curl call, got $run_calls"
+echo "✓ no issue number fails with a usage message, without calling curl"
+
+# --- non-numeric issue number ---
+run_fire_issue abc
+[ "$run_exit" -ne 0 ] || fail "expected a non-numeric issue number to fail"
+assert_contains "$run_output" "Usage: bin/fire-issue" "non-numeric issue number"
+echo "✓ a non-numeric issue number fails with a usage message"
+
+# --- missing CLAUDE_ROUTINE_ID ---
+CLAUDE_ROUTINE_ID="" run_fire_issue 74
+[ "$run_exit" -ne 0 ] || fail "expected an empty CLAUDE_ROUTINE_ID to fail"
+assert_contains "$run_output" "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set" "missing CLAUDE_ROUTINE_ID"
+[ "$run_calls" -eq 0 ] || fail "missing CLAUDE_ROUTINE_ID: expected no curl call, got $run_calls"
+echo "✓ a missing CLAUDE_ROUTINE_ID fails without calling curl"
+
+# --- missing CLAUDE_ROUTINE_TOKEN ---
+CLAUDE_ROUTINE_TOKEN="" run_fire_issue 74
+[ "$run_exit" -ne 0 ] || fail "expected an empty CLAUDE_ROUTINE_TOKEN to fail"
+assert_contains "$run_output" "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set" "missing CLAUDE_ROUTINE_TOKEN"
+echo "✓ a missing CLAUDE_ROUTINE_TOKEN fails without calling curl"
+
+# --- missing gh ---
+# Excludes gh from PATH entirely rather than hiding it behind a stub, so the
+# check can only pass by actually finding the real binary.
+no_gh_bin="$scratch/no_gh_bin"
+mkdir -p "$no_gh_bin"
+for cmd in bash dirname curl jq; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_gh_bin/$cmd"
+done
+run_exit=0
+run_output=$(cd "$repo" && PATH="$no_gh_bin" CLAUDE_ROUTINE_ID=id CLAUDE_ROUTINE_TOKEN=token ./bin/fire-issue 74 2>&1) || run_exit=$?
+[ "$run_exit" -ne 0 ] || fail "expected a missing gh to fail"
+assert_contains "$run_output" "gh not found" "missing gh"
+echo "✓ a missing gh fails with the message naming it"
+
+# --- HTTP >= 300 ---
+STUB_CURL_STATUS=401 run_fire_issue 74
+[ "$run_exit" -ne 0 ] || fail "expected an HTTP 401 response to fail"
+assert_contains "$run_output" "bad token" "HTTP 401"
+[ "$run_calls" -eq 1 ] || fail "HTTP 401: expected curl to be called exactly once, got $run_calls"
+[ -z "$run_comments" ] || fail "HTTP 401: expected no issue comment to be posted, got: $run_comments"
+echo "✓ HTTP >= 300 fails naming the reason, and posts no issue comment"
+
+# --- 2xx with no session URL ---
+STUB_CURL_STATUS=200 STUB_CURL_BODY='{"status":"ok"}' run_fire_issue 74
+[ "$run_exit" -ne 0 ] || fail "expected a 200 response with no session URL to fail"
+assert_contains "$run_output" "no session URL" "200 with no session URL"
+[ -z "$run_comments" ] || fail "200 with no session URL: expected no issue comment to be posted, got: $run_comments"
+echo "✓ 200 with no session URL fails and posts no issue comment"
+
+# --- happy path ---
+happy_body='{"claude_code_session_url":"https://claude.ai/code/session_test123"}'
+STUB_CURL_STATUS=200 STUB_CURL_BODY="$happy_body" STUB_GH_REPO="Eschults/harness" STUB_GH_ISSUE_URL="https://github.com/Eschults/harness/issues/74" run_fire_issue 74
+[ "$run_exit" -eq 0 ] || fail "expected a 200 response with a session URL to succeed, got exit $run_exit: $run_output"
+assert_contains "$run_output" "Fired: https://claude.ai/code/session_test123" "happy path"
+[ "$run_calls" -eq 1 ] || fail "happy path: expected curl to be called exactly once, got $run_calls"
+assert_contains "$run_request" "https://api.anthropic.com/v1/claude_code/routines/id/fire" "happy path"
+assert_contains "$run_request" "Authorization: Bearer token" "happy path"
+assert_contains "$run_request" "Content-Type: application/json" "happy path"
+assert_contains "$run_comments" "74" "happy path"
+assert_contains "$run_comments" "https://claude.ai/code/session_test123" "happy path"
+echo "✓ 200 with a session URL succeeds, posts the session URL on the issue, and calls curl exactly once"
+
+echo
+echo "fire-issue check: all passed"

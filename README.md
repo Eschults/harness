@@ -23,7 +23,7 @@ Put your project's own rules in `CLAUDE.md`, not `harness-rules.md`, so an upgra
 
 ## Setup
 
-Install is nine files, two routines, one label, and two repo values.
+Install is ten files, two routines, one label, and two repo values.
 
 Prerequisites: `bash`, `git`, `gh`, `curl`, and `jq` on `PATH`. `bin/harness-doctor` (step 4) checks for `curl` and `jq` explicitly, and `bin/harness-upgrade` refuses to run without them.
 
@@ -118,7 +118,7 @@ Add `--fire` to also confirm `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` work end
 
 #### 5. (Opt) Create the "Next to build" routine
 
-So far only a human opens the gate. A second routine closes that loop: it wakes on a schedule, reads the repo, works out the capability it should gain next, and files that as one issue with the `claude` label, which fires the "Issue to PR" workflow and starts an implementation run with nobody in the loop until review.
+So far only a human opens the gate. A second routine closes that loop: it wakes on a schedule, reads the repo, works out the capability it should gain next, and files that as one issue with the `claude` label, which fires the "Issue to PR" workflow and starts an implementation run with nobody in the loop until review. It first checks for open `claude`-labeled issues and open `claude/` branch PRs, and skips the run rather than file on top of a queue a human hasn't reviewed yet.
 
 It needs no workflow and no second token. Routines have their own schedule, so this runs on Anthropic's infrastructure and bills the same way as step 2.
 
@@ -159,6 +159,7 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 - **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as the GitHub user linked to your Claude account; commits appear as Claude.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
+- **If GitHub Actions can't run `claude.yml`** (no minutes left, Actions disabled), the `claude` label stops starting runs silently. [`bin/fire-issue`](bin/fire-issue) is the fallback: `source .env && bin/fire-issue <issue-number>` fires the routine directly from your machine, the same way the workflow does.
 
 ## Upgrading
 
