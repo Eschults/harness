@@ -169,7 +169,7 @@ The harness is tagged: `main` moves as work lands, but `src` points at `v1`, a f
 bin/harness-upgrade
 ```
 
-It diffs your pinned version against the latest tag, opens the compare view, and, if you confirm, pulls in the updated files. Already on the latest release: it says so and exits. Review the diff and commit the changes.
+It diffs your pinned version against the latest tag, opens the compare view, and, if you confirm, pulls in the updated files. It also refreshes `bin/harness-doctor` and `bin/harness-uninstall` if you already fetched them; it won't start fetching either one for you. Already on the latest release: it says so and exits. Review the diff and commit the changes.
 
 ## Uninstalling
 
