@@ -1,8 +1,5 @@
 # shellcheck shell=bash
-# Shared by bin/harness-upgrade and bin/harness-doctor. Meant to be sourced,
-# not run directly: it expects curl and jq on PATH and does no error
-# handling of its own, so a caller under `set -euo pipefail` sees a lookup
-# failure as this function's command substitution returning non-zero.
+# Legacy: pre-CLI installs' bin/harness-upgrade fetches and sources this; bin/harness has its own copy.
 
 harness_tags_url() {
   echo "${HARNESS_TAGS_URL:-https://api.github.com/repos/Eschults/harness/tags}"

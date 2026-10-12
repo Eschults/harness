@@ -5,9 +5,10 @@ No model calls: most checks assert a load-bearing sentence is still present
 in .claude/harness-rules.md, CLAUDE.md, .claude/prompts/issue-to-pr.md, or
 .claude/prompts/next-to-build.md, catching accidental deletion or rewording
 of a rule during an edit to these files. One check instead asserts that
-README.md, bin/harness, and bin/harness-upgrade all pin the same
+README.md, bin/harness, and the legacy bin/harness-upgrade all pin the same
 major release tag, catching a stale reference left behind after bin/release
-cuts a new major. Another set of checks extracts every relative link (and
+cuts a new major, and another that the legacy bin/lib/fetch-files.sh lists
+the same HARNESS_FILES as bin/harness. Another set of checks extracts every relative link (and
 the "N files, two routines" count) out of README.md and verifies them against
 the working tree, catching link rot and a stale file count left behind by a
 rename or a file added to HARNESS_FILES. A further check scans bin/ and
@@ -32,6 +33,7 @@ README = (ROOT / "README.md").read_text()
 BIN_HARNESS = (ROOT / "bin" / "harness").read_text()
 BIN_UPGRADE = (ROOT / "bin" / "harness-upgrade").read_text()
 SETTINGS_JSON = (ROOT / ".claude" / "settings.json").read_text()
+LEGACY_FETCH_FILES = (ROOT / "bin" / "lib" / "fetch-files.sh").read_text()
 CI = (ROOT / "bin" / "ci").read_text()
 
 
@@ -312,6 +314,11 @@ CHECKS = [
         and README_MAJOR == BIN_HARNESS_MAJOR == BIN_UPGRADE_MAJOR,
         f"README.md ({README_MAJOR}), bin/harness ({BIN_HARNESS_MAJOR}), and bin/harness-upgrade ({BIN_UPGRADE_MAJOR}) "
         "should all pin the same harness major release tag",
+    ),
+    (
+        "legacy-fetch-files-match-cli",
+        bool(HARNESS_FILES) and _harness_files(LEGACY_FETCH_FILES) == HARNESS_FILES,
+        "bin/lib/fetch-files.sh's HARNESS_FILES should match bin/harness's, so pre-CLI installs upgrade to the same files",
     ),
 ]
 CHECKS.extend(_readme_link_checks())
