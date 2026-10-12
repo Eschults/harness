@@ -453,8 +453,22 @@ if ! output=$(run_doctor "$repo" --fire); then
   echo "$output" >&2
   fail "expected harness doctor --fire to exit 0 when CLAUDE_ROUTINE_ID/TOKEN are unset"
 fi
-assert_contains "$output" '- routine fire (skipped: CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set; source .env first)' "fire missing vars"
+assert_contains "$output" '- routine fire (skipped: CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set in the environment or .env)' "fire missing vars"
 echo "✓ --fire with no CLAUDE_ROUTINE_ID/TOKEN in the environment is skipped, not a failure"
+
+# --- --fire: credentials read from a gitignored .env ---
+repo="$scratch/fire-dotenv"
+build_healthy_repo "$repo"
+printf 'CLAUDE_ROUTINE_ID=trig_dotenv\nCLAUDE_ROUTINE_TOKEN=sk-ant-oat01-dotenv\n' > "$repo/.env"
+echo ".env" > "$repo/.gitignore"
+if ! output=$(STUB_CURL_STATUS=200 STUB_CURL_BODY='{"claude_code_session_url":"https://claude.ai/code/cse_dotenv"}' \
+  run_doctor "$repo" --fire); then
+  echo "$output" >&2
+  fail "expected harness doctor --fire to read CLAUDE_ROUTINE_ID/TOKEN from .env"
+fi
+assert_contains "$output" '✓ routine fire succeeded: https://claude.ai/code/cse_dotenv' "fire from .env"
+echo "$output" | grep -qF 'sk-ant-oat01-dotenv' && fail "expected the .env token to never appear in doctor output, got: $output"
+echo "✓ --fire reads CLAUDE_ROUTINE_ID/TOKEN from .env when the environment doesn't set them"
 
 # --- --fire: success ---
 repo="$scratch/fire-success"

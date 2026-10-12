@@ -241,6 +241,25 @@ fire_failure_reason() {
   esac
 }
 
+# Reads KEY from the repo's .env by parsing it, never sourcing it, so nothing in .env runs.
+dotenv_value() {
+  local key=$1 line value
+  [ -f .env ] || return 1
+  line=$(grep -E "^[[:space:]]*(export[[:space:]]+)?$key=" .env | tail -1) || return 1
+  value=${line#*=}
+  value=${value%$'\r'}
+  if [[ "$value" == \"*\" || "$value" == \'*\' ]]; then
+    value=${value:1:${#value}-2}
+  fi
+  echo "$value"
+}
+
+# The environment wins; .env fills in whatever it leaves unset, so a plain `source .env` (no export) isn't needed.
+load_routine_credentials() {
+  [ -n "${CLAUDE_ROUTINE_ID:-}" ] || CLAUDE_ROUTINE_ID=$(dotenv_value CLAUDE_ROUTINE_ID || true)
+  [ -n "${CLAUDE_ROUTINE_TOKEN:-}" ] || CLAUDE_ROUTINE_TOKEN=$(dotenv_value CLAUDE_ROUTINE_TOKEN || true)
+}
+
 routine_credentials_set() {
   [ -n "${CLAUDE_ROUTINE_ID:-}" ] && [ -n "${CLAUDE_ROUTINE_TOKEN:-}" ]
 }
@@ -255,8 +274,9 @@ cmd_issue() {
   require_tools curl jq gh
   cd_repo_root
 
+  load_routine_credentials
   if ! routine_credentials_set; then
-    echo "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set; source .env first. See $HARNESS_README#3-set-two-repo-values" >&2
+    echo "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set in the environment or .env. See $HARNESS_README#3-set-two-repo-values" >&2
     exit 1
   fi
 
@@ -444,8 +464,9 @@ cmd_doctor() {
 
   local response status session_url
   if [ "$fire" -eq 1 ]; then
+    load_routine_credentials
     if ! routine_credentials_set; then
-      skip "routine fire" "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set; source .env first"
+      skip "routine fire" "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set in the environment or .env"
     elif ! command -v jq >/dev/null 2>&1; then
       skip "routine fire" "jq is not installed"
     else
