@@ -14,6 +14,7 @@ source bin/harness-cli
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 poison_network
+stub_url_openers "$scratch/stub_bin"
 
 # A scratch copy, since upgrade replaces the launcher it runs from and must never touch this checkout's.
 launcher="$scratch/launcher-bin/harness"
