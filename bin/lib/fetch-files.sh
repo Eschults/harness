@@ -34,7 +34,7 @@ refresh_optional_files() {
     [ -e "$f" ] || continue
     # shellcheck disable=SC2154 # src is set by the caller before sourcing this file
     curl -fsSL "$src/$f" -o "$f.new"
-    chmod +x "$f.new"
+    case "$f" in bin/*) chmod +x "$f.new" ;; esac
     mv "$f.new" "$f"
   done
 }

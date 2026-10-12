@@ -57,7 +57,6 @@ curl -fsSL "$src/bin/lib/fetch-files.sh" -o bin/lib/fetch-files.sh
 # shellcheck source=bin/lib/fetch-files.sh
 source bin/lib/fetch-files.sh
 fetch_harness_files
-refresh_optional_files
 mv "$version_check_new" bin/lib/version-check.sh
 
 # Downloaded to a temp file and moved into place, never written to directly:
@@ -66,5 +65,9 @@ mv "$version_check_new" bin/lib/version-check.sh
 curl -fsSL "$src/bin/harness-upgrade" -o bin/harness-upgrade.new
 chmod +x bin/harness-upgrade.new
 mv bin/harness-upgrade.new bin/harness-upgrade
+
+# Last, so a failed refresh of an optional tool can't leave the required
+# upgrade above (the version bump, version-check.sh, this script) half-done.
+refresh_optional_files
 
 echo "Pulled in $latest. Review the diff and commit."
