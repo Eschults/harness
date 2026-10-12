@@ -5,7 +5,7 @@
 # response with no session URL). No model calls, no real gh/network calls.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-cli="$(pwd)/bin/harness"
+cli="$(pwd)/bin/harness-cli"
 
 # shellcheck source=bin/lib/check-helpers.sh
 source bin/lib/check-helpers.sh
