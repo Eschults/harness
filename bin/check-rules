@@ -5,10 +5,10 @@ No model calls: most checks assert a load-bearing sentence is still present
 in .claude/harness-rules.md, CLAUDE.md, .claude/prompts/issue-to-pr.md, or
 .claude/prompts/next-to-build.md, catching accidental deletion or rewording
 of a rule during an edit to these files. One check instead asserts that
-README.md, bin/harness-install, and bin/harness-upgrade all pin the same
+README.md, bin/harness, and bin/harness-upgrade all pin the same
 major release tag, catching a stale reference left behind after bin/release
 cuts a new major. Another set of checks extracts every relative link (and
-the "Install is N files" count) out of README.md and verifies them against
+the "N files, two routines" count) out of README.md and verifies them against
 the working tree, catching link rot and a stale file count left behind by a
 rename or a file added to HARNESS_FILES. A further check scans bin/ and
 bin/lib/ for every bash/sh script (by shebang or .sh extension) and fails,
@@ -29,10 +29,9 @@ CLAUDE_MD = (ROOT / "CLAUDE.md").read_text()
 ISSUE_TO_PR = (ROOT / ".claude" / "prompts" / "issue-to-pr.md").read_text()
 NEXT_TO_BUILD = (ROOT / ".claude" / "prompts" / "next-to-build.md").read_text()
 README = (ROOT / "README.md").read_text()
-BIN_INSTALL = (ROOT / "bin" / "harness-install").read_text()
+BIN_HARNESS = (ROOT / "bin" / "harness").read_text()
 BIN_UPGRADE = (ROOT / "bin" / "harness-upgrade").read_text()
 SETTINGS_JSON = (ROOT / ".claude" / "settings.json").read_text()
-FETCH_FILES = (ROOT / "bin" / "lib" / "fetch-files.sh").read_text()
 CI = (ROOT / "bin" / "ci").read_text()
 
 
@@ -42,7 +41,7 @@ def _pinned_major(text: str) -> str | None:
 
 
 README_MAJOR = _pinned_major(README)
-BIN_INSTALL_MAJOR = _pinned_major(BIN_INSTALL)
+BIN_HARNESS_MAJOR = _pinned_major(BIN_HARNESS)
 BIN_UPGRADE_MAJOR = _pinned_major(BIN_UPGRADE)
 
 _ABSOLUTE_LINK = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
@@ -108,23 +107,25 @@ def _readme_link_checks() -> list[tuple[str, bool, str]]:
     return checks
 
 
-def _harness_files() -> list[str]:
-    match = re.search(r"HARNESS_FILES=\((.*?)\)", FETCH_FILES, re.DOTALL)
+def _harness_files(script_text: str) -> list[str]:
+    match = re.search(r"HARNESS_FILES=\((.*?)\)", script_text, re.DOTALL)
     return re.findall(r'"([^"]+)"', match.group(1)) if match else []
 
 
+HARNESS_FILES = _harness_files(BIN_HARNESS)
+
+
 def _readme_install_file_count_check() -> tuple[str, bool, str]:
-    match = re.search(r"Install is (\w+) files", README)
+    match = re.search(r"(\w+) files, two routines", README)
     word = match.group(1).lower() if match else None
     readme_count = _NUMBER_WORDS.get(word) if word else None
-    expected_count = len(_harness_files()) + 4  # bin/harness-install, bin/harness-upgrade, bin/lib/fetch-files.sh, bin/lib/version-check.sh
+    expected_count = len(HARNESS_FILES)
     ok = readme_count is not None and readme_count == expected_count
     return (
         "readme-install-file-count",
         ok,
-        f"README.md says 'Install is {word} files' ({readme_count}), but HARNESS_FILES plus "
-        f"bin/harness-install, bin/harness-upgrade, bin/lib/fetch-files.sh, and bin/lib/version-check.sh "
-        f"total {expected_count} file(s)",
+        f"README.md says '{word} files, two routines' ({readme_count}), but bin/harness's HARNESS_FILES "
+        f"lists {expected_count} file(s)",
     )
 
 def _shellcheck_list(ci_text: str) -> list[str]:
@@ -307,9 +308,9 @@ CHECKS = [
     ),
     (
         "pinned-major-consistent",
-        None not in (README_MAJOR, BIN_INSTALL_MAJOR, BIN_UPGRADE_MAJOR)
-        and README_MAJOR == BIN_INSTALL_MAJOR == BIN_UPGRADE_MAJOR,
-        f"README.md ({README_MAJOR}), bin/harness-install ({BIN_INSTALL_MAJOR}), and bin/harness-upgrade ({BIN_UPGRADE_MAJOR}) "
+        None not in (README_MAJOR, BIN_HARNESS_MAJOR, BIN_UPGRADE_MAJOR)
+        and README_MAJOR == BIN_HARNESS_MAJOR == BIN_UPGRADE_MAJOR,
+        f"README.md ({README_MAJOR}), bin/harness ({BIN_HARNESS_MAJOR}), and bin/harness-upgrade ({BIN_UPGRADE_MAJOR}) "
         "should all pin the same harness major release tag",
     ),
 ]

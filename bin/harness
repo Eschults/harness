@@ -1,0 +1,524 @@
+#!/usr/bin/env bash
+# The harness CLI: installs, upgrades, checks, and uninstalls the harness in
+# the git repo it runs from, and fires the "Issue to PR" routine by hand.
+# Installed once on PATH (see README.md, Setup), never vendored into a repo.
+set -euo pipefail
+
+HARNESS_DEFAULT_SRC=https://raw.githubusercontent.com/Eschults/harness/v1
+HARNESS_FILES=(
+  ".github/workflows/claude.yml"
+  ".claude/prompts/issue-to-pr.md"
+  ".claude/prompts/next-to-build.md"
+  ".claude/harness-rules.md"
+  ".claude/HARNESS_VERSION"
+)
+# What the pre-CLI harness vendored into bin/; install and uninstall remove it.
+LEGACY_FILES=(
+  "bin/harness-install"
+  "bin/harness-upgrade"
+  "bin/harness-uninstall"
+  "bin/harness-doctor"
+  "bin/fire-issue"
+  "bin/lib/fetch-files.sh"
+  "bin/lib/version-check.sh"
+)
+RULES_IMPORT='@.claude/harness-rules.md'
+
+usage() {
+  cat <<'EOF'
+Usage: harness <command>
+
+Commands:
+  install          Fetch the harness files into this repo and import the rules into CLAUDE.md
+  upgrade          Pull in the latest harness release, updating this CLI too
+  doctor [--fire]  Check the install end to end; --fire also fires the routine once
+  issue <number>   Fire the "Issue to PR" routine for one issue, bypassing GitHub Actions
+  uninstall        Remove the harness files and the CLAUDE.md import
+
+Run it from anywhere inside your project's git repo.
+EOF
+}
+
+harness_src() {
+  echo "${HARNESS_SRC:-$HARNESS_DEFAULT_SRC}"
+}
+
+harness_tags_url() {
+  echo "${HARNESS_TAGS_URL:-https://api.github.com/repos/Eschults/harness/tags}"
+}
+
+cli_install_command() {
+  echo "mkdir -p ~/.local/bin && curl -fsSL $HARNESS_DEFAULT_SRC/bin/harness -o ~/.local/bin/harness && chmod +x ~/.local/bin/harness"
+}
+
+require_tools() {
+  local tool
+  for tool in "$@"; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      echo "$tool not found; install it (e.g. apt-get install $tool, or brew install $tool) to run harness $command." >&2
+      exit 1
+    fi
+  done
+}
+
+cd_repo_root() {
+  local root
+  if ! root=$(git rev-parse --show-toplevel 2>/dev/null); then
+    echo "Not inside a git repo; run harness from your project's repo." >&2
+    exit 1
+  fi
+  cd "$root"
+}
+
+# Fails (non-zero) on a lookup error, so callers under set -e must handle it.
+latest_harness_version() {
+  # grep matching nothing is fine; pipefail would otherwise abort with no message.
+  curl -fsSL "$(harness_tags_url)" | jq -r '.[].name' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -1
+}
+
+fetch_harness_files() {
+  local src f
+  src=$(harness_src)
+  for f in "${HARNESS_FILES[@]}"; do
+    mkdir -p "$(dirname "$f")"
+    curl -fsSL "$src/$f" -o "$f"
+  done
+}
+
+remove_empty_dirs() {
+  local d
+  # Adopters may keep their own files in these folders, so only remove one
+  # once it's explicitly confirmed empty.
+  for d in "$@"; do
+    if [ -d "$d" ] && [ -z "$(find "$d" -mindepth 1 -print -quit)" ]; then
+      rmdir "$d"
+    fi
+  done
+}
+
+remove_legacy_files() {
+  local f removed=0
+  for f in "${LEGACY_FILES[@]}"; do
+    if [ -e "$f" ]; then
+      rm -f "$f"
+      removed=1
+    fi
+  done
+  if [ "$removed" -eq 1 ]; then
+    remove_empty_dirs bin/lib bin
+    echo "Removed the pre-CLI bin/ scripts; use the harness command instead."
+  fi
+}
+
+install_harness() {
+  fetch_harness_files
+  remove_legacy_files
+  if ! grep -qF "$RULES_IMPORT" CLAUDE.md 2>/dev/null; then
+    printf '\n%s\n' "$RULES_IMPORT" >> CLAUDE.md
+  fi
+}
+
+cmd_install() {
+  require_tools curl
+  cd_repo_root
+  install_harness
+  echo "Installed the harness at $(<.claude/HARNESS_VERSION). Next: the routine, label, and repo values in README.md, then harness doctor."
+}
+
+cli_path() {
+  local dir
+  dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  echo "$dir/$(basename "${BASH_SOURCE[0]}")"
+}
+
+# Replaces this CLI with the release's copy when they differ. Returns 0 only
+# when it did, so the caller can re-exec into the new version.
+refresh_cli() {
+  local self new
+  self=$(cli_path)
+  # Same directory as $self, so the final mv is an atomic rename that never
+  # rewrites the file this running process is reading from.
+  new="$self.new"
+  if [ -L "$self" ] || [ ! -w "$(dirname "$self")" ]; then
+    echo "Skipped updating the harness CLI: $self is a symlink or not writable. To update it by hand: $(cli_install_command)" >&2
+    return 1
+  fi
+  if ! curl -fsSL "$(harness_src)/bin/harness" -o "$new"; then
+    rm -f "$new"
+    echo "Could not fetch the latest harness CLI; continuing with this one." >&2
+    return 1
+  fi
+  if cmp -s "$new" "$self"; then
+    rm -f "$new"
+    return 1
+  fi
+  chmod +x "$new"
+  mv "$new" "$self"
+  echo "Updated the harness CLI at $self."
+}
+
+cmd_upgrade() {
+  require_tools curl jq
+  cd_repo_root
+
+  local current latest compare confirm
+  current=$(cat .claude/HARNESS_VERSION 2>/dev/null || true)
+  if [ -z "$current" ]; then
+    echo "No .claude/HARNESS_VERSION found; run harness install first." >&2
+    exit 1
+  fi
+
+  # The new CLI may fetch a different file list, so run the rest of the upgrade with it.
+  if refresh_cli; then
+    exec "$(cli_path)" upgrade
+  fi
+
+  latest=$(latest_harness_version)
+  if [ -z "$latest" ]; then
+    echo "No release tag matching vX.Y.Z found at $(harness_tags_url)" >&2
+    exit 1
+  fi
+
+  if [ "$current" = "$latest" ]; then
+    echo "Already up to date: $current"
+    exit 0
+  fi
+
+  compare="https://github.com/Eschults/harness/compare/$current...$latest"
+  echo "Upgrading $current -> $latest: $compare"
+  open "$compare" 2>/dev/null || xdg-open "$compare" 2>/dev/null || true
+
+  read -rp "Pull in $latest now? [y/N] " confirm
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    echo "Skipped. Re-run harness upgrade when you're ready."
+    exit 0
+  fi
+
+  install_harness
+  echo "Pulled in $latest. Review the diff and commit."
+}
+
+cmd_uninstall() {
+  cd_repo_root
+
+  local f
+  for f in "${HARNESS_FILES[@]}" "${LEGACY_FILES[@]}"; do
+    rm -f "$f"
+  done
+  remove_empty_dirs .claude/prompts bin/lib bin
+
+  if [ -f CLAUDE.md ] && grep -qxF "$RULES_IMPORT" CLAUDE.md; then
+    # install appends the import behind a blank line it inserts; drop that
+    # blank line along with the import, or CLAUDE.md never quite returns to
+    # its pre-install content.
+    awk -v import="$RULES_IMPORT" '
+      $0 == import {
+        if (have && pending == "") have = 0
+        next
+      }
+      { if (have) print pending; pending = $0; have = 1 }
+      END { if (have) print pending }
+    ' CLAUDE.md > CLAUDE.md.harness-uninstall-tmp
+    mv CLAUDE.md.harness-uninstall-tmp CLAUDE.md
+  fi
+
+  cat <<EOF
+Removed the local harness files. Finish the cleanup on GitHub:
+  - Delete the "Issue to PR" and "Next to Build" routines: https://claude.ai/code/routines
+  - Delete the label:     gh label delete claude --yes
+  - Remove the variable:  gh variable delete CLAUDE_ROUTINE_ID
+  - Remove the secret:    gh secret delete CLAUDE_ROUTINE_TOKEN
+The harness CLI itself stays at $(cli_path); delete it if no other repo uses it.
+EOF
+}
+
+# POSTs one /fire request with $2 as its text, writing the body to $1 and
+# printing the HTTP status (0 when the API was unreachable).
+fire_routine() {
+  local response=$1 text=$2 status xtrace_was_on
+  # Disables xtrace for the call itself, then restores it, so a caller
+  # running under `bash -x` never gets the token echoed as part of the
+  # expanded curl command line.
+  case $- in *x*) xtrace_was_on=1 ;; *) xtrace_was_on=0 ;; esac
+  set +x
+  # No --retry: the POST is not idempotent, a re-send starts a second session.
+  if ! status=$(curl -sS -o "$response" -w '%{http_code}' --max-time 60 \
+    -X POST "https://api.anthropic.com/v1/claude_code/routines/${CLAUDE_ROUTINE_ID}/fire" \
+    -H "Authorization: Bearer ${CLAUDE_ROUTINE_TOKEN}" \
+    -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+    -H "anthropic-version: 2023-06-01" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n --arg text "$text" '{text: $text}')" 2>/dev/null); then
+    status=0
+  fi
+  [ "$xtrace_was_on" -eq 1 ] && set -x
+  echo "$status"
+}
+
+fire_failure_reason() {
+  case "$1" in
+    0) echo "could not reach the API (network problem)" ;;
+    401 | 403) echo "bad token" ;;
+    404) echo "wrong routine id" ;;
+    429) echo "daily routine cap reached" ;;
+    *) echo "see README.md, 'Set two repo values', step 3" ;;
+  esac
+}
+
+routine_credentials_set() {
+  [ -n "${CLAUDE_ROUTINE_ID:-}" ] && [ -n "${CLAUDE_ROUTINE_TOKEN:-}" ]
+}
+
+cmd_issue() {
+  local issue=${1:-}
+  if [ -z "$issue" ] || ! [[ "$issue" =~ ^[0-9]+$ ]]; then
+    echo "Usage: harness issue <issue-number>" >&2
+    exit 1
+  fi
+
+  require_tools curl jq gh
+  cd_repo_root
+
+  if ! routine_credentials_set; then
+    echo "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set; source .env first. See README.md, 'Set two repo values'." >&2
+    exit 1
+  fi
+
+  local repo issue_url text status session_url
+  repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+  issue_url=$(gh issue view "$issue" --json url -q .url)
+  text=$(printf 'Repository: %s\nIssue: #%s\nURL: %s\n' "$repo" "$issue" "$issue_url")
+
+  # Global, not local: the EXIT trap runs after this function's scope is gone.
+  issue_response=$(mktemp)
+  trap 'rm -f "$issue_response"' EXIT
+
+  status=$(fire_routine "$issue_response" "$text")
+  if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+    echo "Routine fire failed with HTTP $status ($(fire_failure_reason "$status"))" >&2
+    jq . "$issue_response" 2>/dev/null >&2 || cat "$issue_response" >&2
+    exit 1
+  fi
+
+  session_url=$(jq -r '.claude_code_session_url // empty' "$issue_response")
+  if [ -z "$session_url" ]; then
+    echo "Routine fire returned HTTP $status with no session URL in the response" >&2
+    cat "$issue_response" >&2
+    exit 1
+  fi
+
+  gh issue comment "$issue" --body "Claude is looking into it :point_right: $session_url incoming PR :hourglass_flowing_sand:"
+  echo "Fired: $session_url"
+}
+
+doctor_failed=0
+ok() { echo "✓ $1"; }
+bad() {
+  echo "✗ $1"
+  doctor_failed=1
+}
+skip() { echo "- $1 (skipped: $2)"; }
+
+# Verifies the install end to end: the local files, whether the pinned
+# .claude/HARNESS_VERSION is the latest release, the CLAUDE.md import, the
+# GitHub-side label/variable/secret, that the files are merged to the
+# default branch (where the routine actually reads them from), and a
+# gitignored .env if one exists. Never prints a secret value.
+cmd_doctor() {
+  local fire=0 arg tool f
+  for arg in "$@"; do
+    [ "$arg" = "--fire" ] && fire=1
+  done
+
+  cd_repo_root
+
+  for tool in curl jq; do
+    if command -v "$tool" >/dev/null 2>&1; then
+      ok "$tool is on PATH"
+    else
+      bad "$tool is missing; install it (e.g. apt-get install $tool, or brew install $tool)"
+    fi
+  done
+
+  for f in "${HARNESS_FILES[@]}"; do
+    if [ -f "$f" ]; then
+      ok "$f exists"
+    else
+      bad "$f is missing; run harness install"
+    fi
+  done
+
+  local pinned latest
+  if [ -f .claude/HARNESS_VERSION ]; then
+    pinned=$(<.claude/HARNESS_VERSION)
+    if latest=$(latest_harness_version 2>/dev/null) && [ -n "$latest" ]; then
+      if [ "$pinned" = "$latest" ]; then
+        ok "harness is on the latest release ($pinned)"
+      else
+        bad "harness is on $pinned but $latest is the latest release; run harness upgrade"
+      fi
+    else
+      skip "harness version" "could not look up the latest release tag"
+    fi
+  else
+    skip "harness version" ".claude/HARNESS_VERSION is missing"
+  fi
+
+  # Matches the substring check install itself uses to decide whether to
+  # append the import, so a failure here is always fixable by running it.
+  if [ -f CLAUDE.md ] && grep -qF "$RULES_IMPORT" CLAUDE.md; then
+    ok "CLAUDE.md imports $RULES_IMPORT"
+  else
+    bad "CLAUDE.md does not import $RULES_IMPORT; run harness install"
+  fi
+
+  local gh_checks=("claude label" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret" "harness files on the default branch" "GitHub Actions enabled" "claude.yml workflow active")
+  local c labels variables secrets default_branch default_branch_tree actions_enabled workflow_state
+  if ! command -v gh >/dev/null 2>&1; then
+    for c in "${gh_checks[@]}"; do skip "$c" "gh is not installed"; done
+  elif ! gh auth status >/dev/null 2>&1; then
+    for c in "${gh_checks[@]}"; do skip "$c" "gh is not authenticated; run gh auth login"; done
+  else
+    # --limit: gh label list defaults to 30 and the claude label can sort past
+    # that on a repo that already has many labels. A failed list call (rate
+    # limit, a token without label read access) is a lookup problem, not
+    # evidence the label is missing, so it must skip rather than report a
+    # false failure.
+    if labels=$(gh label list --limit 1000 --json name --jq '.[].name' 2>/dev/null); then
+      if echo "$labels" | grep -qxF claude; then
+        ok "claude label exists"
+      else
+        bad "claude label is missing; run: gh label create claude --color D97757 --description \"starts a Claude Code run\" --force"
+      fi
+    else
+      skip "claude label" "could not list labels"
+    fi
+
+    # A failed list call (rate limit, a fine-grained PAT missing the
+    # Variables/Secrets scope) is a lookup problem, not evidence the variable
+    # or secret is unset, so it must skip rather than report a false failure.
+    if variables=$(gh variable list --json name --jq '.[].name' 2>/dev/null); then
+      if echo "$variables" | grep -qxF CLAUDE_ROUTINE_ID; then
+        ok "CLAUDE_ROUTINE_ID variable is set"
+      else
+        bad "CLAUDE_ROUTINE_ID variable is not set; see README.md, 'Set two repo values'"
+      fi
+    else
+      skip "CLAUDE_ROUTINE_ID variable" "could not list variables"
+    fi
+
+    if secrets=$(gh secret list --json name --jq '.[].name' 2>/dev/null); then
+      if echo "$secrets" | grep -qxF CLAUDE_ROUTINE_TOKEN; then
+        ok "CLAUDE_ROUTINE_TOKEN secret is set"
+      else
+        bad "CLAUDE_ROUTINE_TOKEN secret is not set; see README.md, 'Set two repo values'"
+      fi
+    else
+      skip "CLAUDE_ROUTINE_TOKEN secret" "could not list secrets"
+    fi
+
+    # The routine reads the harness files from the default branch, not from
+    # whatever's checked out locally, so a two-call failure (branch name, then
+    # its tree) is a lookup problem, not evidence the files are missing.
+    if default_branch=$(gh api 'repos/{owner}/{repo}' --jq .default_branch 2>/dev/null) && [ -n "$default_branch" ] &&
+      default_branch_tree=$(gh api "repos/{owner}/{repo}/git/trees/$default_branch?recursive=true" --jq '.tree[].path' 2>/dev/null); then
+      for f in "${HARNESS_FILES[@]}"; do
+        if printf '%s\n' "$default_branch_tree" | grep -qxF "$f"; then
+          ok "$f exists on the default branch ($default_branch)"
+        else
+          bad "$f is missing on the default branch ($default_branch); merge the harness files to $default_branch"
+        fi
+      done
+    else
+      skip "harness files on the default branch" "could not look up the default branch"
+    fi
+
+    # A failed lookup (no admin permission to read the Actions settings, no
+    # network) is a lookup problem, not evidence Actions is disabled, so it
+    # must skip rather than report a false failure.
+    if actions_enabled=$(gh api 'repos/{owner}/{repo}/actions/permissions' --jq .enabled 2>/dev/null); then
+      if [ "$actions_enabled" = "true" ]; then
+        ok "GitHub Actions is enabled for this repo"
+      else
+        bad "GitHub Actions is disabled for this repo; enable it: Settings → Actions → General"
+      fi
+    else
+      skip "GitHub Actions enabled" "could not read the Actions permissions setting"
+    fi
+
+    # A failed lookup (the workflow not yet merged to the default branch, no
+    # network) is a lookup problem, not evidence the workflow is disabled, so
+    # it must skip rather than report a false failure.
+    if workflow_state=$(gh api 'repos/{owner}/{repo}/actions/workflows/claude.yml' --jq .state 2>/dev/null); then
+      if [ "$workflow_state" = "active" ]; then
+        ok "claude.yml workflow is active"
+      else
+        bad "claude.yml workflow is disabled; run: gh workflow enable claude.yml"
+      fi
+    else
+      skip "claude.yml workflow active" "could not look up the workflow"
+    fi
+  fi
+
+  local response status session_url
+  if [ "$fire" -eq 1 ]; then
+    if ! routine_credentials_set; then
+      skip "routine fire" "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set; source .env first"
+    elif ! command -v jq >/dev/null 2>&1; then
+      skip "routine fire" "jq is not installed"
+    else
+      response=$(mktemp)
+      status=$(fire_routine "$response" "Setup check. Reply with the repo name and stop.")
+      if [ "$status" -ge 200 ] && [ "$status" -lt 300 ]; then
+        session_url=$(jq -r '.claude_code_session_url // empty' "$response" 2>/dev/null) || session_url=""
+        if [ -n "$session_url" ]; then
+          ok "routine fire succeeded: $session_url"
+        else
+          bad "routine fire returned HTTP $status with no session URL in the response"
+        fi
+      else
+        bad "routine fire failed with HTTP $status ($(fire_failure_reason "$status"))"
+      fi
+      rm -f "$response"
+    fi
+  fi
+
+  if [ -f .env ]; then
+    if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+      bad ".env is tracked by git; remove it with: git rm --cached .env"
+    elif git check-ignore -q .env; then
+      ok ".env is gitignored"
+    else
+      bad ".env is not gitignored; add .env to .gitignore"
+    fi
+  fi
+
+  exit "$doctor_failed"
+}
+
+main() {
+  command=${1:-}
+  [ $# -gt 0 ] && shift
+  case "$command" in
+    install) cmd_install ;;
+    upgrade) cmd_upgrade ;;
+    doctor) cmd_doctor "$@" ;;
+    issue) cmd_issue "$@" ;;
+    uninstall) cmd_uninstall ;;
+    help | -h | --help) usage ;;
+    "")
+      usage >&2
+      exit 1
+      ;;
+    *)
+      echo "Unknown command: $command" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+# Guarded so the bin/check-* scripts can source this file for HARNESS_FILES.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Functional round trip for bin/harness-upgrade against fake fixtures, never
+# Functional round trip for `harness upgrade` against fake fixtures, never
 # this repo's real tags or raw content. No model calls.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# shellcheck source=bin/lib/fetch-files.sh
-source bin/lib/fetch-files.sh
 # shellcheck source=bin/lib/check-helpers.sh
 source bin/lib/check-helpers.sh
+# shellcheck source=bin/harness
+source bin/harness
 
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
@@ -16,22 +16,15 @@ old_src="$scratch/old_src"
 new_src="$scratch/new_src"
 tags_json="$scratch/tags.json"
 repo="$scratch/repo"
+cli="$scratch/cli/harness"
 
 build_fixture() {
   local dir=$1 version=$2
-  mkdir -p "$dir/bin/lib"
-  cp bin/harness-upgrade "$dir/bin/harness-upgrade"
-  cp bin/lib/fetch-files.sh "$dir/bin/lib/fetch-files.sh"
-  cp bin/lib/version-check.sh "$dir/bin/lib/version-check.sh"
-  chmod +x "$dir/bin/harness-upgrade"
+  mkdir -p "$dir/bin"
+  cp bin/harness "$dir/bin/harness"
   for f in "${HARNESS_FILES[@]}"; do
     mkdir -p "$dir/$(dirname "$f")"
     cp "$f" "$dir/$f"
-  done
-  for f in "${OPTIONAL_HARNESS_FILES[@]}"; do
-    mkdir -p "$dir/$(dirname "$f")"
-    cp "$f" "$dir/$f"
-    chmod +x "$dir/$f"
   done
   echo "$version" > "$dir/.claude/HARNESS_VERSION"
 }
@@ -39,30 +32,29 @@ build_fixture() {
 build_fixture "$old_src" "v0.0.1"
 build_fixture "$new_src" "v9.9.9"
 printf '\n<!-- check-harness-upgrade fixture marker: v9.9.9 -->\n' >> "$new_src/.claude/harness-rules.md"
-# bin/harness-doctor differs between releases, so refreshing it is checkable.
-printf '\n# check-harness-upgrade fixture marker: v9.9.9\n' >> "$new_src/bin/harness-doctor"
 
-# A file only the newer release's HARNESS_FILES names, to catch a stale list.
+# A file only the newer release's CLI names, to prove upgrade runs with the updated CLI's list.
 extra_file=".claude/new-fixture-file.txt"
 mkdir -p "$new_src/$(dirname "$extra_file")"
 echo "added in v9.9.9" > "$new_src/$extra_file"
 awk -v extra="$extra_file" '
   index($0, "\".claude/HARNESS_VERSION\"") { print "  \"" extra "\"" }
   { print }
-' bin/lib/fetch-files.sh > "$new_src/bin/lib/fetch-files.sh"
+' bin/harness > "$new_src/bin/harness"
 
 printf '[{"name":"v0.0.1"},{"name":"v9.9.9"}]' > "$tags_json"
 
 bad_tags_json="$scratch/bad-tags.json"
 printf '[{"name":"latest"},{"name":"vNext"}]' > "$bad_tags_json"
 
-mkdir -p "$repo/bin"
-cp bin/harness-install "$repo/bin/harness-install"
-chmod +x "$repo/bin/harness-install"
+git init -q "$repo"
+mkdir -p "$(dirname "$cli")"
+cp "$old_src/bin/harness" "$cli"
+chmod +x "$cli"
 
 poison_network
 
-# Stub open/xdg-open: a host's text-mode opener could eat the "y" meant for harness-upgrade's prompt.
+# Stub open/xdg-open: a host's text-mode opener could eat the "y" meant for the upgrade prompt.
 stub_bin="$scratch/stub_bin"
 mkdir -p "$stub_bin"
 printf '#!/usr/bin/env bash\ntrue\n' > "$stub_bin/open"
@@ -74,66 +66,56 @@ run_upgrade() {
   (
     cd "$repo" || exit 1
     export HARNESS_SRC="$1" HARNESS_TAGS_URL="$2"
-    printf 'y\n' | ./bin/harness-upgrade
+    printf 'y\n' | "$cli" upgrade
   )
 }
 
-if ! output=$(cd "$repo" && HARNESS_SRC="file://$old_src" ./bin/harness-install 2>&1); then
+if ! output=$(cd "$repo" && HARNESS_SRC="file://$old_src" "$cli" install 2>&1); then
   echo "$output" >&2
-  fail "bin/harness-install failed priming the scratch repo at the old fixture release"
+  fail "harness install failed priming the scratch repo at the old fixture release"
 fi
 [ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v0.0.1" ] || fail "expected the primed repo to start at v0.0.1"
 grep -q "check-harness-upgrade fixture marker" "$repo/.claude/harness-rules.md" && fail "expected the primed repo to not yet carry the newer fixture's marker"
 
-# Simulates an adopter who fetched bin/harness-doctor by hand but never bin/harness-uninstall.
-cp "$old_src/bin/harness-doctor" "$repo/bin/harness-doctor"
-chmod +x "$repo/bin/harness-doctor"
-[ -e "$repo/bin/harness-uninstall" ] && fail "expected the primed repo to not have bin/harness-uninstall before upgrading"
-
 if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" 2>&1); then
   echo "$output" >&2
-  fail "bin/harness-upgrade failed pulling in the fake newer release; check it honors \$HARNESS_TAGS_URL instead of hitting the real GitHub API"
+  fail "harness upgrade failed pulling in the fake newer release; check it honors \$HARNESS_TAGS_URL instead of hitting the real GitHub API"
 fi
 echo "$output" | grep -q "Upgrading v0.0.1 -> v9.9.9" || fail "expected upgrade output to report the v0.0.1 -> v9.9.9 transition, got: $output"
 
 [ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v9.9.9" ] || fail "expected .claude/HARNESS_VERSION to read v9.9.9 after upgrading, got $(cat "$repo/.claude/HARNESS_VERSION" 2>/dev/null)"
 echo "✓ upgrade bumped .claude/HARNESS_VERSION to the new tag"
 
-for f in "${HARNESS_FILES[@]}" "$extra_file" bin/harness-upgrade bin/lib/fetch-files.sh bin/lib/version-check.sh; do
+for f in "${HARNESS_FILES[@]}" "$extra_file"; do
   cmp -s "$repo/$f" "$new_src/$f" || fail "expected $f to match the fake newer release's content after upgrading"
 done
 grep -q "check-harness-upgrade fixture marker" "$repo/.claude/harness-rules.md" || fail "expected the newer fixture's marker to show up after upgrading"
 echo "✓ upgrade pulled every harness file's newer content"
-echo "✓ upgrade fetched $extra_file, which only the newer release's HARNESS_FILES named"
+echo "✓ upgrade fetched $extra_file, which only the newer release's CLI named"
 
-cmp -s "$repo/bin/harness-doctor" "$new_src/bin/harness-doctor" || fail "expected bin/harness-doctor, which the repo already had, to be refreshed with the newer release's content"
-[ -x "$repo/bin/harness-doctor" ] || fail "expected bin/harness-doctor to remain executable after being refreshed"
-echo "✓ upgrade refreshed bin/harness-doctor, which the repo already had"
-
-[ -e "$repo/bin/harness-uninstall" ] && fail "expected bin/harness-uninstall, which the repo never had, to stay absent after upgrading"
-echo "✓ upgrade left bin/harness-uninstall absent, since the repo never fetched it"
-
-[ -x "$repo/bin/harness-upgrade" ] || fail "expected bin/harness-upgrade to remain executable after upgrading itself"
-bash -n "$repo/bin/harness-upgrade" || fail "expected bin/harness-upgrade to still be valid bash after its temp-file-then-move self-replace"
-echo "✓ bin/harness-upgrade replaced itself without corrupting the running script"
+cmp -s "$cli" "$new_src/bin/harness" || fail "expected the CLI to replace itself with the newer release's copy"
+[ -x "$cli" ] || fail "expected the CLI to remain executable after upgrading itself"
+[ ! -e "$cli.new" ] || fail "expected no leftover $cli.new after the self-update"
+echo "$output" | grep -q "Updated the harness CLI" || fail "expected upgrade to report updating the CLI, got: $output"
+echo "✓ upgrade replaced the CLI with the newer release's copy"
 
 snapshot() {
-  find "$repo" -type f -print0 | sort -z | xargs -0 sha256sum
+  find "$repo" "$(dirname "$cli")" -path "$repo/.git" -prune -o -type f -print0 | sort -z | xargs -0 sha256sum
 }
 
 before=$(snapshot)
 if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" 2>&1); then
   echo "$output" >&2
-  fail "bin/harness-upgrade failed re-running against a repo already on the latest fake release"
+  fail "harness upgrade failed re-running against a repo already on the latest fake release"
 fi
 echo "$output" | grep -q "Already up to date: v9.9.9" || fail "expected a no-op re-run to report already up to date, got: $output"
 after=$(snapshot)
-[ "$before" = "$after" ] || fail "expected re-running bin/harness-upgrade on an up-to-date repo to leave every file untouched"
-echo "✓ re-running upgrade on an up-to-date repo left every file untouched"
+[ "$before" = "$after" ] || fail "expected re-running harness upgrade on an up-to-date repo to leave every file untouched"
+echo "✓ re-running upgrade on an up-to-date repo left every file, and the CLI, untouched"
 
 before=$(snapshot)
 if output=$(run_upgrade "file://$new_src" "file://$bad_tags_json" 2>&1); then
-  fail "expected bin/harness-upgrade to fail when no tag at \$HARNESS_TAGS_URL matches vX.Y.Z, got: $output"
+  fail "expected harness upgrade to fail when no tag at \$HARNESS_TAGS_URL matches vX.Y.Z, got: $output"
 fi
 echo "$output" | grep -q "No release tag matching vX.Y.Z found" || fail "expected a clear error when no tag matches vX.Y.Z, got: $output"
 after=$(snapshot)
@@ -145,14 +127,14 @@ echo "✓ a tags response with no matching vX.Y.Z tag fails clearly and touches 
 # to install it, and touching nothing.
 no_jq_bin="$scratch/no_jq_bin"
 mkdir -p "$no_jq_bin"
-for cmd in bash dirname curl; do
+for cmd in bash curl; do
   cmd_path=$(command -v "$cmd") || continue
   ln -sf "$cmd_path" "$no_jq_bin/$cmd"
 done
 
 before=$(snapshot)
-if output=$(cd "$repo" && PATH="$no_jq_bin" ./bin/harness-upgrade 2>&1); then
-  fail "expected bin/harness-upgrade to fail when jq is missing from PATH"
+if output=$(cd "$repo" && PATH="$no_jq_bin" "$cli" upgrade 2>&1); then
+  fail "expected harness upgrade to fail when jq is missing from PATH"
 fi
 echo "$output" | grep -q "jq not found; install it" || fail "expected a one-line error naming jq and how to install it, got: $output"
 after=$(snapshot)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Functional round trip for bin/harness-install and bin/harness-uninstall:
-# runs them against a scratch git repo (never this checkout) and asserts the
+# Functional round trip for `harness install` and `harness uninstall`: runs
+# them against a scratch git repo (never this checkout) and asserts the
 # files and CLAUDE.md state they claim to produce and clean up. No model
 # calls. HARNESS_SRC points install at this repo's own working tree over
 # file://, and http(s)_proxy is poisoned so a hardcoded fallback URL (i.e.
@@ -12,73 +12,95 @@ root=$(pwd)
 
 # shellcheck source=bin/lib/check-helpers.sh
 source bin/lib/check-helpers.sh
+# shellcheck source=bin/harness
+source bin/harness
 
 scratch=$(mktemp -d)
+outside_repo=$(mktemp -d)
 original_claude_md=$(mktemp)
-trap 'rm -rf "$scratch" "$original_claude_md"' EXIT
+trap 'rm -rf "$scratch" "$outside_repo" "$original_claude_md"' EXIT
 
 git init -q "$scratch"
-mkdir -p "$scratch/bin"
-cp bin/harness-install "$scratch/bin/harness-install"
-cp bin/harness-uninstall "$scratch/bin/harness-uninstall"
-chmod +x "$scratch/bin/harness-install" "$scratch/bin/harness-uninstall"
+mkdir -p "$scratch/src/nested"
 
 printf '# Adopter rules\n\nKeep doing the thing.\n' > "$original_claude_md"
 cp "$original_claude_md" "$scratch/CLAUDE.md"
 
+# A pre-CLI install's vendored bin/ scripts, which install must clean up.
+for f in "${LEGACY_FILES[@]}"; do
+  mkdir -p "$scratch/$(dirname "$f")"
+  echo "legacy" > "$scratch/$f"
+done
+
 export HARNESS_SRC="file://$root"
 poison_network
 
-run_install() {
-  (cd "$scratch" && ./bin/harness-install)
+# Runs from a nested directory to prove the CLI finds the repo root itself.
+run_harness() {
+  (cd "$scratch/src/nested" && "$root/bin/harness" "$@")
 }
 
 count_import_lines() {
   grep -cxF '@.claude/harness-rules.md' "$scratch/CLAUDE.md" || true
 }
 
-if ! output=$(run_install 2>&1); then
+if output=$(cd "$outside_repo" && "$root/bin/harness" install 2>&1); then
+  fail "expected harness install to fail outside a git repo"
+fi
+echo "$output" | grep -q "Not inside a git repo" || fail "expected a clear error outside a git repo, got: $output"
+echo "✓ install outside a git repo fails clearly"
+
+if ! output=$(run_harness install 2>&1); then
   echo "$output" >&2
-  fail "bin/harness-install failed with HARNESS_SRC set; check it reads \$HARNESS_SRC instead of a hardcoded src"
+  fail "harness install failed with HARNESS_SRC set; check it reads \$HARNESS_SRC instead of a hardcoded src"
 fi
 
-mapfile -t harness_files < <(cd "$scratch" && source bin/lib/fetch-files.sh && printf '%s\n' "${HARNESS_FILES[@]}")
-[ "${#harness_files[@]}" -gt 0 ] || fail "expected HARNESS_FILES to list at least one file"
-
-for f in "${harness_files[@]}" bin/harness-upgrade bin/lib/version-check.sh; do
-  [ -f "$scratch/$f" ] || fail "expected $f to exist after bin/harness-install"
+for f in "${HARNESS_FILES[@]}"; do
+  [ -f "$scratch/$f" ] || fail "expected $f to exist after harness install"
 done
-echo "✓ install wrote every harness file"
+[ ! -e "$scratch/src/nested/.claude" ] || fail "expected install to write at the repo root, not the working directory"
+echo "✓ install wrote every harness file at the repo root"
+
+for f in "${LEGACY_FILES[@]}"; do
+  [ ! -e "$scratch/$f" ] || fail "expected install to remove the legacy $f"
+done
+[ ! -d "$scratch/bin" ] || fail "expected bin/ to be removed once the legacy scripts emptied it"
+echo "✓ install removed the pre-CLI bin/ scripts"
 
 [ "$(count_import_lines)" = "1" ] || fail "expected exactly one @.claude/harness-rules.md line after install, got $(count_import_lines)"
 echo "✓ install added exactly one CLAUDE.md import line"
 
-if ! output=$(run_install 2>&1); then
+if ! output=$(run_harness install 2>&1); then
   echo "$output" >&2
-  fail "bin/harness-install failed on re-run"
+  fail "harness install failed on re-run"
 fi
 [ "$(count_import_lines)" = "1" ] || fail "expected exactly one @.claude/harness-rules.md line after re-running install, got $(count_import_lines)"
 echo "✓ re-running install did not duplicate the CLAUDE.md import line"
 
-if ! output=$(cd "$scratch" && ./bin/harness-uninstall 2>&1); then
+if ! output=$(run_harness uninstall 2>&1); then
   echo "$output" >&2
-  fail "bin/harness-uninstall failed"
+  fail "harness uninstall failed"
 fi
 
-for f in "${harness_files[@]}" bin/harness-install bin/harness-upgrade bin/lib/fetch-files.sh bin/lib/version-check.sh; do
-  [ ! -e "$scratch/$f" ] || fail "expected $f to be removed by bin/harness-uninstall"
+for f in "${HARNESS_FILES[@]}"; do
+  [ ! -e "$scratch/$f" ] || fail "expected $f to be removed by harness uninstall"
 done
 [ ! -d "$scratch/.claude/prompts" ] || fail "expected .claude/prompts to be removed once empty"
-[ ! -d "$scratch/bin/lib" ] || fail "expected bin/lib to be removed once empty"
 
 cmp -s "$scratch/CLAUDE.md" "$original_claude_md" || fail "expected CLAUDE.md to return to its pre-install content byte for byte"
 echo "✓ uninstall removed every harness file and restored CLAUDE.md"
 
-if ! output=$(cd "$scratch" && ./bin/harness-uninstall 2>&1); then
+if ! output=$(run_harness uninstall 2>&1); then
   echo "$output" >&2
-  fail "bin/harness-uninstall failed on re-run against an already-uninstalled repo"
+  fail "harness uninstall failed on re-run against an already-uninstalled repo"
 fi
 echo "✓ re-running uninstall on an already-uninstalled repo still exits cleanly"
+
+if output=$("$root/bin/harness" bogus 2>&1); then
+  fail "expected an unknown command to fail"
+fi
+echo "$output" | grep -q "Usage: harness <command>" || fail "expected an unknown command to print usage, got: $output"
+echo "✓ an unknown command fails with usage"
 
 echo
 echo "install/uninstall round trip: all passed"

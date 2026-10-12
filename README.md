@@ -23,20 +23,25 @@ Put your project's own rules in `CLAUDE.md`, not `harness-rules.md`, so an upgra
 
 ## Setup
 
-Install is ten files, two routines, one label, and two repo values.
+Install is the `harness` CLI, five files, two routines, one label, and two repo values.
 
-Prerequisites: `bash`, `git`, `gh`, `curl`, and `jq` on `PATH`. `bin/harness-doctor` (step 6) checks for `curl` and `jq` explicitly, and `bin/harness-upgrade` refuses to run without them.
+Prerequisites: `bash`, `git`, `gh`, `curl`, and `jq` on `PATH`. `harness doctor` (step 6) checks for `curl` and `jq` explicitly, and `harness upgrade` refuses to run without them.
 
 #### 1. Install the harness
 
-Run this from the root of your project repo. It's a curl-then-run of one script, [`bin/harness-install`](bin/harness-install), worth reading before you run it:
+Install the CLI once per machine. It's one script, [`bin/harness`](bin/harness), worth reading before you run it:
 
 ```bash
-src=https://raw.githubusercontent.com/Eschults/harness/v1
-mkdir -p bin && curl -fsSL "$src/bin/harness-install" -o bin/harness-install && chmod +x bin/harness-install && ./bin/harness-install
+mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/Eschults/harness/v1/bin/harness -o ~/.local/bin/harness && chmod +x ~/.local/bin/harness
 ```
 
-This pulls in the workflow, prompts, harness rules, and the `bin/harness-install`/`bin/harness-upgrade` tooling, then adds a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md` (which otherwise stays yours). Safe to re-run.
+Make sure `~/.local/bin` is on your `PATH`, or put the script anywhere else that is. Then, from inside your project repo:
+
+```bash
+harness install
+```
+
+This pulls in the workflow, prompts, and harness rules, then adds a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md` (which otherwise stays yours). Nothing lands in your repo's `bin/`. Safe to re-run. Run `harness help` for every command.
 
 #### 2. Create the "Issue to PR" routine
 
@@ -128,16 +133,15 @@ Then **Select a trigger → Schedule** and pick the frequency that suits your te
 
 It labels the issue as your GitHub user through the Claude GitHub App, so the label does fire `claude.yml`. A GHA cron job labeling with `GITHUB_TOKEN` would not, which is why this is a routine and not a workflow (see "Worth knowing").
 
-#### 6. (Opt) Install bin/harness-doctor
+#### 6. Check the setup
 
-Setup spans nine places this curl alone doesn't cover: the harness files, the `CLAUDE.md` import, the `claude` label, the `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` repo values, that the harness files are merged to the default branch, since the routine only ever reads them from there, that GitHub Actions and the `claude.yml` workflow are both enabled, since either one disabled stops a labeled issue from starting a run silently, and that the pinned `.claude/HARNESS_VERSION` still matches the latest release. [`bin/harness-doctor`](bin/harness-doctor) checks all nine in one command and never prints a secret value, only whether one is set. It isn't one of the files step 1 fetches, so pull it in the same way as `bin/harness-uninstall`, then run it:
+Setup spans nine places `harness install` alone doesn't cover: the harness files, the `CLAUDE.md` import, the `claude` label, the `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` repo values, that the harness files are merged to the default branch, since the routine only ever reads them from there, that GitHub Actions and the `claude.yml` workflow are both enabled, since either one disabled stops a labeled issue from starting a run silently, and that the pinned `.claude/HARNESS_VERSION` still matches the latest release. `harness doctor` checks all nine in one command and never prints a secret value, only whether one is set:
 
 ```bash
-src=https://raw.githubusercontent.com/Eschults/harness/v1
-mkdir -p bin && curl -fsSL "$src/bin/harness-doctor" -o bin/harness-doctor && chmod +x bin/harness-doctor && ./bin/harness-doctor
+harness doctor
 ```
 
-Add `--fire` to also confirm `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` work end to end, the same check as the manual `curl` in step 3: `./bin/harness-doctor --fire`. It's opt-in because a passing run starts a real session, which counts against your daily routine cap. Once installed, `bin/harness-upgrade` keeps it current on every upgrade, per "Upgrading" below.
+Add `--fire` to also confirm `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` work end to end, the same check as the manual `curl` in step 3: `source .env && harness doctor --fire`. It's opt-in because a passing run starts a real session, which counts against your daily routine cap.
 
 #### 7. Your turn
 
@@ -161,28 +165,27 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 - **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as the GitHub user linked to your Claude account; commits appear as Claude.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
-- **If GitHub Actions can't run `claude.yml`** (no minutes left, Actions disabled), the `claude` label stops starting runs silently. [`bin/fire-issue`](bin/fire-issue) is the fallback: `source .env && bin/fire-issue <issue-number>` fires the routine directly from your machine, the same way the workflow does.
+- **If GitHub Actions can't run `claude.yml`** (no minutes left, Actions disabled), the `claude` label stops starting runs silently. `harness issue` is the fallback: `source .env && harness issue <issue-number>` fires the routine directly from your machine, the same way the workflow does.
 
 ## Upgrading
 
-The harness is tagged: `main` moves as work lands, but `src` points at `v1`, a floating tag resolving to the latest `v1.x.y` release, cut with `bin/release`. Setup pins the tag it fetched to `.claude/HARNESS_VERSION`.
+The harness is tagged: `main` moves as work lands, but the CLI fetches from `v1`, a floating tag resolving to the latest `v1.x.y` release, cut with `bin/release`. Setup pins the tag it fetched to `.claude/HARNESS_VERSION`.
 
 ```bash
-bin/harness-upgrade
+harness upgrade
 ```
 
-It diffs your pinned version against the latest tag, opens the compare view, and, if you confirm, pulls in the updated files. It also refreshes `bin/harness-doctor` and `bin/harness-uninstall` if you already fetched them; it won't start fetching either one for you. Already on the latest release: it says so and exits. Review the diff and commit the changes.
+It first updates the CLI itself to the latest release, then diffs your pinned version against the latest tag, opens the compare view, and, if you confirm, pulls in the updated files. Already on the latest release: it says so and exits. Review the diff and commit the changes.
+
+Installed before the CLI existed? Your `bin/harness-upgrade` still works: run it once to pull in the latest files, then once more for how to install the CLI. `harness install` then removes the old `bin/` scripts.
 
 ## Uninstalling
 
-`bin/harness-uninstall` isn't one of the files step 1 fetches, so pull it in the same way you first fetched `bin/harness-install`, then run it:
-
 ```bash
-src=https://raw.githubusercontent.com/Eschults/harness/v1
-mkdir -p bin && curl -fsSL "$src/bin/harness-uninstall" -o bin/harness-uninstall && chmod +x bin/harness-uninstall && ./bin/harness-uninstall
+harness uninstall
 ```
 
-It deletes every file step 1 wrote, drops the `@.claude/harness-rules.md` import from `CLAUDE.md` without touching the rest of the file, and removes `.claude/prompts` and `bin/lib` if that empties them. Safe to re-run, including on a repo that was never installed. Review the diff and commit the changes.
+It deletes every file step 1 wrote, plus any leftover pre-CLI `bin/` scripts, drops the `@.claude/harness-rules.md` import from `CLAUDE.md` without touching the rest of the file, and removes `.claude/prompts` if that empties it. The CLI itself stays installed for your other repos; delete `~/.local/bin/harness` once none use it. Safe to re-run, including on a repo that was never installed. Review the diff and commit the changes.
 
 Last steps are printed in the terminal (the routine API does not have a delete endpoint yet):
 
@@ -193,4 +196,4 @@ Last steps are printed in the terminal (the routine API does not have a delete e
 
 ## License
 
-[MIT](LICENSE). The files you copy in step 1 are yours to use, edit and redistribute. Step 1 doesn't copy this `LICENSE`, so if you pass the harness files on, carry the copyright and permission notice with them.
+[MIT](LICENSE). The CLI and the files it copies in step 1 are yours to use, edit and redistribute. Step 1 doesn't copy this `LICENSE`, so if you pass the harness files on, carry the copyright and permission notice with them.
