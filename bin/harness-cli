@@ -138,7 +138,7 @@ cmd_upgrade() {
   require_tools curl jq
   cd_repo_root
 
-  local current latest compare confirm
+  local current latest release_notes confirm
   current=$(cat .claude/HARNESS_VERSION 2>/dev/null || true)
   if [ -z "$current" ]; then
     echo "No .claude/HARNESS_VERSION found; run harness install first." >&2
@@ -158,9 +158,9 @@ cmd_upgrade() {
       exit 0
     fi
 
-    compare="https://github.com/Eschults/harness/compare/$current...$latest"
-    echo "Upgrading $current -> $latest: $compare"
-    open "$compare" 2>/dev/null || xdg-open "$compare" 2>/dev/null || true
+    release_notes="https://github.com/Eschults/harness/releases/tag/$latest"
+    echo "Upgrading $current -> $latest: $release_notes"
+    open "$release_notes" 2>/dev/null || xdg-open "$release_notes" 2>/dev/null || true
 
     read -rp "Pull in $latest now? [y/N] " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then

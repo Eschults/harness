@@ -98,7 +98,7 @@ if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" 2>&1); then
   echo "$output" >&2
   fail "harness upgrade failed pulling in the fake newer release; check it honors \$HARNESS_TAGS_URL instead of hitting the real GitHub API"
 fi
-echo "$output" | grep -q "Upgrading v1.0.1 -> v1.9.9" || fail "expected upgrade output to report the v1.0.1 -> v1.9.9 transition, got: $output"
+echo "$output" | grep -qF "Upgrading v1.0.1 -> v1.9.9: https://github.com/Eschults/harness/releases/tag/v1.9.9" || fail "expected upgrade to report the v1.0.1 -> v1.9.9 transition with v1.9.9's release notes, got: $output"
 
 [ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected .claude/HARNESS_VERSION to read v1.9.9 after upgrading, got $(cat "$repo/.claude/HARNESS_VERSION" 2>/dev/null)"
 echo "✓ upgrade bumped .claude/HARNESS_VERSION to the new tag"
