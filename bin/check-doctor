@@ -426,6 +426,16 @@ fi
 assert_contains "$output" '✓ .env is gitignored' "gitignored .env"
 echo "✓ a gitignored .env passes the check"
 
+# --- unknown option ---
+# A typo in --fire must not silently skip the fire check and pass.
+repo="$scratch/unknown-option"
+build_healthy_repo "$repo"
+if output=$(run_doctor "$repo" --fier 2>&1); then
+  fail "expected harness doctor to fail on an unknown option"
+fi
+assert_contains "$output" 'Unknown option: --fier' "unknown option"
+echo "✓ an unknown option fails with usage instead of silently skipping a check"
+
 # --- --fire: no flag makes no network call ---
 repo="$scratch/fire-no-flag"
 build_healthy_repo "$repo"

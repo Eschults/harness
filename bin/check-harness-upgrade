@@ -29,25 +29,27 @@ build_fixture() {
   echo "$version" > "$dir/.claude/HARNESS_VERSION"
 }
 
-build_fixture "$old_src" "v0.0.1"
-build_fixture "$new_src" "v9.9.9"
-printf '\n<!-- check-harness-upgrade fixture marker: v9.9.9 -->\n' >> "$new_src/.claude/harness-rules.md"
+build_fixture "$old_src" "v1.0.1"
+build_fixture "$new_src" "v1.9.9"
+printf '\n<!-- check-harness-upgrade fixture marker: v1.9.9 -->\n' >> "$new_src/.claude/harness-rules.md"
 
 # A file only the newer release's CLI names, to prove upgrade runs with the updated CLI's list.
 extra_file=".claude/new-fixture-file.txt"
 mkdir -p "$new_src/$(dirname "$extra_file")"
-echo "added in v9.9.9" > "$new_src/$extra_file"
+echo "added in v1.9.9" > "$new_src/$extra_file"
 awk -v extra="$extra_file" '
   index($0, "\".claude/HARNESS_VERSION\"") { print "  \"" extra "\"" }
   { print }
 ' bin/harness > "$new_src/bin/harness"
 
-printf '[{"name":"v0.0.1"},{"name":"v9.9.9"}]' > "$tags_json"
+# v2.0.0 is a newer major, which this v1 CLI must ignore rather than offer.
+printf '[{"name":"v1.0.1"},{"name":"v1.9.9"},{"name":"v2.0.0"}]' > "$tags_json"
 
 bad_tags_json="$scratch/bad-tags.json"
 printf '[{"name":"latest"},{"name":"vNext"}]' > "$bad_tags_json"
 
 git init -q "$repo"
+mkdir -p "$repo/src/nested"
 mkdir -p "$(dirname "$cli")"
 cp "$old_src/bin/harness" "$cli"
 chmod +x "$cli"
@@ -62,28 +64,44 @@ cp "$stub_bin/open" "$stub_bin/xdg-open"
 chmod +x "$stub_bin/open" "$stub_bin/xdg-open"
 export PATH="$stub_bin:$PATH"
 
+# Calls the CLI by a relative path from a nested directory, so it must resolve its own path before cd'ing to the repo root.
 run_upgrade() {
+  local answer=${3:-y}
   (
-    cd "$repo" || exit 1
+    cd "$repo/src/nested" || exit 1
     export HARNESS_SRC="$1" HARNESS_TAGS_URL="$2"
-    printf 'y\n' | "$cli" upgrade
+    printf '%s\n' "$answer" | ../../../cli/harness upgrade
   )
+}
+
+snapshot() {
+  find "$repo" "$(dirname "$cli")" -path "$repo/.git" -prune -o -type f -print0 | sort -z | xargs -0 sha256sum
 }
 
 if ! output=$(cd "$repo" && HARNESS_SRC="file://$old_src" "$cli" install 2>&1); then
   echo "$output" >&2
   fail "harness install failed priming the scratch repo at the old fixture release"
 fi
-[ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v0.0.1" ] || fail "expected the primed repo to start at v0.0.1"
+[ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v1.0.1" ] || fail "expected the primed repo to start at v1.0.1"
 grep -q "check-harness-upgrade fixture marker" "$repo/.claude/harness-rules.md" && fail "expected the primed repo to not yet carry the newer fixture's marker"
+
+before=$(snapshot)
+if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" n 2>&1); then
+  echo "$output" >&2
+  fail "harness upgrade failed when the user declined"
+fi
+echo "$output" | grep -q "Skipped" || fail "expected a declined upgrade to say it skipped, got: $output"
+after=$(snapshot)
+[ "$before" = "$after" ] || fail "expected a declined upgrade to leave every file, and the CLI, untouched"
+echo "✓ a declined upgrade left every file, and the CLI, untouched"
 
 if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" 2>&1); then
   echo "$output" >&2
   fail "harness upgrade failed pulling in the fake newer release; check it honors \$HARNESS_TAGS_URL instead of hitting the real GitHub API"
 fi
-echo "$output" | grep -q "Upgrading v0.0.1 -> v9.9.9" || fail "expected upgrade output to report the v0.0.1 -> v9.9.9 transition, got: $output"
+echo "$output" | grep -q "Upgrading v1.0.1 -> v1.9.9" || fail "expected upgrade output to report the v1.0.1 -> v1.9.9 transition, got: $output"
 
-[ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v9.9.9" ] || fail "expected .claude/HARNESS_VERSION to read v9.9.9 after upgrading, got $(cat "$repo/.claude/HARNESS_VERSION" 2>/dev/null)"
+[ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected .claude/HARNESS_VERSION to read v1.9.9 after upgrading, got $(cat "$repo/.claude/HARNESS_VERSION" 2>/dev/null)"
 echo "✓ upgrade bumped .claude/HARNESS_VERSION to the new tag"
 
 for f in "${HARNESS_FILES[@]}" "$extra_file"; do
@@ -97,18 +115,16 @@ cmp -s "$cli" "$new_src/bin/harness" || fail "expected the CLI to replace itself
 [ -x "$cli" ] || fail "expected the CLI to remain executable after upgrading itself"
 [ ! -e "$cli.new" ] || fail "expected no leftover $cli.new after the self-update"
 echo "$output" | grep -q "Updated the harness CLI" || fail "expected upgrade to report updating the CLI, got: $output"
-echo "✓ upgrade replaced the CLI with the newer release's copy"
-
-snapshot() {
-  find "$repo" "$(dirname "$cli")" -path "$repo/.git" -prune -o -type f -print0 | sort -z | xargs -0 sha256sum
-}
+echo "✓ upgrade replaced the CLI with the newer release's copy, found by its relative path"
+echo "$output" | grep -q "v2.0.0" && fail "expected the v1 CLI to ignore the v2.0.0 tag, got: $output"
+echo "✓ upgrade ignored a tag from a newer major"
 
 before=$(snapshot)
 if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" 2>&1); then
   echo "$output" >&2
   fail "harness upgrade failed re-running against a repo already on the latest fake release"
 fi
-echo "$output" | grep -q "Already up to date: v9.9.9" || fail "expected a no-op re-run to report already up to date, got: $output"
+echo "$output" | grep -q "Already up to date: v1.9.9" || fail "expected a no-op re-run to report already up to date, got: $output"
 after=$(snapshot)
 [ "$before" = "$after" ] || fail "expected re-running harness upgrade on an up-to-date repo to leave every file untouched"
 echo "✓ re-running upgrade on an up-to-date repo left every file, and the CLI, untouched"
@@ -117,7 +133,7 @@ before=$(snapshot)
 if output=$(run_upgrade "file://$new_src" "file://$bad_tags_json" 2>&1); then
   fail "expected harness upgrade to fail when no tag at \$HARNESS_TAGS_URL matches vX.Y.Z, got: $output"
 fi
-echo "$output" | grep -q "No release tag matching vX.Y.Z found" || fail "expected a clear error when no tag matches vX.Y.Z, got: $output"
+echo "$output" | grep -q "No v1.Y.Z release tag found" || fail "expected a clear error when no tag matches v1.Y.Z, got: $output"
 after=$(snapshot)
 [ "$before" = "$after" ] || fail "expected a failed tag lookup to leave every file untouched"
 echo "✓ a tags response with no matching vX.Y.Z tag fails clearly and touches nothing"

@@ -55,7 +55,7 @@ require_tools() {
   local tool
   for tool in "$@"; do
     if ! command -v "$tool" >/dev/null 2>&1; then
-      echo "$tool not found; install it (e.g. apt-get install $tool, or brew install $tool) to run harness $command." >&2
+      echo "$tool not found; install it (e.g. apt-get install $tool, or brew install $tool) to run harness ${harness_command:-}." >&2
       exit 1
     fi
   done
@@ -70,10 +70,15 @@ cd_repo_root() {
   cd "$root"
 }
 
+# The major this CLI fetches from (v1); a newer major needs a CLI reinstall, so upgrade never offers it.
+harness_major() {
+  echo "${HARNESS_DEFAULT_SRC##*/}"
+}
+
 # Fails (non-zero) on a lookup error, so callers under set -e must handle it.
 latest_harness_version() {
   # grep matching nothing is fine; pipefail would otherwise abort with no message.
-  curl -fsSL "$(harness_tags_url)" | jq -r '.[].name' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -1
+  curl -fsSL "$(harness_tags_url)" | jq -r '.[].name' | { grep -E "^$(harness_major)\.[0-9]+\.[0-9]+$" || true; } | sort -V | tail -1
 }
 
 fetch_harness_files() {
@@ -125,6 +130,7 @@ cmd_install() {
   echo "Installed the harness at $(<.claude/HARNESS_VERSION). Next: the routine, label, and repo values in README.md, then harness doctor."
 }
 
+# Absolute path of this script; main resolves it before any cd, since BASH_SOURCE can be relative.
 cli_path() {
   local dir
   dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -134,8 +140,7 @@ cli_path() {
 # Replaces this CLI with the release's copy when they differ. Returns 0 only
 # when it did, so the caller can re-exec into the new version.
 refresh_cli() {
-  local self new
-  self=$(cli_path)
+  local self=$harness_cli new
   # Same directory as $self, so the final mv is an atomic rename that never
   # rewrites the file this running process is reading from.
   new="$self.new"
@@ -168,34 +173,37 @@ cmd_upgrade() {
     exit 1
   fi
 
-  # The new CLI may fetch a different file list, so run the rest of the upgrade with it.
-  if refresh_cli; then
-    exec "$(cli_path)" upgrade
-  fi
+  # Set when an updated CLI re-execs itself below, so the confirmed upgrade resumes without re-asking.
+  if [ -z "${HARNESS_UPGRADE_CONFIRMED:-}" ]; then
+    latest=$(latest_harness_version)
+    if [ -z "$latest" ]; then
+      echo "No $(harness_major).Y.Z release tag found at $(harness_tags_url)" >&2
+      exit 1
+    fi
 
-  latest=$(latest_harness_version)
-  if [ -z "$latest" ]; then
-    echo "No release tag matching vX.Y.Z found at $(harness_tags_url)" >&2
-    exit 1
-  fi
+    if [ "$current" = "$latest" ]; then
+      echo "Already up to date: $current"
+      exit 0
+    fi
 
-  if [ "$current" = "$latest" ]; then
-    echo "Already up to date: $current"
-    exit 0
-  fi
+    compare="https://github.com/Eschults/harness/compare/$current...$latest"
+    echo "Upgrading $current -> $latest: $compare"
+    open "$compare" 2>/dev/null || xdg-open "$compare" 2>/dev/null || true
 
-  compare="https://github.com/Eschults/harness/compare/$current...$latest"
-  echo "Upgrading $current -> $latest: $compare"
-  open "$compare" 2>/dev/null || xdg-open "$compare" 2>/dev/null || true
+    read -rp "Pull in $latest now? [y/N] " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+      echo "Skipped. Re-run harness upgrade when you're ready."
+      exit 0
+    fi
 
-  read -rp "Pull in $latest now? [y/N] " confirm
-  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-    echo "Skipped. Re-run harness upgrade when you're ready."
-    exit 0
+    # The new CLI may fetch a different file list, so let it finish the upgrade.
+    if refresh_cli; then
+      HARNESS_UPGRADE_CONFIRMED=1 exec "$harness_cli" upgrade
+    fi
   fi
 
   install_harness
-  echo "Pulled in $latest. Review the diff and commit."
+  echo "Pulled in $(<.claude/HARNESS_VERSION). Review the diff and commit."
 }
 
 cmd_uninstall() {
@@ -228,7 +236,7 @@ Removed the local harness files. Finish the cleanup on GitHub:
   - Delete the label:     gh label delete claude --yes
   - Remove the variable:  gh variable delete CLAUDE_ROUTINE_ID
   - Remove the secret:    gh secret delete CLAUDE_ROUTINE_TOKEN
-The harness CLI itself stays at $(cli_path); delete it if no other repo uses it.
+The harness CLI itself stays at $harness_cli; delete it if no other repo uses it.
 EOF
 }
 
@@ -327,7 +335,13 @@ skip() { echo "- $1 (skipped: $2)"; }
 cmd_doctor() {
   local fire=0 arg tool f
   for arg in "$@"; do
-    [ "$arg" = "--fire" ] && fire=1
+    case "$arg" in
+      --fire) fire=1 ;;
+      *)
+        echo "Unknown option: $arg. Usage: harness doctor [--fire]" >&2
+        exit 1
+        ;;
+    esac
   done
 
   cd_repo_root
@@ -497,9 +511,10 @@ cmd_doctor() {
 }
 
 main() {
-  command=${1:-}
+  harness_command=${1:-}
+  harness_cli=$(cli_path)
   [ $# -gt 0 ] && shift
-  case "$command" in
+  case "$harness_command" in
     install) cmd_install ;;
     upgrade) cmd_upgrade ;;
     doctor) cmd_doctor "$@" ;;
@@ -511,7 +526,7 @@ main() {
       exit 1
       ;;
     *)
-      echo "Unknown command: $command" >&2
+      echo "Unknown command: $harness_command" >&2
       usage >&2
       exit 1
       ;;
