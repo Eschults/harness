@@ -66,4 +66,8 @@ curl -fsSL "$src/bin/harness-upgrade" -o bin/harness-upgrade.new
 chmod +x bin/harness-upgrade.new
 mv bin/harness-upgrade.new bin/harness-upgrade
 
+# Last, so a failed refresh of an optional tool can't leave the required
+# upgrade above (the version bump, version-check.sh, this script) half-done.
+refresh_optional_files
+
 echo "Pulled in $latest. Review the diff and commit."

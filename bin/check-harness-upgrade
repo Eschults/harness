@@ -28,12 +28,19 @@ build_fixture() {
     mkdir -p "$dir/$(dirname "$f")"
     cp "$f" "$dir/$f"
   done
+  for f in "${OPTIONAL_HARNESS_FILES[@]}"; do
+    mkdir -p "$dir/$(dirname "$f")"
+    cp "$f" "$dir/$f"
+    chmod +x "$dir/$f"
+  done
   echo "$version" > "$dir/.claude/HARNESS_VERSION"
 }
 
 build_fixture "$old_src" "v0.0.1"
 build_fixture "$new_src" "v9.9.9"
 printf '\n<!-- check-harness-upgrade fixture marker: v9.9.9 -->\n' >> "$new_src/.claude/harness-rules.md"
+# bin/harness-doctor differs between releases, so refreshing it is checkable.
+printf '\n# check-harness-upgrade fixture marker: v9.9.9\n' >> "$new_src/bin/harness-doctor"
 
 # A file only the newer release's HARNESS_FILES names, to catch a stale list.
 extra_file=".claude/new-fixture-file.txt"
@@ -78,6 +85,11 @@ fi
 [ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v0.0.1" ] || fail "expected the primed repo to start at v0.0.1"
 grep -q "check-harness-upgrade fixture marker" "$repo/.claude/harness-rules.md" && fail "expected the primed repo to not yet carry the newer fixture's marker"
 
+# Simulates an adopter who fetched bin/harness-doctor by hand but never bin/harness-uninstall.
+cp "$old_src/bin/harness-doctor" "$repo/bin/harness-doctor"
+chmod +x "$repo/bin/harness-doctor"
+[ -e "$repo/bin/harness-uninstall" ] && fail "expected the primed repo to not have bin/harness-uninstall before upgrading"
+
 if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" 2>&1); then
   echo "$output" >&2
   fail "bin/harness-upgrade failed pulling in the fake newer release; check it honors \$HARNESS_TAGS_URL instead of hitting the real GitHub API"
@@ -93,6 +105,13 @@ done
 grep -q "check-harness-upgrade fixture marker" "$repo/.claude/harness-rules.md" || fail "expected the newer fixture's marker to show up after upgrading"
 echo "✓ upgrade pulled every harness file's newer content"
 echo "✓ upgrade fetched $extra_file, which only the newer release's HARNESS_FILES named"
+
+cmp -s "$repo/bin/harness-doctor" "$new_src/bin/harness-doctor" || fail "expected bin/harness-doctor, which the repo already had, to be refreshed with the newer release's content"
+[ -x "$repo/bin/harness-doctor" ] || fail "expected bin/harness-doctor to remain executable after being refreshed"
+echo "✓ upgrade refreshed bin/harness-doctor, which the repo already had"
+
+[ -e "$repo/bin/harness-uninstall" ] && fail "expected bin/harness-uninstall, which the repo never had, to stay absent after upgrading"
+echo "✓ upgrade left bin/harness-uninstall absent, since the repo never fetched it"
 
 [ -x "$repo/bin/harness-upgrade" ] || fail "expected bin/harness-upgrade to remain executable after upgrading itself"
 bash -n "$repo/bin/harness-upgrade" || fail "expected bin/harness-upgrade to still be valid bash after its temp-file-then-move self-replace"

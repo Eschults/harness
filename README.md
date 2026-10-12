@@ -25,7 +25,7 @@ Put your project's own rules in `CLAUDE.md`, not `harness-rules.md`, so an upgra
 
 Install is ten files, two routines, one label, and two repo values.
 
-Prerequisites: `bash`, `git`, `gh`, `curl`, and `jq` on `PATH`. `bin/harness-doctor` (step 4) checks for `curl` and `jq` explicitly, and `bin/harness-upgrade` refuses to run without them.
+Prerequisites: `bash`, `git`, `gh`, `curl`, and `jq` on `PATH`. `bin/harness-doctor` (step 6) checks for `curl` and `jq` explicitly, and `bin/harness-upgrade` refuses to run without them.
 
 #### 1. Install the harness
 
@@ -107,15 +107,6 @@ gh label create claude --color D97757 --description "starts a Claude Code run" -
 
 `--force` makes this safe to re-run: it creates the label if missing and updates its color/description in place if it already exists, so re-running the install doesn't fail on a label you already have.
 
-Setup spans nine places this curl alone doesn't cover: the harness files, the `CLAUDE.md` import, the `claude` label, the `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` repo values, that the harness files are merged to the default branch, since the routine only ever reads them from there, that GitHub Actions and the `claude.yml` workflow are both enabled, since either one disabled stops a labeled issue from starting a run silently, and that the pinned `.claude/HARNESS_VERSION` still matches the latest release. [`bin/harness-doctor`](bin/harness-doctor) checks all nine in one command and never prints a secret value, only whether one is set. It isn't one of the files step 1 fetches, so pull it in the same way as `bin/harness-uninstall`, then run it:
-
-```bash
-src=https://raw.githubusercontent.com/Eschults/harness/v1
-mkdir -p bin && curl -fsSL "$src/bin/harness-doctor" -o bin/harness-doctor && chmod +x bin/harness-doctor && ./bin/harness-doctor
-```
-
-Add `--fire` to also confirm `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` work end to end, the same check as the manual `curl` in step 3: `./bin/harness-doctor --fire`. It's opt-in because a passing run starts a real session, which counts against your daily routine cap.
-
 #### 5. (Opt) Create the "Next to build" routine
 
 So far only a human opens the gate. A second routine closes that loop: it wakes on a schedule, reads the repo, works out the capability it should gain next, and files that as one issue with the `claude` label, which fires the "Issue to PR" workflow and starts an implementation run with nobody in the loop until review. It first checks for open `claude`-labeled issues and open `claude/` branch PRs, and skips the run rather than file on top of a queue a human hasn't reviewed yet.
@@ -137,7 +128,18 @@ Then **Select a trigger → Schedule** and pick the frequency that suits your te
 
 It labels the issue as your GitHub user through the Claude GitHub App, so the label does fire `claude.yml`. A GHA cron job labeling with `GITHUB_TOKEN` would not, which is why this is a routine and not a workflow (see "Worth knowing").
 
-#### 6. Your turn
+#### 6. (Opt) Install bin/harness-doctor
+
+Setup spans nine places this curl alone doesn't cover: the harness files, the `CLAUDE.md` import, the `claude` label, the `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` repo values, that the harness files are merged to the default branch, since the routine only ever reads them from there, that GitHub Actions and the `claude.yml` workflow are both enabled, since either one disabled stops a labeled issue from starting a run silently, and that the pinned `.claude/HARNESS_VERSION` still matches the latest release. [`bin/harness-doctor`](bin/harness-doctor) checks all nine in one command and never prints a secret value, only whether one is set. It isn't one of the files step 1 fetches, so pull it in the same way as `bin/harness-uninstall`, then run it:
+
+```bash
+src=https://raw.githubusercontent.com/Eschults/harness/v1
+mkdir -p bin && curl -fsSL "$src/bin/harness-doctor" -o bin/harness-doctor && chmod +x bin/harness-doctor && ./bin/harness-doctor
+```
+
+Add `--fire` to also confirm `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` work end to end, the same check as the manual `curl` in step 3: `./bin/harness-doctor --fire`. It's opt-in because a passing run starts a real session, which counts against your daily routine cap. Once installed, `bin/harness-upgrade` keeps it current on every upgrade, per "Upgrading" below.
+
+#### 7. Your turn
 
 Wire your APM to file a `claude`-labeled issue on high-severity errors, or connect your roadmap tool to push cards straight to GitHub as they're ready to build. Either one closes the same loop: work starts the moment it's ready, not the moment someone's free to kick it off.
 
@@ -169,7 +171,7 @@ The harness is tagged: `main` moves as work lands, but `src` points at `v1`, a f
 bin/harness-upgrade
 ```
 
-It diffs your pinned version against the latest tag, opens the compare view, and, if you confirm, pulls in the updated files. Already on the latest release: it says so and exits. Review the diff and commit the changes.
+It diffs your pinned version against the latest tag, opens the compare view, and, if you confirm, pulls in the updated files. It also refreshes `bin/harness-doctor` and `bin/harness-uninstall` if you already fetched them; it won't start fetching either one for you. Already on the latest release: it says so and exits. Review the diff and commit the changes.
 
 ## Uninstalling
 
