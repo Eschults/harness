@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# Functional check for bin/harness-doctor: runs it against a scratch git repo
+# Functional check for `harness doctor`: runs it against a scratch git repo
 # (never this checkout) with a stubbed gh on PATH, covering a healthy install
 # and at least one failure per category it checks. No model calls, no real
 # gh/network calls.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+cli="$(pwd)/bin/harness"
 
-# shellcheck source=bin/lib/fetch-files.sh
-source bin/lib/fetch-files.sh
 # shellcheck source=bin/lib/check-helpers.sh
 source bin/lib/check-helpers.sh
+# shellcheck source=bin/harness
+source bin/harness
 
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 
-# harness-doctor's version check hits $HARNESS_TAGS_URL with the real curl
+# harness doctor's version check hits $HARNESS_TAGS_URL with the real curl
 # (only gh is stubbed below); poison the network so a test that doesn't
 # override it with a local file:// fixture fails the lookup fast instead of
 # reaching the real GitHub API.
@@ -84,20 +85,15 @@ printf '%s' "${STUB_CURL_STATUS:-200}"
 STUB
 chmod +x "$stub_bin/curl"
 
-# Builds a scratch repo with every HARNESS_FILES entry, the CLAUDE.md import,
-# and bin/harness-doctor itself, all copied from this checkout's real content.
+# Builds a scratch repo with every HARNESS_FILES entry and the CLAUDE.md
+# import, all copied from this checkout's real content.
 build_healthy_repo() {
   local dir=$1
-  mkdir -p "$dir/bin/lib"
   git init -q "$dir"
   for f in "${HARNESS_FILES[@]}"; do
     mkdir -p "$dir/$(dirname "$f")"
     cp "$f" "$dir/$f"
   done
-  cp bin/lib/fetch-files.sh "$dir/bin/lib/fetch-files.sh"
-  cp bin/lib/version-check.sh "$dir/bin/lib/version-check.sh"
-  cp bin/harness-doctor "$dir/bin/harness-doctor"
-  chmod +x "$dir/bin/harness-doctor"
   printf '# Adopter rules\n\n@.claude/harness-rules.md\n' > "$dir/CLAUDE.md"
 }
 
@@ -127,7 +123,7 @@ run_doctor() {
     REAL_CURL="$real_curl" \
     CLAUDE_ROUTINE_ID="${CLAUDE_ROUTINE_ID-}" \
     CLAUDE_ROUTINE_TOKEN="${CLAUDE_ROUTINE_TOKEN-}" \
-    ./bin/harness-doctor "$@"
+    "$cli" doctor "$@"
   )
 }
 
@@ -141,7 +137,7 @@ repo="$scratch/healthy"
 build_healthy_repo "$repo"
 if ! output=$(run_doctor "$repo"); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor to exit 0 against a healthy install"
+  fail "expected harness doctor to exit 0 against a healthy install"
 fi
 echo "$output" | grep -q '✗' && fail "expected no failing checks against a healthy install, got: $output"
 assert_contains "$output" '✓ curl is on PATH' "healthy install"
@@ -158,7 +154,7 @@ tags_current="$scratch/tags-current.json"
 printf '[{"name":"v1.2.3"}]' > "$tags_current"
 if ! output=$(HARNESS_TAGS_URL="file://$tags_current" run_doctor "$repo"); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor to exit 0 when the pinned harness version matches the latest release"
+  fail "expected harness doctor to exit 0 when the pinned harness version matches the latest release"
 fi
 assert_contains "$output" '✓ harness is on the latest release (v1.2.3)' "harness version up to date"
 echo "✓ a pinned harness version matching the latest release passes the check"
@@ -170,9 +166,9 @@ echo "v1.2.3" > "$repo/.claude/HARNESS_VERSION"
 tags_behind="$scratch/tags-behind.json"
 printf '[{"name":"v1.2.3"},{"name":"v1.3.0"}]' > "$tags_behind"
 if output=$(HARNESS_TAGS_URL="file://$tags_behind" run_doctor "$repo"); then
-  fail "expected bin/harness-doctor to fail when the pinned harness version is behind the latest release"
+  fail "expected harness doctor to fail when the pinned harness version is behind the latest release"
 fi
-assert_contains "$output" '✗ harness is on v1.2.3 but v1.3.0 is the latest release; run bin/harness-upgrade' "harness version behind"
+assert_contains "$output" '✗ harness is on v1.2.3 but v1.3.0 is the latest release; run harness upgrade' "harness version behind"
 echo "✓ a pinned harness version behind the latest release fails the check that names it"
 
 # --- harness version lookup fails (offline, rate limit) ---
@@ -181,7 +177,7 @@ build_healthy_repo "$repo"
 echo "v1.2.3" > "$repo/.claude/HARNESS_VERSION"
 if ! output=$(HARNESS_TAGS_URL="file://$scratch/no-such-tags.json" run_doctor "$repo"); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor to exit 0 when the version tag lookup fails but every other check passes"
+  fail "expected harness doctor to exit 0 when the version tag lookup fails but every other check passes"
 fi
 assert_contains "$output" '- harness version (skipped: could not look up the latest release tag)' "version lookup failure"
 echo "$output" | grep -q '✗' && fail "expected a failed version lookup to be a skip, never a false failure, got: $output"
@@ -194,12 +190,12 @@ repo="$scratch/missing-curl"
 build_healthy_repo "$repo"
 no_curl_bin="$scratch/no_curl_bin"
 mkdir -p "$no_curl_bin"
-for cmd in bash dirname grep jq; do
+for cmd in bash dirname grep git jq; do
   cmd_path=$(command -v "$cmd") || continue
   ln -sf "$cmd_path" "$no_curl_bin/$cmd"
 done
-if output=$(cd "$repo" && PATH="$no_curl_bin" ./bin/harness-doctor); then
-  fail "expected bin/harness-doctor to fail when curl is missing"
+if output=$(cd "$repo" && PATH="$no_curl_bin" "$cli" doctor); then
+  fail "expected harness doctor to fail when curl is missing"
 fi
 assert_contains "$output" '✗ curl is missing' "missing curl"
 echo "✓ a missing curl fails the check that names it"
@@ -209,12 +205,12 @@ repo="$scratch/missing-jq"
 build_healthy_repo "$repo"
 no_jq_bin="$scratch/no_jq_bin"
 mkdir -p "$no_jq_bin"
-for cmd in bash dirname grep curl; do
+for cmd in bash dirname grep git curl; do
   cmd_path=$(command -v "$cmd") || continue
   ln -sf "$cmd_path" "$no_jq_bin/$cmd"
 done
-if output=$(cd "$repo" && PATH="$no_jq_bin" ./bin/harness-doctor); then
-  fail "expected bin/harness-doctor to fail when jq is missing"
+if output=$(cd "$repo" && PATH="$no_jq_bin" "$cli" doctor); then
+  fail "expected harness doctor to fail when jq is missing"
 fi
 assert_contains "$output" '✗ jq is missing' "missing jq"
 echo "✓ a missing jq fails the check that names it"
@@ -224,7 +220,7 @@ repo="$scratch/missing-file"
 build_healthy_repo "$repo"
 rm "$repo/.claude/harness-rules.md"
 if output=$(run_doctor "$repo"); then
-  fail "expected bin/harness-doctor to fail when a harness file is missing"
+  fail "expected harness doctor to fail when a harness file is missing"
 fi
 assert_contains "$output" '✗ .claude/harness-rules.md is missing' "missing file"
 echo "✓ a missing harness file fails the check that names it"
@@ -234,13 +230,13 @@ repo="$scratch/missing-import"
 build_healthy_repo "$repo"
 printf '# Adopter rules\n' > "$repo/CLAUDE.md"
 if output=$(run_doctor "$repo"); then
-  fail "expected bin/harness-doctor to fail when CLAUDE.md has no harness-rules.md import"
+  fail "expected harness doctor to fail when CLAUDE.md has no harness-rules.md import"
 fi
 assert_contains "$output" '✗ CLAUDE.md does not import' "missing import"
 echo "✓ a missing CLAUDE.md import fails the check that names it"
 
 # --- CLAUDE.md import on a line with trailing content ---
-# bin/harness-install only checks that the import is present as a substring
+# harness install only checks that the import is present as a substring
 # (grep -qF, no -x), so it never re-appends to a line like this; the doctor
 # check has to agree or it reports a failure its own suggested fix can't clear.
 repo="$scratch/import-trailing-content"
@@ -248,15 +244,15 @@ build_healthy_repo "$repo"
 printf '@.claude/harness-rules.md some trailing note\n' > "$repo/CLAUDE.md"
 if ! output=$(run_doctor "$repo"); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor to accept a CLAUDE.md import line harness-install itself treats as already present"
+  fail "expected harness doctor to accept a CLAUDE.md import line harness install itself treats as already present"
 fi
-echo "✓ a CLAUDE.md import line harness-install already accepts passes the check too"
+echo "✓ a CLAUDE.md import line harness install already accepts passes the check too"
 
 # --- missing label ---
 repo="$scratch/missing-label"
 build_healthy_repo "$repo"
 if output=$(STUB_GH_LABELS="" run_doctor "$repo"); then
-  fail "expected bin/harness-doctor to fail when the claude label is missing"
+  fail "expected harness doctor to fail when the claude label is missing"
 fi
 assert_contains "$output" '✗ claude label is missing' "missing label"
 echo "✓ a missing claude label fails the check that names it"
@@ -265,7 +261,7 @@ echo "✓ a missing claude label fails the check that names it"
 repo="$scratch/missing-variable"
 build_healthy_repo "$repo"
 if output=$(STUB_GH_VARIABLES="" run_doctor "$repo"); then
-  fail "expected bin/harness-doctor to fail when CLAUDE_ROUTINE_ID is unset"
+  fail "expected harness doctor to fail when CLAUDE_ROUTINE_ID is unset"
 fi
 assert_contains "$output" '✗ CLAUDE_ROUTINE_ID variable is not set' "missing variable"
 echo "✓ a missing CLAUDE_ROUTINE_ID variable fails the check that names it"
@@ -274,7 +270,7 @@ echo "✓ a missing CLAUDE_ROUTINE_ID variable fails the check that names it"
 repo="$scratch/missing-secret"
 build_healthy_repo "$repo"
 if output=$(STUB_GH_SECRETS="" run_doctor "$repo"); then
-  fail "expected bin/harness-doctor to fail when CLAUDE_ROUTINE_TOKEN is unset"
+  fail "expected harness doctor to fail when CLAUDE_ROUTINE_TOKEN is unset"
 fi
 assert_contains "$output" '✗ CLAUDE_ROUTINE_TOKEN secret is not set' "missing secret"
 echo "✓ a missing CLAUDE_ROUTINE_TOKEN secret fails the check that names it"
@@ -285,7 +281,7 @@ repo="$scratch/missing-on-default-branch"
 build_healthy_repo "$repo"
 tree_without_rules=$(printf '%s\n' "${HARNESS_FILES[@]}" | grep -vxF '.claude/harness-rules.md')
 if output=$(STUB_GH_TREE="$tree_without_rules" run_doctor "$repo"); then
-  fail "expected bin/harness-doctor to fail when a harness file is only on a feature branch, not the default branch"
+  fail "expected harness doctor to fail when a harness file is only on a feature branch, not the default branch"
 fi
 assert_contains "$output" '✗ .claude/harness-rules.md is missing on the default branch (main); merge the harness files to main' "file missing on default branch"
 echo "✓ a harness file missing from the default branch fails the check that names it"
@@ -295,7 +291,7 @@ repo="$scratch/default-branch-lookup-fails"
 build_healthy_repo "$repo"
 if ! output=$(STUB_GH_DEFAULT_BRANCH_EXIT=1 run_doctor "$repo"); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor to exit 0 when the default branch lookup fails but every other check passes"
+  fail "expected harness doctor to exit 0 when the default branch lookup fails but every other check passes"
 fi
 assert_contains "$output" '- harness files on the default branch (skipped: could not look up the default branch)' "default branch lookup failure"
 echo "$output" | grep -q '✗' && fail "expected a failed default branch lookup to be a skip, never a false failure, got: $output"
@@ -310,7 +306,7 @@ repo="$scratch/list-fails"
 build_healthy_repo "$repo"
 if ! output=$(STUB_GH_LABEL_LIST_EXIT=1 STUB_GH_VARIABLE_LIST_EXIT=1 STUB_GH_SECRET_LIST_EXIT=1 run_doctor "$repo"); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor to exit 0 when gh label/variable/secret list fails but every other check passes"
+  fail "expected harness doctor to exit 0 when gh label/variable/secret list fails but every other check passes"
 fi
 assert_contains "$output" '- claude label (skipped: could not list labels)' "label list failure"
 assert_contains "$output" '- CLAUDE_ROUTINE_ID variable (skipped: could not list variables)' "variable list failure"
@@ -322,7 +318,7 @@ echo "✓ a failed gh label/variable/secret list is skipped rather than reported
 repo="$scratch/actions-disabled"
 build_healthy_repo "$repo"
 if output=$(STUB_GH_ACTIONS_ENABLED="false" run_doctor "$repo"); then
-  fail "expected bin/harness-doctor to fail when GitHub Actions is disabled for the repo"
+  fail "expected harness doctor to fail when GitHub Actions is disabled for the repo"
 fi
 assert_contains "$output" '✗ GitHub Actions is disabled for this repo; enable it: Settings → Actions → General' "Actions disabled"
 echo "✓ GitHub Actions disabled for the repo fails the check that names it"
@@ -332,7 +328,7 @@ repo="$scratch/actions-lookup-fails"
 build_healthy_repo "$repo"
 if ! output=$(STUB_GH_ACTIONS_ENABLED_EXIT=1 run_doctor "$repo"); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor to exit 0 when the Actions permissions lookup fails but every other check passes"
+  fail "expected harness doctor to exit 0 when the Actions permissions lookup fails but every other check passes"
 fi
 assert_contains "$output" '- GitHub Actions enabled (skipped: could not read the Actions permissions setting)' "Actions lookup failure"
 echo "$output" | grep -q '✗' && fail "expected a failed Actions permissions lookup to be a skip, never a false failure, got: $output"
@@ -342,7 +338,7 @@ echo "✓ a failed GitHub Actions permissions lookup is skipped rather than repo
 repo="$scratch/workflow-disabled"
 build_healthy_repo "$repo"
 if output=$(STUB_GH_WORKFLOW_STATE="disabled_manually" run_doctor "$repo"); then
-  fail "expected bin/harness-doctor to fail when the claude.yml workflow is disabled"
+  fail "expected harness doctor to fail when the claude.yml workflow is disabled"
 fi
 assert_contains "$output" '✗ claude.yml workflow is disabled; run: gh workflow enable claude.yml' "workflow disabled"
 echo "✓ a disabled claude.yml workflow fails the check that names it"
@@ -352,7 +348,7 @@ repo="$scratch/workflow-lookup-fails"
 build_healthy_repo "$repo"
 if ! output=$(STUB_GH_WORKFLOW_STATE_EXIT=1 run_doctor "$repo"); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor to exit 0 when the claude.yml workflow lookup fails but every other check passes"
+  fail "expected harness doctor to exit 0 when the claude.yml workflow lookup fails but every other check passes"
 fi
 assert_contains "$output" '- claude.yml workflow active (skipped: could not look up the workflow)' "workflow lookup failure"
 echo "$output" | grep -q '✗' && fail "expected a failed claude.yml workflow lookup to be a skip, never a false failure, got: $output"
@@ -362,7 +358,7 @@ echo "✓ a failed claude.yml workflow lookup is skipped rather than reported as
 # A hardcoded PATH (e.g. "/usr/bin:/bin") can't stand in for "no gh": GitHub
 # Actions' runner image ships gh in /usr/bin, right alongside bash and grep,
 # so excluding that whole directory breaks the test in a different way
-# (env can't find bash). Symlink in only what bin/harness-doctor itself
+# (env can't find bash). Symlink in only what harness doctor itself
 # calls, gh deliberately left out, so it holds on a laptop and a runner alike.
 no_gh_bin="$scratch/no_gh_bin"
 mkdir -p "$no_gh_bin"
@@ -373,9 +369,9 @@ done
 
 repo="$scratch/no-gh"
 build_healthy_repo "$repo"
-if ! output=$(cd "$repo" && PATH="$no_gh_bin" ./bin/harness-doctor); then
+if ! output=$(cd "$repo" && PATH="$no_gh_bin" "$cli" doctor); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor to exit 0 when gh is missing and every local check passes"
+  fail "expected harness doctor to exit 0 when gh is missing and every local check passes"
 fi
 assert_contains "$output" '- claude label (skipped: gh is not installed)' "gh missing"
 assert_contains "$output" '- harness files on the default branch (skipped: gh is not installed)' "gh missing"
@@ -388,7 +384,7 @@ repo="$scratch/gh-unauthed"
 build_healthy_repo "$repo"
 if ! output=$(STUB_GH_AUTH_EXIT=1 run_doctor "$repo"); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor to exit 0 when gh is unauthenticated and every local check passes"
+  fail "expected harness doctor to exit 0 when gh is unauthenticated and every local check passes"
 fi
 assert_contains "$output" '- CLAUDE_ROUTINE_ID variable (skipped: gh is not authenticated' "gh unauthenticated"
 assert_contains "$output" '- harness files on the default branch (skipped: gh is not authenticated' "gh unauthenticated"
@@ -401,7 +397,7 @@ repo="$scratch/env-not-ignored"
 build_healthy_repo "$repo"
 echo "CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test" > "$repo/.env"
 if output=$(run_doctor "$repo"); then
-  fail "expected bin/harness-doctor to fail when .env exists and is not gitignored"
+  fail "expected harness doctor to fail when .env exists and is not gitignored"
 fi
 assert_contains "$output" '✗ .env is not gitignored' "untracked .env"
 echo "$output" | grep -q 'sk-ant' && fail "expected no .env content to ever appear in doctor output"
@@ -413,7 +409,7 @@ build_healthy_repo "$repo"
 echo "CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test" > "$repo/.env"
 (cd "$repo" && git add .env && git -c user.email=t@t -c user.name=t commit -q -m "oops")
 if output=$(run_doctor "$repo"); then
-  fail "expected bin/harness-doctor to fail when .env is tracked by git"
+  fail "expected harness doctor to fail when .env is tracked by git"
 fi
 assert_contains "$output" '✗ .env is tracked by git' "tracked .env"
 echo "✓ a tracked .env fails the check that names it"
@@ -425,17 +421,27 @@ echo "CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test" > "$repo/.env"
 echo ".env" > "$repo/.gitignore"
 if ! output=$(run_doctor "$repo"); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor to exit 0 when .env is gitignored"
+  fail "expected harness doctor to exit 0 when .env is gitignored"
 fi
 assert_contains "$output" '✓ .env is gitignored' "gitignored .env"
 echo "✓ a gitignored .env passes the check"
+
+# --- unknown option ---
+# A typo in --fire must not silently skip the fire check and pass.
+repo="$scratch/unknown-option"
+build_healthy_repo "$repo"
+if output=$(run_doctor "$repo" --fier 2>&1); then
+  fail "expected harness doctor to fail on an unknown option"
+fi
+assert_contains "$output" 'Unknown option: --fier' "unknown option"
+echo "✓ an unknown option fails with usage instead of silently skipping a check"
 
 # --- --fire: no flag makes no network call ---
 repo="$scratch/fire-no-flag"
 build_healthy_repo "$repo"
 if ! output=$(CLAUDE_ROUTINE_ID=trig_test CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test run_doctor "$repo"); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor to exit 0 without --fire"
+  fail "expected harness doctor to exit 0 without --fire"
 fi
 echo "$output" | grep -q 'routine fire' && fail "expected no routine fire check without --fire, got: $output"
 echo "✓ without --fire, no routine fire check runs and no network call is made"
@@ -445,7 +451,7 @@ repo="$scratch/fire-missing-vars"
 build_healthy_repo "$repo"
 if ! output=$(run_doctor "$repo" --fire); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor --fire to exit 0 when CLAUDE_ROUTINE_ID/TOKEN are unset"
+  fail "expected harness doctor --fire to exit 0 when CLAUDE_ROUTINE_ID/TOKEN are unset"
 fi
 assert_contains "$output" '- routine fire (skipped: CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set; source .env first)' "fire missing vars"
 echo "✓ --fire with no CLAUDE_ROUTINE_ID/TOKEN in the environment is skipped, not a failure"
@@ -457,7 +463,7 @@ if ! output=$(CLAUDE_ROUTINE_ID=trig_test CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test
   STUB_CURL_STATUS=200 STUB_CURL_BODY='{"claude_code_session_url":"https://claude.ai/code/cse_test"}' \
   run_doctor "$repo" --fire); then
   echo "$output" >&2
-  fail "expected bin/harness-doctor --fire to exit 0 on a 2xx response with a session URL"
+  fail "expected harness doctor --fire to exit 0 on a 2xx response with a session URL"
 fi
 assert_contains "$output" '✓ routine fire succeeded: https://claude.ai/code/cse_test' "fire success"
 echo "✓ --fire reports a pass and the session URL on a 2xx response"
@@ -468,7 +474,7 @@ build_healthy_repo "$repo"
 if output=$(CLAUDE_ROUTINE_ID=trig_test CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-bad-token-secret \
   STUB_CURL_STATUS=401 STUB_CURL_BODY='{"error":{"message":"invalid x-api-key"}}' \
   run_doctor "$repo" --fire); then
-  fail "expected bin/harness-doctor --fire to fail on a 401 response"
+  fail "expected harness doctor --fire to fail on a 401 response"
 fi
 assert_contains "$output" '✗ routine fire failed with HTTP 401 (bad token)' "fire auth failure"
 echo "$output" | grep -qF 'sk-ant-oat01-bad-token-secret' && fail "expected the token to never appear in doctor output, got: $output"
@@ -480,7 +486,7 @@ echo "✓ --fire on a 401 response fails and names a bad token, without printing
 # response": jq is what's missing, not the field.
 no_jq_fire_bin="$scratch/no_jq_fire_bin"
 mkdir -p "$no_jq_fire_bin"
-for cmd in bash dirname grep mktemp rm; do
+for cmd in bash dirname grep git mktemp rm; do
   cmd_path=$(command -v "$cmd") || continue
   ln -sf "$cmd_path" "$no_jq_fire_bin/$cmd"
 done
@@ -491,12 +497,12 @@ repo="$scratch/fire-missing-jq"
 build_healthy_repo "$repo"
 if output=$(cd "$repo" && PATH="$no_jq_fire_bin" CLAUDE_ROUTINE_ID=trig_test CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test \
   STUB_CURL_STATUS=200 STUB_CURL_BODY='{"claude_code_session_url":"https://claude.ai/code/cse_test"}' \
-  ./bin/harness-doctor --fire); then
-  fail "expected bin/harness-doctor to fail overall when jq is missing (the earlier jq check fails it)"
+  "$cli" doctor --fire); then
+  fail "expected harness doctor to fail overall when jq is missing (the earlier jq check fails it)"
 fi
 assert_contains "$output" '- routine fire (skipped: jq is not installed)' "fire missing jq"
 echo "$output" | grep -qF 'no session URL in the response' && fail "expected a missing jq to be its own skip, not a misreported 'no session URL' failure, got: $output"
 echo "✓ --fire with jq missing is skipped and named, not misreported as a bad API response"
 
 echo
-echo "harness-doctor check: all passed"
+echo "harness doctor check: all passed"

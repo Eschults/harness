@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Functional check for bin/fire-issue: runs it against a scratch copy with
+# Functional check for `harness issue`: runs it in a scratch repo with
 # stubbed gh and curl on PATH, covering the happy path and the failure
 # branches (bad args, missing credentials, a non-2xx response, a 2xx
 # response with no session URL). No model calls, no real gh/network calls.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+cli="$(pwd)/bin/harness"
 
 # shellcheck source=bin/lib/check-helpers.sh
 source bin/lib/check-helpers.sh
@@ -13,9 +14,7 @@ scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 
 repo="$scratch/repo"
-mkdir -p "$repo/bin"
-cp bin/fire-issue "$repo/bin/fire-issue"
-chmod +x "$repo/bin/fire-issue"
+git init -q "$repo"
 
 # Stub gh: resolves the repo and issue URL from env, and records every
 # "issue comment" call (issue number plus body) so a test can assert
@@ -69,7 +68,7 @@ run_fire_issue() {
       STUB_GH_REPO="${STUB_GH_REPO:-Eschults/harness}" STUB_GH_ISSUE_URL="${STUB_GH_ISSUE_URL:-https://github.com/Eschults/harness/issues/99}" \
       STUB_GH_COMMENT_CALLS="$comment_calls" \
       CLAUDE_ROUTINE_ID="${CLAUDE_ROUTINE_ID-id}" CLAUDE_ROUTINE_TOKEN="${CLAUDE_ROUTINE_TOKEN-token}" \
-      ./bin/fire-issue "$@" 2>&1
+      "$cli" issue "$@" 2>&1
   ) || run_exit=$?
   run_calls=$([ -f "$calls_file" ] && wc -l < "$calls_file" || echo 0)
   run_request=$([ -f "$request_file" ] && cat "$request_file" || echo "")
@@ -84,14 +83,14 @@ assert_contains() {
 # --- no issue number ---
 run_fire_issue
 [ "$run_exit" -ne 0 ] || fail "expected no issue number to fail"
-assert_contains "$run_output" "Usage: bin/fire-issue" "no issue number"
+assert_contains "$run_output" "Usage: harness issue" "no issue number"
 [ "$run_calls" -eq 0 ] || fail "no issue number: expected no curl call, got $run_calls"
 echo "✓ no issue number fails with a usage message, without calling curl"
 
 # --- non-numeric issue number ---
 run_fire_issue abc
 [ "$run_exit" -ne 0 ] || fail "expected a non-numeric issue number to fail"
-assert_contains "$run_output" "Usage: bin/fire-issue" "non-numeric issue number"
+assert_contains "$run_output" "Usage: harness issue" "non-numeric issue number"
 echo "✓ a non-numeric issue number fails with a usage message"
 
 # --- missing CLAUDE_ROUTINE_ID ---
@@ -112,12 +111,12 @@ echo "✓ a missing CLAUDE_ROUTINE_TOKEN fails without calling curl"
 # check can only pass by actually finding the real binary.
 no_gh_bin="$scratch/no_gh_bin"
 mkdir -p "$no_gh_bin"
-for cmd in bash dirname curl jq; do
+for cmd in bash git curl jq; do
   cmd_path=$(command -v "$cmd") || continue
   ln -sf "$cmd_path" "$no_gh_bin/$cmd"
 done
 run_exit=0
-run_output=$(cd "$repo" && PATH="$no_gh_bin" CLAUDE_ROUTINE_ID=id CLAUDE_ROUTINE_TOKEN=token ./bin/fire-issue 74 2>&1) || run_exit=$?
+run_output=$(cd "$repo" && PATH="$no_gh_bin" CLAUDE_ROUTINE_ID=id CLAUDE_ROUTINE_TOKEN=token "$cli" issue 74 2>&1) || run_exit=$?
 [ "$run_exit" -ne 0 ] || fail "expected a missing gh to fail"
 assert_contains "$run_output" "gh not found" "missing gh"
 echo "✓ a missing gh fails with the message naming it"
@@ -151,4 +150,4 @@ assert_contains "$run_comments" "https://claude.ai/code/session_test123" "happy 
 echo "✓ 200 with a session URL succeeds, posts the session URL on the issue, and calls curl exactly once"
 
 echo
-echo "fire-issue check: all passed"
+echo "harness issue check: all passed"
