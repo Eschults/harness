@@ -5,6 +5,7 @@
 set -euo pipefail
 
 HARNESS_DEFAULT_SRC=https://raw.githubusercontent.com/Eschults/harness/v1
+HARNESS_README=https://github.com/Eschults/harness
 HARNESS_FILES=(
   ".github/workflows/claude.yml"
   ".claude/prompts/issue-to-pr.md"
@@ -126,8 +127,15 @@ install_harness() {
 cmd_install() {
   require_tools curl
   cd_repo_root
+  local first_install=0
+  [ -f .claude/HARNESS_VERSION ] || first_install=1
   install_harness
-  echo "Installed the harness at $(<.claude/HARNESS_VERSION). Next: the routine, label, and repo values in README.md, then harness doctor."
+  echo "Installed the harness at $(<.claude/HARNESS_VERSION)."
+  if [ "$first_install" -eq 1 ]; then
+    echo "Next: create the routines, label, and repo values ($HARNESS_README#setup), then run harness doctor."
+  else
+    echo "Next: run harness doctor to check the setup."
+  fi
 }
 
 # Absolute path of this script; main resolves it before any cd, since BASH_SOURCE can be relative.
@@ -270,7 +278,7 @@ fire_failure_reason() {
     401 | 403) echo "bad token" ;;
     404) echo "wrong routine id" ;;
     429) echo "daily routine cap reached" ;;
-    *) echo "see README.md, 'Set two repo values', step 3" ;;
+    *) echo "see $HARNESS_README#3-set-two-repo-values" ;;
   esac
 }
 
@@ -289,7 +297,7 @@ cmd_issue() {
   cd_repo_root
 
   if ! routine_credentials_set; then
-    echo "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set; source .env first. See README.md, 'Set two repo values'." >&2
+    echo "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set; source .env first. See $HARNESS_README#3-set-two-repo-values" >&2
     exit 1
   fi
 
@@ -416,7 +424,7 @@ cmd_doctor() {
       if echo "$variables" | grep -qxF CLAUDE_ROUTINE_ID; then
         ok "CLAUDE_ROUTINE_ID variable is set"
       else
-        bad "CLAUDE_ROUTINE_ID variable is not set; see README.md, 'Set two repo values'"
+        bad "CLAUDE_ROUTINE_ID variable is not set; see $HARNESS_README#3-set-two-repo-values"
       fi
     else
       skip "CLAUDE_ROUTINE_ID variable" "could not list variables"
@@ -426,7 +434,7 @@ cmd_doctor() {
       if echo "$secrets" | grep -qxF CLAUDE_ROUTINE_TOKEN; then
         ok "CLAUDE_ROUTINE_TOKEN secret is set"
       else
-        bad "CLAUDE_ROUTINE_TOKEN secret is not set; see README.md, 'Set two repo values'"
+        bad "CLAUDE_ROUTINE_TOKEN secret is not set; see $HARNESS_README#3-set-two-repo-values"
       fi
     else
       skip "CLAUDE_ROUTINE_TOKEN secret" "could not list secrets"

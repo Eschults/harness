@@ -60,6 +60,8 @@ for f in "${HARNESS_FILES[@]}"; do
 done
 [ ! -e "$scratch/src/nested/.claude" ] || fail "expected install to write at the repo root, not the working directory"
 echo "✓ install wrote every harness file at the repo root"
+echo "$output" | grep -qF "https://github.com/Eschults/harness#setup" || fail "expected a first install to link to the setup steps, got: $output"
+echo "✓ a first install links to the remaining setup steps"
 
 for f in "${LEGACY_FILES[@]}"; do
   [ ! -e "$scratch/$f" ] || fail "expected install to remove the legacy $f"
@@ -75,6 +77,8 @@ if ! output=$(run_harness install 2>&1); then
   fail "harness install failed on re-run"
 fi
 [ "$(count_import_lines)" = "1" ] || fail "expected exactly one @.claude/harness-rules.md line after re-running install, got $(count_import_lines)"
+echo "$output" | grep -q "#setup" && fail "expected a re-run install to skip the first-time setup pointer, got: $output"
+echo "$output" | grep -q "run harness doctor" || fail "expected a re-run install to point at harness doctor, got: $output"
 echo "✓ re-running install did not duplicate the CLAUDE.md import line"
 
 if ! output=$(run_harness uninstall 2>&1); then

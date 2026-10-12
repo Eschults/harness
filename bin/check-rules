@@ -130,6 +130,21 @@ def _readme_install_file_count_check() -> tuple[str, bool, str]:
         f"lists {expected_count} file(s)",
     )
 
+def _cli_readme_anchor_checks() -> list[tuple[str, bool, str]]:
+    """Every $HARNESS_README#anchor the CLI prints must match a README.md heading."""
+    anchors = sorted(set(re.findall(r"\$HARNESS_README#([\w-]+)", BIN_HARNESS)))
+    if not anchors:
+        return [("cli-readme-anchors", False, "bin/harness prints no $HARNESS_README#anchor links; expected at least #setup")]
+    return [
+        (
+            f"cli-readme-anchor:#{anchor}",
+            anchor in _heading_anchors(README),
+            f"bin/harness links to README.md#{anchor}, but README.md has no heading matching it",
+        )
+        for anchor in anchors
+    ]
+
+
 def _shellcheck_list(ci_text: str) -> list[str]:
     """The file list in bin/ci's `for f in ...; do` shellcheck loop."""
     match = re.search(r"for f in (.*?); do", ci_text, re.DOTALL)
@@ -323,6 +338,7 @@ CHECKS = [
 ]
 CHECKS.extend(_readme_link_checks())
 CHECKS.append(_readme_install_file_count_check())
+CHECKS.extend(_cli_readme_anchor_checks())
 CHECKS.append(_shellcheck_coverage_self_test())
 CHECKS.extend(_shellcheck_coverage_checks())
 
