@@ -132,9 +132,10 @@ cmd_install() {
 
 # Absolute path of this script; main resolves it before any cd, since BASH_SOURCE can be relative.
 cli_path() {
-  local dir
-  dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-  echo "$dir/$(basename "${BASH_SOURCE[0]}")"
+  local source=${BASH_SOURCE[0]} dir=.
+  [[ "$source" == */* ]] && dir=${source%/*}
+  dir=$(cd "$dir" && pwd)
+  echo "$dir/${source##*/}"
 }
 
 # Replaces this CLI with the release's copy when they differ. Returns 0 only
