@@ -29,13 +29,13 @@ Prerequisites: `bash`, `git`, `gh`, `curl`, and `jq` on `PATH`. `harness doctor`
 
 #### 1. Install the harness
 
-Install the CLI once per machine. It's one script, [`bin/harness`](bin/harness), worth reading before you run it:
+Install the `harness` command once per machine. It's a short launcher, [`bin/harness`](bin/harness), worth reading before you run it:
 
 ```bash
 mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/Eschults/harness/v1/bin/harness -o ~/.local/bin/harness && chmod +x ~/.local/bin/harness
 ```
 
-Make sure `~/.local/bin` is on your `PATH`, or put the script anywhere else that is. Then, from inside your project repo:
+Make sure `~/.local/bin` is on your `PATH`, or put the script anywhere else that is. In each repo, it runs the CLI version that repo pins in `.claude/HARNESS_VERSION`, [`bin/harness-cli`](bin/harness-cli) from that release, downloaded once to `~/.local/share/harness/<version>/`. So repos on different releases never share a CLI that doesn't match their files. Then, from inside your project repo:
 
 ```bash
 harness install
@@ -169,13 +169,13 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 
 ## Upgrading
 
-The harness is tagged: `main` moves as work lands, but the CLI fetches from `v1`, a floating tag resolving to the latest `v1.x.y` release, cut with `bin/release`. Setup pins the tag it fetched to `.claude/HARNESS_VERSION`.
+The harness is tagged: `main` moves as work lands, but `harness` only installs `v1.x.y` releases, cut with `bin/release`. Setup pins the release it installed to `.claude/HARNESS_VERSION`.
 
 ```bash
 harness upgrade
 ```
 
-It first updates the CLI itself to the latest release, then diffs your pinned version against the latest tag, opens the compare view, and, if you confirm, pulls in the updated files. Already on the latest release: it says so and exits. Review the diff and commit the changes.
+It first updates the `harness` command itself to the latest release's launcher, which never changes the CLI version any repo runs. It then runs the latest release's CLI, diffs your pinned version against that release, opens the compare view, and, if you confirm, pulls in the updated files. Already on the latest release: it says so and exits. Review the diff and commit the changes. Upgrade each repo on its own schedule: until you do, `harness` keeps running the CLI that matches its files.
 
 Installed before the CLI existed? Your `bin/harness-upgrade` still works: run it once to pull in the latest files, then once more for how to install the CLI. `harness install` then removes the old `bin/` scripts.
 
@@ -185,7 +185,7 @@ Installed before the CLI existed? Your `bin/harness-upgrade` still works: run it
 harness uninstall
 ```
 
-It deletes every file step 1 wrote, plus any leftover pre-CLI `bin/` scripts, drops the `@.claude/harness-rules.md` import from `CLAUDE.md` without touching the rest of the file, and removes `.claude/prompts` if that empties it. The CLI itself stays installed for your other repos; delete `~/.local/bin/harness` once none use it. Safe to re-run, including on a repo that was never installed. Review the diff and commit the changes.
+It deletes every file step 1 wrote, plus any leftover pre-CLI `bin/` scripts, drops the `@.claude/harness-rules.md` import from `CLAUDE.md` without touching the rest of the file, and removes `.claude/prompts` if that empties it. The `harness` command stays installed for your other repos; once none use it, delete `~/.local/bin/harness` and `~/.local/share/harness`. Safe to re-run, including on a repo that was never installed. Review the diff and commit the changes.
 
 Last steps are printed in the terminal (the routine API does not have a delete endpoint yet):
 

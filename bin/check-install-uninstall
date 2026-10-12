@@ -12,8 +12,8 @@ root=$(pwd)
 
 # shellcheck source=bin/lib/check-helpers.sh
 source bin/lib/check-helpers.sh
-# shellcheck source=bin/harness
-source bin/harness
+# shellcheck source=bin/harness-cli
+source bin/harness-cli
 
 scratch=$(mktemp -d)
 outside_repo=$(mktemp -d)
@@ -37,14 +37,14 @@ poison_network
 
 # Runs from a nested directory to prove the CLI finds the repo root itself.
 run_harness() {
-  (cd "$scratch/src/nested" && "$root/bin/harness" "$@")
+  (cd "$scratch/src/nested" && "$root/bin/harness-cli" "$@")
 }
 
 count_import_lines() {
   grep -cxF '@.claude/harness-rules.md' "$scratch/CLAUDE.md" || true
 }
 
-if output=$(cd "$outside_repo" && "$root/bin/harness" install 2>&1); then
+if output=$(cd "$outside_repo" && "$root/bin/harness-cli" install 2>&1); then
   fail "expected harness install to fail outside a git repo"
 fi
 echo "$output" | grep -q "Not inside a git repo" || fail "expected a clear error outside a git repo, got: $output"
@@ -100,7 +100,7 @@ if ! output=$(run_harness uninstall 2>&1); then
 fi
 echo "✓ re-running uninstall on an already-uninstalled repo still exits cleanly"
 
-if output=$("$root/bin/harness" bogus 2>&1); then
+if output=$("$root/bin/harness-cli" bogus 2>&1); then
   fail "expected an unknown command to fail"
 fi
 echo "$output" | grep -q "Usage: harness <command>" || fail "expected an unknown command to print usage, got: $output"

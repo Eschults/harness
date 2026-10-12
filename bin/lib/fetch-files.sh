@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Legacy: pre-CLI installs' bin/harness-upgrade sources this to pull in a release; keep HARNESS_FILES in sync with bin/harness.
+# Legacy: pre-CLI installs' bin/harness-upgrade sources this to pull in a release; keep HARNESS_FILES in sync with bin/harness-cli.
 HARNESS_FILES=(
   ".github/workflows/claude.yml"
   ".claude/prompts/issue-to-pr.md"
