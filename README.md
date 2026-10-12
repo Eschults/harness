@@ -141,7 +141,7 @@ Setup spans nine places `harness install` alone doesn't cover: the harness files
 harness doctor
 ```
 
-Add `--fire` to also confirm `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` work end to end, the same check as the manual `curl` in step 3: `source .env && harness doctor --fire`. It's opt-in because a passing run starts a real session, which counts against your daily routine cap.
+Add `--fire` to also confirm `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` work end to end, the same check as the manual `curl` in step 3: `harness doctor --fire`. It reads both values from your environment, or from the repo's `.env` when they're not set there. It's opt-in because a passing run starts a real session, which counts against your daily routine cap.
 
 #### 7. Your turn
 
@@ -165,7 +165,7 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 - **One run per issue** against your account's daily routine cap, drawing down subscription usage rather than API billing. Branches, PRs, comments and labels all appear as the GitHub user linked to your Claude account; commits appear as Claude.
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
-- **If GitHub Actions can't run `claude.yml`** (no minutes left, Actions disabled), the `claude` label stops starting runs silently. `harness issue` is the fallback: `source .env && harness issue <issue-number>` fires the routine directly from your machine, the same way the workflow does.
+- **If GitHub Actions can't run `claude.yml`** (no minutes left, Actions disabled), the `claude` label stops starting runs silently. `harness issue` is the fallback: `harness issue <issue-number>` fires the routine directly from your machine, the same way the workflow does, reading `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` from your environment or the repo's `.env`.
 
 ## Upgrading
 

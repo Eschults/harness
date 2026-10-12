@@ -149,5 +149,33 @@ assert_contains "$run_comments" "74" "happy path"
 assert_contains "$run_comments" "https://claude.ai/code/session_test123" "happy path"
 echo "✓ 200 with a session URL succeeds, posts the session URL on the issue, and calls curl exactly once"
 
+# --- credentials read from .env when the environment doesn't set them ---
+# Plain `source .env` doesn't export, so the CLI must parse .env itself.
+cat > "$repo/.env" <<'DOTENV'
+# routine values
+CLAUDE_ROUTINE_ID=trig_dotenv
+export CLAUDE_ROUTINE_TOKEN="sk-ant-oat01-dotenv"
+DOTENV
+STUB_CURL_STATUS=200 STUB_CURL_BODY="$happy_body" CLAUDE_ROUTINE_ID="" CLAUDE_ROUTINE_TOKEN="" run_fire_issue 74
+[ "$run_exit" -eq 0 ] || fail "expected credentials from .env to fire the routine, got exit $run_exit: $run_output"
+assert_contains "$run_request" "https://api.anthropic.com/v1/claude_code/routines/trig_dotenv/fire" ".env credentials"
+assert_contains "$run_request" "Authorization: Bearer sk-ant-oat01-dotenv" ".env credentials"
+echo "✓ credentials missing from the environment are read from .env, with export and quotes stripped"
+
+# --- the environment wins over .env ---
+STUB_CURL_STATUS=200 STUB_CURL_BODY="$happy_body" CLAUDE_ROUTINE_ID="trig_env" CLAUDE_ROUTINE_TOKEN="token_env" run_fire_issue 74
+assert_contains "$run_request" "https://api.anthropic.com/v1/claude_code/routines/trig_env/fire" "env over .env"
+assert_contains "$run_request" "Authorization: Bearer token_env" "env over .env"
+echo "✓ credentials set in the environment win over .env"
+
+# --- .env is parsed, never sourced ---
+pwned="$scratch/pwned"
+# shellcheck disable=SC2016 # the literal $(...) is the point: it must never run
+printf 'CLAUDE_ROUTINE_ID=trig_dotenv\nCLAUDE_ROUTINE_TOKEN=$(touch %s)\n' "$pwned" > "$repo/.env"
+STUB_CURL_STATUS=200 STUB_CURL_BODY="$happy_body" CLAUDE_ROUTINE_ID="" CLAUDE_ROUTINE_TOKEN="" run_fire_issue 74
+[ ! -e "$pwned" ] || fail "expected .env to be parsed, never sourced, but a command in it ran"
+echo "✓ a command in .env never runs"
+rm -f "$repo/.env"
+
 echo
 echo "harness issue check: all passed"
