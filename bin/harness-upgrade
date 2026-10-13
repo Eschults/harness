@@ -3,7 +3,7 @@
 cat >&2 <<'MSG'
 The harness is now a CLI. Install it once, then run `harness install` from this repo to remove the old bin/ scripts:
 
-  mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/Eschults/harness/v1/bin/harness -o ~/.local/bin/harness && chmod +x ~/.local/bin/harness
+  curl -fsSL https://raw.githubusercontent.com/Eschults/harness/v1/install.sh | sh
 
 From then on: harness upgrade, harness doctor, harness issue <number>, harness uninstall.
 MSG
