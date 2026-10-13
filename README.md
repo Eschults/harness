@@ -29,13 +29,13 @@ Prerequisites: `bash`, `git`, `gh`, `curl`, and `jq` on `PATH`. `harness doctor`
 
 #### 1. Install the harness
 
-Install the `harness` command once per machine. It's a short launcher, [`bin/harness`](bin/harness), worth reading before you run it:
+The `harness` command is a single script with no runtime to install. Once per machine, on macOS and Linux:
 
 ```bash
-mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/Eschults/harness/v1/bin/harness -o ~/.local/bin/harness && chmod +x ~/.local/bin/harness
+curl -fsSL https://raw.githubusercontent.com/Eschults/harness/v1/install.sh | sh
 ```
 
-Make sure `~/.local/bin` is on your `PATH`, or put the script anywhere else that is. In each repo, it runs the CLI version that repo pins in `.claude/HARNESS_VERSION`, [`bin/harness-cli`](bin/harness-cli) from that release, downloaded once to `~/.local/share/harness/<version>/`. So repos on different releases never share a CLI that doesn't match their files. Then, from inside your project repo:
+[`install.sh`](install.sh) drops the launcher, [`bin/harness`](bin/harness), into `~/.local/bin` (override with `HARNESS_INSTALL_DIR`); make sure that directory is on your `PATH`. In each repo, it runs the CLI version that repo pins in `.claude/HARNESS_VERSION`, [`bin/harness-cli`](bin/harness-cli) from that release, downloaded once to `~/.local/share/harness/<version>/`. So repos on different releases never share a CLI that doesn't match their files. Then, from inside your project repo:
 
 ```bash
 harness install

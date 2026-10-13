@@ -5,7 +5,7 @@ No model calls: most checks assert a load-bearing sentence is still present
 in .claude/harness-rules.md, CLAUDE.md, .claude/prompts/issue-to-pr.md, or
 .claude/prompts/next-to-build.md, catching accidental deletion or rewording
 of a rule during an edit to these files. One check instead asserts that
-README.md, bin/harness, bin/harness-cli, and the legacy bin/harness-upgrade all pin the same
+README.md, install.sh, bin/harness, bin/harness-cli, and the legacy bin/harness-upgrade all pin the same
 major release tag, catching a stale reference left behind after bin/release
 cuts a new major, and another that the legacy bin/lib/fetch-files.sh lists
 the same HARNESS_FILES as bin/harness-cli. Another set of checks extracts every relative link (and
@@ -30,6 +30,7 @@ CLAUDE_MD = (ROOT / "CLAUDE.md").read_text()
 ISSUE_TO_PR = (ROOT / ".claude" / "prompts" / "issue-to-pr.md").read_text()
 NEXT_TO_BUILD = (ROOT / ".claude" / "prompts" / "next-to-build.md").read_text()
 README = (ROOT / "README.md").read_text()
+INSTALL_SH = (ROOT / "install.sh").read_text()
 BIN_HARNESS = (ROOT / "bin" / "harness").read_text()
 BIN_HARNESS_CLI = (ROOT / "bin" / "harness-cli").read_text()
 BIN_UPGRADE = (ROOT / "bin" / "harness-upgrade").read_text()
@@ -44,6 +45,7 @@ def _pinned_major(text: str) -> str | None:
 
 
 README_MAJOR = _pinned_major(README)
+INSTALL_SH_MAJOR = _pinned_major(INSTALL_SH)
 BIN_HARNESS_MAJOR = _pinned_major(BIN_HARNESS)
 BIN_HARNESS_CLI_MAJOR = _pinned_major(BIN_HARNESS_CLI)
 BIN_UPGRADE_MAJOR = _pinned_major(BIN_UPGRADE)
@@ -327,9 +329,9 @@ CHECKS = [
     ),
     (
         "pinned-major-consistent",
-        None not in (README_MAJOR, BIN_HARNESS_MAJOR, BIN_HARNESS_CLI_MAJOR, BIN_UPGRADE_MAJOR)
-        and README_MAJOR == BIN_HARNESS_MAJOR == BIN_HARNESS_CLI_MAJOR == BIN_UPGRADE_MAJOR,
-        f"README.md ({README_MAJOR}), bin/harness ({BIN_HARNESS_MAJOR}), bin/harness-cli ({BIN_HARNESS_CLI_MAJOR}), "
+        None not in (README_MAJOR, INSTALL_SH_MAJOR, BIN_HARNESS_MAJOR, BIN_HARNESS_CLI_MAJOR, BIN_UPGRADE_MAJOR)
+        and README_MAJOR == INSTALL_SH_MAJOR == BIN_HARNESS_MAJOR == BIN_HARNESS_CLI_MAJOR == BIN_UPGRADE_MAJOR,
+        f"README.md ({README_MAJOR}), install.sh ({INSTALL_SH_MAJOR}), bin/harness ({BIN_HARNESS_MAJOR}), bin/harness-cli ({BIN_HARNESS_CLI_MAJOR}), "
         f"and bin/harness-upgrade ({BIN_UPGRADE_MAJOR}) "
         "should all pin the same harness major release tag",
     ),
