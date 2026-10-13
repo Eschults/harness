@@ -116,7 +116,7 @@ gh label create claude --color D97757 --description "starts a Claude Code run" -
 
 So far only a human opens the gate. A second routine closes that loop: it wakes on a schedule, reads the repo, works out the capability it should gain next, and files that as one issue with the `claude` label, which fires the "Issue to PR" workflow and starts an implementation run with nobody in the loop until review. It first checks for open `claude`-labeled issues and open `claude/` branch PRs, and skips the run rather than file on top of a queue a human hasn't reviewed yet.
 
-It needs no workflow and no second token. Routines have their own schedule, so this runs on Anthropic's infrastructure and bills the same way as step 2.
+It needs no workflow, and no GitHub Actions secret the way step 3's routine does: it runs on its own schedule, on Anthropic's infrastructure, and bills the same way as step 2. The API trigger below is only for firing it by hand with `harness next`; skip it if you're fine waiting for the schedule.
 
 [Create a second routine](https://claude.ai/code/routines/new): name it `<repo name> - Next to Build`, select the same repo, model and environment, and paste this as its instructions:
 

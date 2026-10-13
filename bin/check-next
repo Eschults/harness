@@ -70,6 +70,21 @@ assert_contains() {
   echo "$haystack" | grep -qF -- "$needle" || fail "$context: expected to find '$needle' in: $haystack"
 }
 
+# --- missing gh ---
+# Excludes gh from PATH entirely rather than hiding it behind a stub, so the
+# check can only pass by actually finding the real binary.
+no_gh_bin="$scratch/no_gh_bin"
+mkdir -p "$no_gh_bin"
+for cmd in bash git curl jq; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_gh_bin/$cmd"
+done
+run_exit=0
+run_output=$(cd "$repo" && PATH="$no_gh_bin" NEXT_ROUTINE_ID=id NEXT_ROUTINE_TOKEN=token "$cli" next 2>&1) || run_exit=$?
+[ "$run_exit" -ne 0 ] || fail "expected a missing gh to fail"
+assert_contains "$run_output" "gh not found" "missing gh"
+echo "✓ a missing gh fails with the message naming it"
+
 # --- missing NEXT_ROUTINE_ID ---
 NEXT_ROUTINE_ID="" run_next
 [ "$run_exit" -ne 0 ] || fail "expected an empty NEXT_ROUTINE_ID to fail"
