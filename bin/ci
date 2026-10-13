@@ -13,7 +13,7 @@ fi
 
 echo "Running shellcheck ($(shellcheck --version | grep ^version:))"
 shellcheck_failed=0
-for f in bin/ci bin/harness bin/harness-cli bin/harness-upgrade bin/release bin/lib/fetch-files.sh bin/lib/version-check.sh bin/lib/check-helpers.sh bin/check-install-uninstall bin/check-harness-upgrade bin/check-claude-workflow bin/check-release bin/check-doctor bin/check-issue bin/check-launcher; do
+for f in install.sh bin/ci bin/harness bin/harness-cli bin/harness-upgrade bin/release bin/lib/fetch-files.sh bin/lib/version-check.sh bin/lib/check-helpers.sh bin/check-install-uninstall bin/check-harness-upgrade bin/check-claude-workflow bin/check-release bin/check-doctor bin/check-issue bin/check-launcher; do
   if shellcheck_output=$(shellcheck -x "$f" 2>&1); then
     echo "✓ shellcheck: $f"
   else
