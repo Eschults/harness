@@ -32,8 +32,9 @@ Usage: harness <command>
 Commands:
   install          Fetch the harness files into this repo and import the rules into CLAUDE.md
   upgrade          Pull in the latest harness release
-  doctor [--fire]  Check the install end to end; --fire also fires the routine once
+  doctor [--fire]  Check the install end to end; --fire also fires the routine(s) once
   issue <number>   Fire the "Issue to PR" routine for one issue, bypassing GitHub Actions
+  next             Fire the "Next to Build" routine by hand, bypassing its schedule
   uninstall        Remove the harness files and the CLAUDE.md import
 
 Run it from anywhere inside your project's git repo.
@@ -208,10 +209,11 @@ The harness command itself stays installed for your other repos.
 EOF
 }
 
-# POSTs one /fire request with $2 as its text, writing the body to $1 and
-# printing the HTTP status (0 when the API was unreachable).
+# POSTs one /fire request with $2 as its text against the routine
+# identified by $3/$4, writing the body to $1 and printing the HTTP status
+# (0 when the API was unreachable).
 fire_routine() {
-  local response=$1 text=$2 status xtrace_was_on
+  local response=$1 text=$2 routine_id=$3 routine_token=$4 status xtrace_was_on
   # Disables xtrace for the call itself, then restores it, so a caller
   # running under `bash -x` never gets the token echoed as part of the
   # expanded curl command line.
@@ -219,8 +221,8 @@ fire_routine() {
   set +x
   # No --retry: the POST is not idempotent, a re-send starts a second session.
   if ! status=$(curl -sS -o "$response" -w '%{http_code}' --max-time 60 \
-    -X POST "https://api.anthropic.com/v1/claude_code/routines/${CLAUDE_ROUTINE_ID}/fire" \
-    -H "Authorization: Bearer ${CLAUDE_ROUTINE_TOKEN}" \
+    -X POST "https://api.anthropic.com/v1/claude_code/routines/${routine_id}/fire" \
+    -H "Authorization: Bearer ${routine_token}" \
     -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
     -H "anthropic-version: 2023-06-01" \
     -H "Content-Type: application/json" \
@@ -254,14 +256,23 @@ dotenv_value() {
   echo "$value"
 }
 
-# The environment wins; .env fills in whatever it leaves unset, so a plain `source .env` (no export) isn't needed.
+# The environment wins; .env fills in whatever it leaves unset, so a plain
+# `source .env` (no export) isn't needed. $1/$2 name the id/token env vars
+# (e.g. CLAUDE_ROUTINE_ID or NEXT_ROUTINE_ID), read and written by name via
+# indirect expansion so the same code serves either routine pair.
 load_routine_credentials() {
-  [ -n "${CLAUDE_ROUTINE_ID:-}" ] || CLAUDE_ROUTINE_ID=$(dotenv_value CLAUDE_ROUTINE_ID || true)
-  [ -n "${CLAUDE_ROUTINE_TOKEN:-}" ] || CLAUDE_ROUTINE_TOKEN=$(dotenv_value CLAUDE_ROUTINE_TOKEN || true)
+  local id_var=$1 token_var=$2 id_value token_value
+  id_value=${!id_var:-}
+  [ -n "$id_value" ] || id_value=$(dotenv_value "$id_var" || true)
+  token_value=${!token_var:-}
+  [ -n "$token_value" ] || token_value=$(dotenv_value "$token_var" || true)
+  printf -v "$id_var" '%s' "$id_value"
+  printf -v "$token_var" '%s' "$token_value"
 }
 
 routine_credentials_set() {
-  [ -n "${CLAUDE_ROUTINE_ID:-}" ] && [ -n "${CLAUDE_ROUTINE_TOKEN:-}" ]
+  local id_var=$1 token_var=$2
+  [ -n "${!id_var:-}" ] && [ -n "${!token_var:-}" ]
 }
 
 cmd_issue() {
@@ -274,8 +285,8 @@ cmd_issue() {
   require_tools curl jq gh
   cd_repo_root
 
-  load_routine_credentials
-  if ! routine_credentials_set; then
+  load_routine_credentials CLAUDE_ROUTINE_ID CLAUDE_ROUTINE_TOKEN
+  if ! routine_credentials_set CLAUDE_ROUTINE_ID CLAUDE_ROUTINE_TOKEN; then
     echo "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set in the environment or .env. See $HARNESS_README#3-set-two-repo-values" >&2
     exit 1
   fi
@@ -289,7 +300,7 @@ cmd_issue() {
   issue_response=$(mktemp)
   trap 'rm -f "$issue_response"' EXIT
 
-  status=$(fire_routine "$issue_response" "$text")
+  status=$(fire_routine "$issue_response" "$text" "$CLAUDE_ROUTINE_ID" "$CLAUDE_ROUTINE_TOKEN")
   if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
     echo "Routine fire failed with HTTP $status ($(fire_failure_reason "$status"))" >&2
     jq . "$issue_response" 2>/dev/null >&2 || cat "$issue_response" >&2
@@ -304,6 +315,41 @@ cmd_issue() {
   fi
 
   gh issue comment "$issue" --body "Claude is looking into it :point_right: $session_url incoming PR :hourglass_flowing_sand:"
+  echo "Fired: $session_url"
+}
+
+cmd_next() {
+  require_tools curl jq gh
+  cd_repo_root
+
+  load_routine_credentials NEXT_ROUTINE_ID NEXT_ROUTINE_TOKEN
+  if ! routine_credentials_set NEXT_ROUTINE_ID NEXT_ROUTINE_TOKEN; then
+    echo "NEXT_ROUTINE_ID or NEXT_ROUTINE_TOKEN is not set in the environment or .env. See $HARNESS_README#5-opt-create-the-next-to-build-routine" >&2
+    exit 1
+  fi
+
+  local repo text status session_url
+  repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+  text=$(printf 'Repository: %s\n' "$repo")
+
+  # Global, not local: the EXIT trap runs after this function's scope is gone.
+  next_response=$(mktemp)
+  trap 'rm -f "$next_response"' EXIT
+
+  status=$(fire_routine "$next_response" "$text" "$NEXT_ROUTINE_ID" "$NEXT_ROUTINE_TOKEN")
+  if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+    echo "Routine fire failed with HTTP $status ($(fire_failure_reason "$status"))" >&2
+    jq . "$next_response" 2>/dev/null >&2 || cat "$next_response" >&2
+    exit 1
+  fi
+
+  session_url=$(jq -r '.claude_code_session_url // empty' "$next_response")
+  if [ -z "$session_url" ]; then
+    echo "Routine fire returned HTTP $status with no session URL in the response" >&2
+    cat "$next_response" >&2
+    exit 1
+  fi
+
   echo "Fired: $session_url"
 }
 
@@ -462,16 +508,25 @@ cmd_doctor() {
     fi
   fi
 
+  # The Next to Build routine is optional, so credentials missing for it are
+  # a skip, never a failure.
+  load_routine_credentials NEXT_ROUTINE_ID NEXT_ROUTINE_TOKEN
+  if routine_credentials_set NEXT_ROUTINE_ID NEXT_ROUTINE_TOKEN; then
+    ok "NEXT_ROUTINE_ID/NEXT_ROUTINE_TOKEN are set"
+  else
+    skip "NEXT_ROUTINE_ID/NEXT_ROUTINE_TOKEN" "optional; see $HARNESS_README#5-opt-create-the-next-to-build-routine"
+  fi
+
   local response status session_url
   if [ "$fire" -eq 1 ]; then
-    load_routine_credentials
-    if ! routine_credentials_set; then
+    load_routine_credentials CLAUDE_ROUTINE_ID CLAUDE_ROUTINE_TOKEN
+    if ! routine_credentials_set CLAUDE_ROUTINE_ID CLAUDE_ROUTINE_TOKEN; then
       skip "routine fire" "CLAUDE_ROUTINE_ID or CLAUDE_ROUTINE_TOKEN is not set in the environment or .env"
     elif ! command -v jq >/dev/null 2>&1; then
       skip "routine fire" "jq is not installed"
     else
       response=$(mktemp)
-      status=$(fire_routine "$response" "Setup check. Reply with the repo name and stop.")
+      status=$(fire_routine "$response" "Setup check. Reply with the repo name and stop." "$CLAUDE_ROUTINE_ID" "$CLAUDE_ROUTINE_TOKEN")
       if [ "$status" -ge 200 ] && [ "$status" -lt 300 ]; then
         session_url=$(jq -r '.claude_code_session_url // empty' "$response" 2>/dev/null) || session_url=""
         if [ -n "$session_url" ]; then
@@ -481,6 +536,26 @@ cmd_doctor() {
         fi
       else
         bad "routine fire failed with HTTP $status ($(fire_failure_reason "$status"))"
+      fi
+      rm -f "$response"
+    fi
+
+    if ! routine_credentials_set NEXT_ROUTINE_ID NEXT_ROUTINE_TOKEN; then
+      skip "next routine fire" "NEXT_ROUTINE_ID or NEXT_ROUTINE_TOKEN is not set in the environment or .env"
+    elif ! command -v jq >/dev/null 2>&1; then
+      skip "next routine fire" "jq is not installed"
+    else
+      response=$(mktemp)
+      status=$(fire_routine "$response" "Setup check. Reply with the repo name and stop." "$NEXT_ROUTINE_ID" "$NEXT_ROUTINE_TOKEN")
+      if [ "$status" -ge 200 ] && [ "$status" -lt 300 ]; then
+        session_url=$(jq -r '.claude_code_session_url // empty' "$response" 2>/dev/null) || session_url=""
+        if [ -n "$session_url" ]; then
+          ok "next routine fire succeeded: $session_url"
+        else
+          bad "next routine fire returned HTTP $status with no session URL in the response"
+        fi
+      else
+        bad "next routine fire failed with HTTP $status ($(fire_failure_reason "$status"))"
       fi
       rm -f "$response"
     fi
@@ -507,6 +582,7 @@ main() {
     upgrade) cmd_upgrade ;;
     doctor) cmd_doctor "$@" ;;
     issue) cmd_issue "$@" ;;
+    next) cmd_next ;;
     uninstall) cmd_uninstall ;;
     help | -h | --help) usage ;;
     "")

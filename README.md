@@ -131,17 +131,26 @@ Read CLAUDE.md and .claude/prompts/next-to-build.md, and follow both exactly.
 
 Then **Select a trigger → Schedule** and pick the frequency that suits your team's needs and organization. Leave **Auto-fix pull requests** off — this routine opens none. Turn **Notifications** on.
 
+Also add an **API** trigger alongside the schedule, and copy its routine id and token. Put both in `.env` as `NEXT_ROUTINE_ID` and `NEXT_ROUTINE_TOKEN`, the same way step 3 stored `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN`:
+
+```dotenv
+NEXT_ROUTINE_ID=trig_…
+NEXT_ROUTINE_TOKEN=sk-ant-oat01-…
+```
+
+Verify it with `harness next`: it fires the routine by hand, the same way `harness issue` fires "Issue to PR", and prints the session URL on success, so you don't have to wait for the schedule to find out it works.
+
 It labels the issue as your GitHub user through the Claude GitHub App, so the label does fire `claude.yml`. A GHA cron job labeling with `GITHUB_TOKEN` would not, which is why this is a routine and not a workflow (see "Worth knowing").
 
 #### 6. Check the setup
 
-Setup spans nine places `harness install` alone doesn't cover: the harness files, the `CLAUDE.md` import, the `claude` label, the `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` repo values, that the harness files are merged to the default branch, since the routine only ever reads them from there, that GitHub Actions and the `claude.yml` workflow are both enabled, since either one disabled stops a labeled issue from starting a run silently, and that the pinned `.claude/HARNESS_VERSION` still matches the latest release. `harness doctor` checks all nine in one command and never prints a secret value, only whether one is set:
+Setup spans nine places `harness install` alone doesn't cover: the harness files, the `CLAUDE.md` import, the `claude` label, the `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` repo values, that the harness files are merged to the default branch, since the routine only ever reads them from there, that GitHub Actions and the `claude.yml` workflow are both enabled, since either one disabled stops a labeled issue from starting a run silently, and that the pinned `.claude/HARNESS_VERSION` still matches the latest release. `harness doctor` checks all nine in one command and never prints a secret value, only whether one is set. It also reports whether `NEXT_ROUTINE_ID`/`NEXT_ROUTINE_TOKEN` are set, as a skip rather than a failure when they aren't, since that routine from step 5 is optional:
 
 ```bash
 harness doctor
 ```
 
-Add `--fire` to also confirm `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` work end to end, the same check as the manual `curl` in step 3: `harness doctor --fire`. It reads both values from your environment, or from the repo's `.env` when they're not set there. It's opt-in because a passing run starts a real session, which counts against your daily routine cap.
+Add `--fire` to also confirm the routine values work end to end, the same check as the manual `curl` in step 3: `harness doctor --fire`. It reads the values from your environment, or from the repo's `.env` when they're not set there, and fires both the "Issue to PR" routine and, when `NEXT_ROUTINE_ID`/`NEXT_ROUTINE_TOKEN` are present, the "Next to Build" routine too. It's opt-in because a passing run starts a real session, which counts against your daily routine cap.
 
 #### 7. Your turn
 
@@ -166,6 +175,7 @@ The label is the trigger, and the issue holds the specs. `claude` is applied by 
 - **The trigger token is a long-lived bearer token.** Anyone holding it can fire the routine with arbitrary text. Rotate it like any other repo secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
 - **If GitHub Actions can't run `claude.yml`** (no minutes left, Actions disabled), the `claude` label stops starting runs silently. `harness issue` is the fallback: `harness issue <issue-number>` fires the routine directly from your machine, the same way the workflow does, reading `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` from your environment or the repo's `.env`.
+- **`harness next` fires the "Next to Build" routine by hand**, the same way `harness issue` fires "Issue to PR": it reads `NEXT_ROUTINE_ID`/`NEXT_ROUTINE_TOKEN` from your environment or the repo's `.env` and prints the session URL, so you can verify step 5 on the spot or kick off a planning run on demand, for example right after merging a large PR.
 
 ## Upgrading
 

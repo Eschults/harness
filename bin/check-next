@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# Functional check for `harness next`: runs it in a scratch repo with
+# stubbed gh and curl on PATH, covering the happy path and the failure
+# branches (missing credentials, a non-2xx response, a 2xx response with no
+# session URL), that the payload carries only the repository name, and that
+# the token never appears in output. No model calls, no real gh/network calls.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+cli="$(pwd)/bin/harness-cli"
+
+# shellcheck source=bin/lib/check-helpers.sh
+source bin/lib/check-helpers.sh
+
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+
+repo="$scratch/repo"
+git init -q "$repo"
+
+# Stub gh: resolves the repo from env, same as bin/check-issue, without
+# ever reaching a real repo.
+stub_bin="$scratch/stub_bin"
+mkdir -p "$stub_bin"
+cat > "$stub_bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "repo view") printf '%s\n' "${STUB_GH_REPO:-Eschults/harness}" ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$stub_bin/gh"
+
+# Stub curl: records one call per invocation, dumps its full argv so the
+# request can be asserted on, and mimics `curl -o <file> -w '%{http_code}'`
+# from the configured status/body without touching the network.
+calls_file="$scratch/curl-calls"
+request_file="$scratch/curl-request"
+cat > "$stub_bin/curl" <<'STUB'
+#!/usr/bin/env bash
+echo call >> "$STUB_CURL_CALLS"
+printf '%s\n' "$@" > "$STUB_CURL_REQUEST"
+out=""
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  [ "${args[i]}" = "-o" ] && out="${args[i + 1]}"
+done
+[ -n "$out" ] && printf '%s' "${STUB_CURL_BODY:-}" > "$out"
+printf '%s' "${STUB_CURL_STATUS:-200}"
+STUB
+chmod +x "$stub_bin/curl"
+
+run_next() {
+  rm -f "$calls_file" "$request_file"
+  run_exit=0
+  run_output=$(
+    cd "$repo"
+    PATH="$stub_bin:$PATH" \
+      STUB_CURL_CALLS="$calls_file" STUB_CURL_REQUEST="$request_file" \
+      STUB_CURL_STATUS="${STUB_CURL_STATUS:-200}" STUB_CURL_BODY="${STUB_CURL_BODY:-}" \
+      STUB_GH_REPO="${STUB_GH_REPO:-Eschults/harness}" \
+      NEXT_ROUTINE_ID="${NEXT_ROUTINE_ID-id}" NEXT_ROUTINE_TOKEN="${NEXT_ROUTINE_TOKEN-token}" \
+      "$cli" next 2>&1
+  ) || run_exit=$?
+  run_calls=$([ -f "$calls_file" ] && wc -l < "$calls_file" || echo 0)
+  run_request=$([ -f "$request_file" ] && cat "$request_file" || echo "")
+}
+
+assert_contains() {
+  local haystack=$1 needle=$2 context=$3
+  echo "$haystack" | grep -qF -- "$needle" || fail "$context: expected to find '$needle' in: $haystack"
+}
+
+# --- missing NEXT_ROUTINE_ID ---
+NEXT_ROUTINE_ID="" run_next
+[ "$run_exit" -ne 0 ] || fail "expected an empty NEXT_ROUTINE_ID to fail"
+assert_contains "$run_output" "NEXT_ROUTINE_ID or NEXT_ROUTINE_TOKEN is not set" "missing NEXT_ROUTINE_ID"
+[ "$run_calls" -eq 0 ] || fail "missing NEXT_ROUTINE_ID: expected no curl call, got $run_calls"
+echo "✓ a missing NEXT_ROUTINE_ID fails without calling curl"
+
+# --- missing NEXT_ROUTINE_TOKEN ---
+NEXT_ROUTINE_TOKEN="" run_next
+[ "$run_exit" -ne 0 ] || fail "expected an empty NEXT_ROUTINE_TOKEN to fail"
+assert_contains "$run_output" "NEXT_ROUTINE_ID or NEXT_ROUTINE_TOKEN is not set" "missing NEXT_ROUTINE_TOKEN"
+[ "$run_calls" -eq 0 ] || fail "missing NEXT_ROUTINE_TOKEN: expected no curl call, got $run_calls"
+echo "✓ a missing NEXT_ROUTINE_TOKEN fails without calling curl"
+
+# --- HTTP >= 300 ---
+STUB_CURL_STATUS=401 run_next
+[ "$run_exit" -ne 0 ] || fail "expected an HTTP 401 response to fail"
+assert_contains "$run_output" "bad token" "HTTP 401"
+[ "$run_calls" -eq 1 ] || fail "HTTP 401: expected curl to be called exactly once, got $run_calls"
+echo "✓ HTTP >= 300 fails naming the reason"
+
+# --- 2xx with no session URL ---
+STUB_CURL_STATUS=200 STUB_CURL_BODY='{"status":"ok"}' run_next
+[ "$run_exit" -ne 0 ] || fail "expected a 200 response with no session URL to fail"
+assert_contains "$run_output" "no session URL" "200 with no session URL"
+echo "✓ 200 with no session URL fails"
+
+# --- happy path, payload contains only the repository name ---
+happy_body='{"claude_code_session_url":"https://claude.ai/code/session_test123"}'
+STUB_CURL_STATUS=200 STUB_CURL_BODY="$happy_body" STUB_GH_REPO="Eschults/harness" run_next
+[ "$run_exit" -eq 0 ] || fail "expected a 200 response with a session URL to succeed, got exit $run_exit: $run_output"
+assert_contains "$run_output" "Fired: https://claude.ai/code/session_test123" "happy path"
+[ "$run_calls" -eq 1 ] || fail "happy path: expected curl to be called exactly once, got $run_calls"
+assert_contains "$run_request" "https://api.anthropic.com/v1/claude_code/routines/id/fire" "happy path"
+assert_contains "$run_request" "Authorization: Bearer token" "happy path"
+assert_contains "$run_request" "Repository: Eschults/harness" "happy path payload"
+echo "$run_request" | grep -qF "Issue:" && fail "expected the fire payload to carry only the repository name, got: $run_request"
+echo "✓ 200 with a session URL succeeds, calls curl exactly once, and the payload is repo-only"
+
+# --- credentials read from .env when the environment doesn't set them ---
+# Plain `source .env` doesn't export, so the CLI must parse .env itself.
+cat > "$repo/.env" <<'DOTENV'
+# routine values
+NEXT_ROUTINE_ID=trig_dotenv
+export NEXT_ROUTINE_TOKEN="sk-ant-oat01-dotenv"
+DOTENV
+STUB_CURL_STATUS=200 STUB_CURL_BODY="$happy_body" NEXT_ROUTINE_ID="" NEXT_ROUTINE_TOKEN="" run_next
+[ "$run_exit" -eq 0 ] || fail "expected credentials from .env to fire the routine, got exit $run_exit: $run_output"
+assert_contains "$run_request" "https://api.anthropic.com/v1/claude_code/routines/trig_dotenv/fire" ".env credentials"
+assert_contains "$run_request" "Authorization: Bearer sk-ant-oat01-dotenv" ".env credentials"
+echo "✓ credentials missing from the environment are read from .env, with export and quotes stripped"
+rm -f "$repo/.env"
+
+# --- the environment wins over .env ---
+cat > "$repo/.env" <<'DOTENV'
+NEXT_ROUTINE_ID=trig_dotenv
+NEXT_ROUTINE_TOKEN=sk-ant-oat01-dotenv
+DOTENV
+STUB_CURL_STATUS=200 STUB_CURL_BODY="$happy_body" NEXT_ROUTINE_ID="trig_env" NEXT_ROUTINE_TOKEN="token_env" run_next
+assert_contains "$run_request" "https://api.anthropic.com/v1/claude_code/routines/trig_env/fire" "env over .env"
+assert_contains "$run_request" "Authorization: Bearer token_env" "env over .env"
+echo "✓ credentials set in the environment win over .env"
+rm -f "$repo/.env"
+
+# --- token never printed ---
+STUB_CURL_STATUS=401 NEXT_ROUTINE_TOKEN="sk-ant-oat01-secret-token" run_next
+echo "$run_output" | grep -qF 'sk-ant-oat01-secret-token' && fail "expected the token to never appear in output, got: $run_output"
+echo "✓ the token never appears in output"
+
+echo
+echo "harness next check: all passed"

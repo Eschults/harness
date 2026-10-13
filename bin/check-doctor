@@ -123,6 +123,8 @@ run_doctor() {
     REAL_CURL="$real_curl" \
     CLAUDE_ROUTINE_ID="${CLAUDE_ROUTINE_ID-}" \
     CLAUDE_ROUTINE_TOKEN="${CLAUDE_ROUTINE_TOKEN-}" \
+    NEXT_ROUTINE_ID="${NEXT_ROUTINE_ID-}" \
+    NEXT_ROUTINE_TOKEN="${NEXT_ROUTINE_TOKEN-}" \
     "$cli" doctor "$@"
   )
 }
@@ -517,6 +519,54 @@ fi
 assert_contains "$output" '- routine fire (skipped: jq is not installed)' "fire missing jq"
 echo "$output" | grep -qF 'no session URL in the response' && fail "expected a missing jq to be its own skip, not a misreported 'no session URL' failure, got: $output"
 echo "✓ --fire with jq missing is skipped and named, not misreported as a bad API response"
+
+# --- Next to Build credentials unset: a skip, not a failure (it's optional) ---
+repo="$scratch/next-creds-unset"
+build_healthy_repo "$repo"
+if ! output=$(run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected harness doctor to exit 0 with no NEXT_ROUTINE_ID/TOKEN set"
+fi
+assert_contains "$output" '- NEXT_ROUTINE_ID/NEXT_ROUTINE_TOKEN (skipped: optional' "next creds unset"
+echo "$output" | grep -q '✗' && fail "expected unset NEXT_ROUTINE_ID/TOKEN to be a skip, never a failure, got: $output"
+echo "✓ unset NEXT_ROUTINE_ID/NEXT_ROUTINE_TOKEN is a skip, not a failure"
+
+# --- Next to Build credentials set: ok ---
+repo="$scratch/next-creds-set"
+build_healthy_repo "$repo"
+if ! output=$(NEXT_ROUTINE_ID=trig_next NEXT_ROUTINE_TOKEN=sk-ant-oat01-next run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected harness doctor to exit 0 with NEXT_ROUTINE_ID/TOKEN set"
+fi
+assert_contains "$output" '✓ NEXT_ROUTINE_ID/NEXT_ROUTINE_TOKEN are set' "next creds set"
+echo "✓ NEXT_ROUTINE_ID/NEXT_ROUTINE_TOKEN set together pass the check"
+
+# --- --fire: fires the Next to Build routine too when its credentials are present ---
+repo="$scratch/fire-next-success"
+build_healthy_repo "$repo"
+if ! output=$(CLAUDE_ROUTINE_ID=trig_test CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test \
+  NEXT_ROUTINE_ID=trig_next NEXT_ROUTINE_TOKEN=sk-ant-oat01-next \
+  STUB_CURL_STATUS=200 STUB_CURL_BODY='{"claude_code_session_url":"https://claude.ai/code/cse_test"}' \
+  run_doctor "$repo" --fire); then
+  echo "$output" >&2
+  fail "expected harness doctor --fire to exit 0 when both routines' credentials are present"
+fi
+assert_contains "$output" '✓ routine fire succeeded: https://claude.ai/code/cse_test' "fire next success"
+assert_contains "$output" '✓ next routine fire succeeded: https://claude.ai/code/cse_test' "fire next success"
+echo "✓ --fire also fires the Next to Build routine when NEXT_ROUTINE_ID/TOKEN are present"
+
+# --- --fire: skips the Next to Build routine fire when its credentials are absent ---
+repo="$scratch/fire-next-missing-vars"
+build_healthy_repo "$repo"
+if ! output=$(CLAUDE_ROUTINE_ID=trig_test CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test \
+  STUB_CURL_STATUS=200 STUB_CURL_BODY='{"claude_code_session_url":"https://claude.ai/code/cse_test"}' \
+  run_doctor "$repo" --fire); then
+  echo "$output" >&2
+  fail "expected harness doctor --fire to exit 0 when only NEXT_ROUTINE_ID/TOKEN are unset"
+fi
+assert_contains "$output" '✓ routine fire succeeded: https://claude.ai/code/cse_test' "fire next missing vars"
+assert_contains "$output" '- next routine fire (skipped: NEXT_ROUTINE_ID or NEXT_ROUTINE_TOKEN is not set in the environment or .env)' "fire next missing vars"
+echo "✓ --fire skips the Next to Build routine fire, not a failure, when its credentials are unset"
 
 echo
 echo "harness doctor check: all passed"
