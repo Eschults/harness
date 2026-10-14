@@ -350,8 +350,18 @@ CHECKS = [
     ),
     (
         "next-to-build-checks-closed-prs-for-rejection",
-        "Also list this account's closed, unmerged pull requests from `claude/` branches." in NEXT_TO_BUILD,
+        "this account's closed, unmerged pull requests from `claude/` branches" in NEXT_TO_BUILD,
         "next-to-build.md should still tell the routine to check closed, unmerged claude/ branch PRs for a human's prior rejection",
+    ),
+    (
+        "next-to-build-checks-closed-issues-for-rejection",
+        "Also list issues closed as not planned" in NEXT_TO_BUILD,
+        "next-to-build.md should still tell the routine to check issues closed as not planned for a human's prior rejection",
+    ),
+    (
+        "next-to-build-searches-all-issues-before-filing",
+        "search all issues, open and closed, for the capability's key terms" in NEXT_TO_BUILD,
+        "next-to-build.md should still require searching open and closed issues for the same idea before filing",
     ),
     (
         "sessionstart-installs-shellcheck",
