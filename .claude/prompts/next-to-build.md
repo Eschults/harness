@@ -8,9 +8,11 @@ Nobody asked for anything. Work out the one capability this project should gain 
 
 Before choosing a capability, list open issues labeled `claude` and open pull requests from `claude/` branches. If either list is non-empty, file nothing and end the run: that work already owes a human a review, and filing more only grows the queue ahead of it.
 
-Also list this account's closed, unmerged pull requests from `claude/` branches. A closing comment there is a human telling you no on that capability: don't file it again, and let whatever reason they gave shape what you pick instead.
+Then skim the titles of the 20 most recently closed not-planned issues and unmerged `claude/` pull requests, to see which directions humans have turned down.
 
 How you work it out is yours — every project shows what it is missing somewhere different. What holds regardless: nobody has filed it and nobody has rejected it already, one implementation run can carry it, and you can say what someone will be able to do that they cannot do now. File one issue, or none.
+
+Once you have a candidate, search issues and pull requests in every state for its key terms, in two or three phrasings, not just its title. An item counts as the same idea when it gives the same person the same outcome, even with a different interface, scope, or parameters. If one is open or done, the candidate is ruled out. If one was closed as not planned or left unmerged, read its closing comment: a reason about product direction rules out this candidate and its neighbours, while a reason about timing or size leaves a later or smaller version open. When a candidate is ruled out, say which item stopped it and pick another.
 
 ## The issue
 
