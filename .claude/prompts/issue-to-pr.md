@@ -25,7 +25,7 @@ When the rulebook tells you to stop rather than guess, take **Draft** if you hav
 
 ## Splitting oversized work
 
-When the issue does not fit the diff cap, ship the largest self-contained slice that fits as a ready-for-review PR, and say in the description which slice you took. Leave the remainder as a comment on the issue listing what is not done; do not open a second issue or relabel anything yourself.
+When the issue does not fit the diff cap, ship the largest self-contained slice that fits as a ready-for-review PR, and say in the description which slice you took. Leave the remainder as a comment on the PR listing what is not done, so the reviewer can say "ship the next N items in this PR" or "open a follow-up issue"; do not open a second issue or relabel anything yourself.
 
 A slice that would leave the codebase broken or half-working is not allowed. When no self-contained slice fits the cap, take the Draft outcome instead, with the question "how should this be split?".
 

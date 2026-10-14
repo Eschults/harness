@@ -313,6 +313,12 @@ CHECKS = [
         "issue-to-pr.md should still require shipping the largest self-contained slice that fits, as a ready-for-review PR",
     ),
     (
+        "oversized-remainder-on-the-pr",
+        'Leave the remainder as a comment on the PR listing what is not done, so the reviewer can say "ship the next N items in this PR" or "open a follow-up issue"'
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the remainder to be listed as a comment on the PR, leaving the next step to the reviewer",
+    ),
+    (
         "oversized-remainder-is-a-comment-not-a-new-issue",
         "do not open a second issue or relabel anything yourself" in ISSUE_TO_PR,
         "issue-to-pr.md should still ban opening a second issue or relabeling for the remainder of a split issue",
