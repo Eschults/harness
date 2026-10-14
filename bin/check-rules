@@ -303,6 +303,31 @@ CHECKS = [
         "issue-to-pr.md should still require findings to live on the PR, not in the diff",
     ),
     (
+        "estimate-diff-before-writing-code",
+        "Estimate the diff against the ~600-line cap in `.claude/harness-rules.md` before writing code." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require estimating the diff against the cap before writing code",
+    ),
+    (
+        "oversized-ship-largest-slice",
+        "ship the largest self-contained slice that fits as a ready-for-review PR" in ISSUE_TO_PR,
+        "issue-to-pr.md should still require shipping the largest self-contained slice that fits, as a ready-for-review PR",
+    ),
+    (
+        "oversized-remainder-is-a-comment-not-a-new-issue",
+        "do not open a second issue or relabel anything yourself" in ISSUE_TO_PR,
+        "issue-to-pr.md should still ban opening a second issue or relabeling for the remainder of a split issue",
+    ),
+    (
+        "oversized-no-broken-slice",
+        "A slice that would leave the codebase broken or half-working is not allowed." in ISSUE_TO_PR,
+        "issue-to-pr.md should still ban a slice that leaves the codebase broken or half-working",
+    ),
+    (
+        "oversized-draft-question",
+        'take the Draft outcome instead, with the question "how should this be split?"' in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the Draft outcome with the \"how should this be split?\" question when no slice fits",
+    ),
+    (
         "next-to-build-files-with-claude-label",
         'Create it with the `claude` label, to let the "Issue to PR" routine take over' in NEXT_TO_BUILD,
         "next-to-build.md should still file the new issue with the claude label",

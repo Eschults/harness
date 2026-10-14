@@ -7,10 +7,11 @@ The `<routine-fire-payload>` block names one GitHub issue that someone labeled `
 1. `.claude/harness-rules.md` and `CLAUDE.md` are loaded for you and bind this run. This file is the procedure, it adds no rules of its own.
 2. Read the issue and every comment on it. A specification often continues in the comments, and the body alone will not show it.
 3. Reproduce the problem or pin down the feature's scope before writing code.
-4. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
-5. Open the PR per the three outcomes below, then comment the link on the issue.
-6. Review the PR per the section below: ready-for-review PRs only; skip it on a draft, which by definition is not finished.
-7. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
+4. Estimate the diff against the ~600-line cap in `.claude/harness-rules.md` before writing code. If the issue fits, build it whole. If it does not, follow "Splitting oversized work" below before choosing an outcome.
+5. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
+6. Open the PR per the three outcomes below, then comment the link on the issue.
+7. Review the PR per the section below: ready-for-review PRs only; skip it on a draft, which by definition is not finished.
+8. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
 
 ## The three outcomes
 
@@ -21,6 +22,12 @@ Every run ends in exactly one of these. Pick deliberately; the difference is wha
 - **No PR**: there is no useful partial change to show. Comment on the issue explaining what you found and remove `claude`. That is a successful outcome, not a failure.
 
 When the rulebook tells you to stop rather than guess, take **Draft** if you have a real change and one clear question a human can answer, and **No PR** when the doubt goes to the root of the task.
+
+## Splitting oversized work
+
+When the issue does not fit the diff cap, ship the largest self-contained slice that fits as a ready-for-review PR, and say in the description which slice you took. Leave the remainder as a comment on the issue listing what is not done; do not open a second issue or relabel anything yourself.
+
+A slice that would leave the codebase broken or half-working is not allowed. When no self-contained slice fits the cap, take the Draft outcome instead, with the question "how should this be split?".
 
 ## Handing off a draft
 
