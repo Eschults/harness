@@ -355,13 +355,13 @@ CHECKS = [
     ),
     (
         "next-to-build-checks-closed-issues-for-rejection",
-        '`gh issue list --state closed --search "reason:not-planned" --limit 200`' in NEXT_TO_BUILD,
-        "next-to-build.md should still give the command listing issues closed as not planned, with a limit past gh's default of 30",
+        "issues whose state is closed and close reason is not planned" in NEXT_TO_BUILD,
+        "next-to-build.md should still tell the routine to list issues closed as not planned",
     ),
     (
-        "next-to-build-closed-prs-command",
-        "`gh pr list --state closed --author @me --limit 200 --json number,title,headRefName,mergedAt`" in NEXT_TO_BUILD,
-        "next-to-build.md should still give the command listing this account's closed pull requests, with a limit past gh's default of 30",
+        "next-to-build-rejections-fetch-every-page",
+        "Fetch every page of each list" in NEXT_TO_BUILD,
+        "next-to-build.md should still require fetching every page of the rejection lists, not just the first",
     ),
     (
         "next-to-build-timing-or-size-rejection-stays-open",
@@ -370,14 +370,14 @@ CHECKS = [
     ),
     (
         "next-to-build-searches-all-issues-before-filing",
-        '`gh issue list --state all --search "<terms>" --limit 100`' in NEXT_TO_BUILD,
-        "next-to-build.md should still give the command searching open and closed issues for the same idea",
+        "Leave the state filter off or set it to all" in NEXT_TO_BUILD,
+        "next-to-build.md should still require the duplicate search to cover closed issues, not just open ones",
     ),
     (
         "next-to-build-duplicate-search-before-create",
-        "gh issue list --state all --search" in NEXT_TO_BUILD
+        "searching every issue, open and closed" in NEXT_TO_BUILD
         and "Create it with the `claude` label" in NEXT_TO_BUILD
-        and NEXT_TO_BUILD.index("gh issue list --state all --search") < NEXT_TO_BUILD.index("Create it with the `claude` label"),
+        and NEXT_TO_BUILD.index("searching every issue, open and closed") < NEXT_TO_BUILD.index("Create it with the `claude` label"),
         "next-to-build.md should still ask for the duplicate search before the sentence that creates the labeled issue",
     ),
     (
