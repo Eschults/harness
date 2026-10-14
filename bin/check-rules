@@ -349,36 +349,31 @@ CHECKS = [
         "next-to-build.md should still require naming the issue or PR that caused a skipped run",
     ),
     (
-        "next-to-build-checks-closed-prs-for-rejection",
-        "this account's closed, unmerged pull requests from `claude/` branches" in NEXT_TO_BUILD,
-        "next-to-build.md should still tell the routine to check closed, unmerged claude/ branch PRs for a human's prior rejection",
+        "next-to-build-skims-recent-rejections",
+        "skim the titles of the 20 most recently closed not-planned issues and unmerged `claude/` pull requests" in NEXT_TO_BUILD,
+        "next-to-build.md should still skim the titles of recent rejections, bounded to 20, before choosing a capability",
     ),
     (
-        "next-to-build-checks-closed-issues-for-rejection",
-        "issues whose state is closed and close reason is not planned" in NEXT_TO_BUILD,
-        "next-to-build.md should still tell the routine to list issues closed as not planned",
+        "next-to-build-searches-every-state-per-candidate",
+        "search issues and pull requests in every state for its key terms, in two or three phrasings" in NEXT_TO_BUILD,
+        "next-to-build.md should still search issues and PRs in every state for the candidate's key terms",
     ),
     (
-        "next-to-build-rejections-fetch-every-page",
-        "Fetch every page of each list" in NEXT_TO_BUILD,
-        "next-to-build.md should still require fetching every page of the rejection lists, not just the first",
+        "next-to-build-reads-closing-comment-of-rejected-match",
+        "If one was closed as not planned or left unmerged, read its closing comment" in NEXT_TO_BUILD,
+        "next-to-build.md should still read the closing comment of a rejected match",
     ),
     (
         "next-to-build-timing-or-size-rejection-stays-open",
-        "when it is about timing or size, a later or smaller version stays open" in NEXT_TO_BUILD,
+        "a reason about timing or size leaves a later or smaller version open" in NEXT_TO_BUILD,
         "next-to-build.md should still limit the neighbouring-ideas ban to product-direction rejections",
     ),
     (
-        "next-to-build-searches-all-issues-before-filing",
-        "Leave the state filter off or set it to all" in NEXT_TO_BUILD,
-        "next-to-build.md should still require the duplicate search to cover closed issues, not just open ones",
-    ),
-    (
-        "next-to-build-duplicate-search-before-create",
-        "searching every issue, open and closed" in NEXT_TO_BUILD
+        "next-to-build-candidate-search-before-create",
+        "search issues and pull requests in every state" in NEXT_TO_BUILD
         and "Create it with the `claude` label" in NEXT_TO_BUILD
-        and NEXT_TO_BUILD.index("searching every issue, open and closed") < NEXT_TO_BUILD.index("Create it with the `claude` label"),
-        "next-to-build.md should still ask for the duplicate search before the sentence that creates the labeled issue",
+        and NEXT_TO_BUILD.index("search issues and pull requests in every state") < NEXT_TO_BUILD.index("Create it with the `claude` label"),
+        "next-to-build.md should still ask for the candidate search before the sentence that creates the labeled issue",
     ),
     (
         "prompts-and-rules-name-no-gh-command",
