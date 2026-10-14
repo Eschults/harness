@@ -8,15 +8,15 @@ Nobody asked for anything. Work out the one capability this project should gain 
 
 Before choosing a capability, list open issues labeled `claude` and open pull requests from `claude/` branches. If either list is non-empty, file nothing and end the run: that work already owes a human a review, and filing more only grows the queue ahead of it.
 
-Also list issues closed as not planned (`gh issue list --state closed --search "reason:not-planned"`) and this account's closed, unmerged pull requests from `claude/` branches, and read every comment on them. A closing comment there is a human telling you no on that capability: don't file it again under another title or scope, and treat the reason they gave as product direction that rules out neighbouring ideas too, not just the one they closed.
+Also list what humans already turned down: issues closed as not planned (`gh issue list --state closed --search "reason:not-planned" --limit 200`), and this account's closed, unmerged pull requests from `claude/` branches (`gh pr list --state closed --author @me --limit 200 --json number,title,headRefName,mergedAt`, keeping those with no `mergedAt` and a `claude/` head). Read the closing comment on each, and the whole thread on any that touch the capability you are weighing. A closing comment is a human telling you no on that capability: don't file it again under another title or scope. When the reason is about product direction, it rules out neighbouring ideas too, not just the one they closed; when it is about timing or size, a later or smaller version stays open.
 
 How you work it out is yours — every project shows what it is missing somewhere different. What holds regardless: nobody has filed it and nobody has rejected it already, one implementation run can carry it, and you can say what someone will be able to do that they cannot do now. File one issue, or none.
+
+Check that nobody has filed it by searching every issue, open and closed, for the capability's key terms, not just its title (`gh issue list --state all --search "<terms>" --limit 100`). An issue counts as the same idea when it gives the same person the same outcome, even with a different interface, scope, or parameters. If one exists, file nothing and say which issue stopped you.
 
 ## The issue
 
 Title is the capability, under 72 characters. Body is `## Context` (what is missing and why it matters now), `## Done looks like` (acceptance criteria as a checklist), then the files you expect to change. Create it with the `claude` label, to let the "Issue to PR" routine take over and create a PR without further notice.
-
-Before creating it, search all issues, open and closed, for the capability's key terms, not just its title. An issue counts as the same idea when it gives the same person the same outcome, even with a different UI or range. If one exists, file nothing and say which issue stopped you.
 
 ## Ending the run
 
