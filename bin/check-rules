@@ -381,6 +381,11 @@ CHECKS = [
         "next-to-build.md should still ask for the duplicate search before the sentence that creates the labeled issue",
     ),
     (
+        "prompts-and-rules-name-no-gh-command",
+        not any("`gh " in text for text in (HARNESS_RULES, ISSUE_TO_PR, NEXT_TO_BUILD)),
+        "harness-rules.md and the prompts should describe what to query, not give `gh` commands, since routine environments may not have gh",
+    ),
+    (
         "sessionstart-installs-shellcheck",
         "apt-get install" in SETTINGS_JSON and "shellcheck" in SETTINGS_JSON,
         ".claude/settings.json should still have a SessionStart hook installing shellcheck when missing",
