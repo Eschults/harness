@@ -93,30 +93,35 @@ run_release() {
 # Like run_release, but attaches bin/release to a pty via `script`: bash's
 # `read -rp` only ever prints its prompt when stdin is a terminal, so a
 # plain pipe (as run_release uses) never shows the suggested-version text.
+# $2 is sent once the prompt shows; optional $3 is typed ahead, before it.
 run_release_pty() {
-  local repo_dir=$1 stdin_input=$2
+  local repo_dir=$1 stdin_input=$2 typeahead=${3:-}
+  local stdin_fifo="$scratch/release-stdin" output_file="$scratch/release-output"
   : > "$gh_calls_file"
+  : > "$output_file"
+  rm -f "$stdin_fifo" && mkfifo "$stdin_fifo"
   release_exit=0
-  release_output=$(
-    {
-      cd "$repo_dir" || exit 1
-      if script -qec true /dev/null </dev/null >/dev/null 2>&1; then
-        PATH="$stub_bin:$PATH" GH_CALLS_FILE="$gh_calls_file" script -qec "./bin/release" /dev/null <<<"$stdin_input"
-      else
-        # BSD script (macOS) has no -c/-e and hangs up the child on stdin EOF, so hold its stdin pipe open until it exits.
-        local stdin_fifo="$scratch/release-stdin"
-        rm -f "$stdin_fifo" && mkfifo "$stdin_fifo"
-        PATH="$stub_bin:$PATH" GH_CALLS_FILE="$gh_calls_file" script -q /dev/null ./bin/release < <(cat "$stdin_fifo") &
-        local script_pid=$!
-        exec 3>"$stdin_fifo"
-        printf '%s\n' "$stdin_input" >&3
-        wait "$script_pid"
-        local script_exit=$?
-        exec 3>&-
-        return "$script_exit"
-      fi
-    } 2>&1
-  ) || release_exit=$?
+  # BSD script (macOS) has no -c/-e and hangs up the child on stdin EOF, so hold its stdin pipe open until it exits.
+  (
+    cd "$repo_dir" || exit 1
+    if script -qec true /dev/null </dev/null >/dev/null 2>&1; then
+      PATH="$stub_bin:$PATH" GH_CALLS_FILE="$gh_calls_file" script -qec "./bin/release" /dev/null
+    else
+      PATH="$stub_bin:$PATH" GH_CALLS_FILE="$gh_calls_file" script -q /dev/null ./bin/release
+    fi
+  ) < <(cat "$stdin_fifo") > "$output_file" 2>&1 &
+  local release_pid=$!
+  exec 3>"$stdin_fifo"
+  [ -z "$typeahead" ] || printf '%s' "$typeahead" >&3
+  local attempts=0
+  until grep -qF "Next version" "$output_file" || ! kill -0 "$release_pid" 2>/dev/null || [ "$attempts" -ge 300 ]; do
+    sleep 0.1
+    attempts=$((attempts + 1))
+  done
+  printf '%s\n' "$stdin_input" >&3
+  wait "$release_pid" || release_exit=$?
+  exec 3>&-
+  release_output=$(<"$output_file")
   release_calls=$(wc -l < "$gh_calls_file")
 }
 
@@ -154,7 +159,36 @@ run_release "$repo" "
 "
 [ "$release_exit" -eq 0 ] || fail "expected an empty answer to take the suggested version, got exit $release_exit: $release_output"
 [ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v1.0.1" ] || fail "expected an empty answer after v1.0.0 to release v1.0.1, got $(cat "$repo/.claude/HARNESS_VERSION" 2>/dev/null)"
-echo "✓ pressing Enter after v1.0.0 releases the suggested v1.0.1"
+origin_main=$(git -C "$origin" rev-parse "main^{commit}")
+origin_v101=$(git -C "$origin" rev-parse -q --verify "v1.0.1^{commit}" || true)
+origin_v1=$(git -C "$origin" rev-parse "v1^{commit}")
+if [ "$origin_main" != "$origin_v101" ] || [ "$origin_v1" != "$origin_v101" ]; then
+  fail "expected an empty answer to push main, v1.0.1 and v1 to the same commit"
+fi
+grep -qxF "release create v1.0.1 --title v1.0.1 --generate-notes" "$gh_calls_file" \
+  || fail "expected an empty answer to call gh with 'release create v1.0.1 --title v1.0.1 --generate-notes', got: $(cat "$gh_calls_file")"
+echo "✓ pressing Enter after v1.0.0 commits, tags and releases the suggested v1.0.1"
+
+# --- Input that sanitizes to nothing is rejected, not taken as Enter ---
+for junk in "v" "   " $'\e[200~\e[201~'; do
+  make_fixture "v1.0.0"
+  before=$(snapshot_origin "$origin")
+  run_release "$repo" "$junk
+"
+  [ "$release_exit" -ne 0 ] || fail "expected $(printf '%q' "$junk") to be rejected, not released as the suggestion"
+  echo "$release_output" | grep -qi "Version must be X.Y.Z" || fail "expected a malformed-version error for $(printf '%q' "$junk"), got: $release_output"
+  assert_guard_untouched "$origin" "$before" "junk input $(printf '%q' "$junk")"
+done
+echo "✓ a lone v, only spaces, or an empty paste fails instead of taking the suggestion"
+
+# --- Enter typed ahead while bin/ci runs is discarded ---
+make_fixture "v1.0.0"
+before=$(snapshot_origin "$origin")
+run_release_pty "$repo" "not-a-version" $'\n'
+[ "$release_exit" -ne 0 ] || fail "expected an Enter typed before the prompt to be discarded, but the release went through: $release_output"
+echo "$release_output" | grep -qi "Version must be X.Y.Z" || fail "expected the answer after the prompt to be the one read, got: $release_output"
+assert_guard_untouched "$origin" "$before" "typeahead Enter"
+echo "✓ an Enter typed before the prompt is discarded, not taken as the answer"
 
 # --- Pasted version wrapped in bracketed-paste markers and stray whitespace ---
 make_fixture "v1.1.4"

@@ -42,13 +42,20 @@ else
   suggested="1.0.0"
 fi
 
-read -rp "Next version (Enter for $suggested): " raw_version
+# Discard keys typed while bin/ci ran, so a stray Enter can't accept the suggestion unseen.
+if [ -t 0 ]; then
+  while read -r -t 0.1 -n 10000 _ 2>/dev/null; do :; done
+fi
+
+IFS= read -rp "Next version (Enter for $suggested): " raw_version
+if [ -z "$raw_version" ]; then
+  raw_version=$suggested
+fi
 # Strip bracketed-paste markers, whitespace and control chars a terminal can slip into pasted or typed input.
 version=${raw_version//$'\e[200~'/}
 version=${version//$'\e[201~'/}
 version=$(printf '%s' "$version" | LC_ALL=C tr -d '[:space:][:cntrl:]')
 version=${version#v}
-version=${version:-$suggested}
 
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Version must be X.Y.Z (got $(printf '%q' "$raw_version"))" >&2
