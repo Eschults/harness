@@ -148,6 +148,14 @@ grep -qxF "release create v1.0.1 --title v1.0.1 --generate-notes" "$gh_calls_fil
   || fail "expected gh to be called with 'release create v1.0.1 --title v1.0.1 --generate-notes', got: $(cat "$gh_calls_file")"
 echo "✓ happy path: v1.0.0 -> 1.0.1 commits, tags and releases, calling gh exactly once"
 
+# --- Pressing Enter takes the suggested version ---
+make_fixture "v1.0.0"
+run_release "$repo" "
+"
+[ "$release_exit" -eq 0 ] || fail "expected an empty answer to take the suggested version, got exit $release_exit: $release_output"
+[ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v1.0.1" ] || fail "expected an empty answer after v1.0.0 to release v1.0.1, got $(cat "$repo/.claude/HARNESS_VERSION" 2>/dev/null)"
+echo "✓ pressing Enter after v1.0.0 releases the suggested v1.0.1"
+
 # --- Pasted version wrapped in bracketed-paste markers and stray whitespace ---
 make_fixture "v1.1.4"
 run_release "$repo" $' \e[200~1.2.0\e[201~ \r\n'
@@ -160,7 +168,7 @@ echo "✓ a version wrapped in bracketed-paste markers and whitespace is accepte
 make_fixture "v1.0.9"
 before=$(snapshot_origin "$origin")
 run_release_pty "$repo" "not-a-version"
-echo "$release_output" | grep -qF "Next version (e.g. 1.0.10):" \
+echo "$release_output" | grep -qF "Next version (Enter for 1.0.10):" \
   || fail "expected the suggested next version after v1.0.9 to be 1.0.10, got: $release_output"
 echo "✓ suggested next version after v1.0.9 is 1.0.10 (numeric, not string, increment)"
 [ "$release_exit" -ne 0 ] || fail "expected a non-X.Y.Z version to fail"

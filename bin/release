@@ -42,12 +42,13 @@ else
   suggested="1.0.0"
 fi
 
-read -rp "Next version (e.g. $suggested): " raw_version
+read -rp "Next version (Enter for $suggested): " raw_version
 # Strip bracketed-paste markers, whitespace and control chars a terminal can slip into pasted or typed input.
 version=${raw_version//$'\e[200~'/}
 version=${version//$'\e[201~'/}
 version=$(printf '%s' "$version" | LC_ALL=C tr -d '[:space:][:cntrl:]')
 version=${version#v}
+version=${version:-$suggested}
 
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Version must be X.Y.Z (got $(printf '%q' "$raw_version"))" >&2
