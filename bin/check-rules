@@ -11,8 +11,8 @@ cuts a new major, and another that the legacy bin/lib/fetch-files.sh lists
 the same HARNESS_FILES as bin/harness-cli. Another set of checks extracts every relative link (and
 the "N files, two routines" count) out of README.md and verifies them against
 the working tree, catching link rot and a stale file count left behind by a
-rename or a file added to HARNESS_FILES. Another check regenerates README.md's Guardrails list from
-the .claude/harness-rules.md section summaries (bin/sync-readme) and fails if it differs. A further check scans bin/ and
+rename or a file added to HARNESS_FILES. Another check fails when a .claude/harness-rules.md section has
+changed since its hand-written README.md Guardrails summary was last reviewed (bin/sync-readme). A further check scans bin/ and
 bin/lib/ for every bash/sh script (by shebang or .sh extension) and fails,
 naming it, if it is missing from the shellcheck list in bin/ci, catching a
 new bin/ script nobody remembered to add to that list; a self-test proves
@@ -26,7 +26,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
-from readme_guardrails import heading_anchor, strip_fenced_code_blocks as _strip_fenced_code_blocks, synced_readme  # noqa: E402
+from readme_guardrails import heading_anchor, guardrails_problems, strip_fenced_code_blocks as _strip_fenced_code_blocks  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HARNESS_RULES = (ROOT / ".claude" / "harness-rules.md").read_text()
@@ -130,11 +130,10 @@ def _readme_install_file_count_check() -> tuple[str, bool, str]:
 
 def _readme_guardrails_check() -> tuple[str, bool, str]:
     try:
-        ok = synced_readme(README, HARNESS_RULES) == README
-        message = "README.md's Guardrails list is out of date with .claude/harness-rules.md; run bin/sync-readme"
+        problems = guardrails_problems(README, HARNESS_RULES)
     except ValueError as error:
-        ok, message = False, str(error)
-    return ("readme-guardrails-in-sync", ok, message)
+        problems = [str(error)]
+    return ("readme-guardrails-in-sync", not problems, "; ".join(problems))
 
 def _cli_readme_anchor_checks() -> list[tuple[str, bool, str]]:
     """Every $HARNESS_README#anchor the CLI prints must match a README.md heading."""
