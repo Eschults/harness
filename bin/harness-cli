@@ -263,7 +263,7 @@ fire_failure_reason() {
     0) echo "could not reach the API (network problem)" ;;
     401 | 403) echo "bad token" ;;
     404) echo "wrong routine id" ;;
-    429) echo "daily routine cap reached" ;;
+    429) echo "routine rate limit or subscription usage limit reached" ;;
     *) echo "see $HARNESS_README#3-set-two-repo-values" ;;
   esac
 }

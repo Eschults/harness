@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""Aligns README.md's Guardrails list with .claude/harness-rules.md: one bullet per section, fingerprints refreshed.
+
+Run it after re-reading the summary of every rules section you changed. New sections get a placeholder to write.
+"""
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+from readme_guardrails import ROOT, RULES_PATH, synced_readme  # noqa: E402
+
+readme_path = ROOT / "README.md"
+readme = readme_path.read_text()
+try:
+    updated = synced_readme(readme, (ROOT / RULES_PATH).read_text())
+except ValueError as error:
+    sys.exit(f"bin/sync-readme: {error}")
+if updated == readme:
+    print("README.md Guardrails already match .claude/harness-rules.md")
+else:
+    readme_path.write_text(updated)
+    print("README.md Guardrails updated; write any placeholder summary, then review and commit the diff")
