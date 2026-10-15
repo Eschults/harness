@@ -78,6 +78,32 @@ latest_harness_version() {
   curl -fsSL "$(harness_tags_url)" | jq -r '.[].name' | { grep -E "^$(harness_major)\.[0-9]+\.[0-9]+$" || true; } | sort -V | tail -1
 }
 
+# Lists harness files with uncommitted (modified or staged) changes. Leaves
+# an untracked file off the list: a repo that installed but never committed
+# has every harness file untracked, and that's the normal pre-commit state,
+# not an edit upgrade would destroy.
+dirty_harness_files() {
+  local f
+  for f in "${HARNESS_FILES[@]}"; do
+    [ -e "$f" ] || continue
+    if ! git diff --quiet -- "$f" 2>/dev/null || ! git diff --cached --quiet -- "$f" 2>/dev/null; then
+      echo "$f"
+    fi
+  done
+}
+
+require_clean_harness_files() {
+  local dirty f
+  dirty=$(dirty_harness_files)
+  if [ -n "$dirty" ]; then
+    echo "Uncommitted changes in these harness files would be overwritten; commit or stash them and re-run:" >&2
+    while IFS= read -r f; do
+      echo "  $f" >&2
+    done <<< "$dirty"
+    exit 1
+  fi
+}
+
 fetch_harness_files() {
   local src f
   src=$(harness_src)
@@ -144,6 +170,8 @@ cmd_upgrade() {
     echo "No .claude/HARNESS_VERSION found; run harness install first." >&2
     exit 1
   fi
+
+  require_clean_harness_files
 
   # Set by a v1.3.x CLI that just replaced itself with bin/harness, so the confirmed upgrade resumes without re-asking.
   if [ -z "${HARNESS_UPGRADE_CONFIRMED:-}" ]; then

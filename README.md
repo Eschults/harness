@@ -177,6 +177,8 @@ harness upgrade
 
 It first updates the `harness` command itself to the latest release's launcher, which never changes the CLI version any repo runs. It then runs the latest release's CLI, compares your pinned version against that release, opens its release notes, and, if you confirm, pulls in the updated files. Already on the latest release: it says so and exits. Review the diff and commit the changes. Upgrade each repo on its own schedule: until you do, `harness` keeps running the CLI that matches its files.
 
+Commit or stash any local edits to the harness files first: `harness upgrade` refuses to run, and changes nothing, if one of them has uncommitted changes it would otherwise overwrite.
+
 Installed before the CLI existed? Your `bin/harness-upgrade` still works: run it once to pull in the latest files, then once more for how to install the CLI. `harness install` then removes the old `bin/` scripts.
 
 ## Uninstalling
