@@ -56,8 +56,8 @@ jobs:
             -d "$(jq -n --arg text "$text" '{text: $text}')")
 
           if [ "$status" -ge 300 ]; then
-            # Error bodies name the reason (bad token, revoked trigger, daily
-            # routine cap reached) and contain no secrets.
+            # Error bodies name the reason (bad token, revoked trigger, rate
+            # or usage limit reached) and contain no secrets.
             echo "::error::Routine fire failed with HTTP $status"
             jq . "$response" 2>/dev/null || cat "$response"
             exit 1

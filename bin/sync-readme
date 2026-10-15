@@ -8,7 +8,10 @@ from readme_guardrails import ROOT, RULES_PATH, synced_readme  # noqa: E402
 
 readme_path = ROOT / "README.md"
 readme = readme_path.read_text()
-updated = synced_readme(readme, (ROOT / RULES_PATH).read_text())
+try:
+    updated = synced_readme(readme, (ROOT / RULES_PATH).read_text())
+except ValueError as error:
+    sys.exit(f"bin/sync-readme: {error}")
 if updated == readme:
     print("README.md Guardrails already match .claude/harness-rules.md")
 else:

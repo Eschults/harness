@@ -11,7 +11,8 @@ cuts a new major, and another that the legacy bin/lib/fetch-files.sh lists
 the same HARNESS_FILES as bin/harness-cli. Another set of checks extracts every relative link (and
 the "N files, two routines" count) out of README.md and verifies them against
 the working tree, catching link rot and a stale file count left behind by a
-rename or a file added to HARNESS_FILES. A further check scans bin/ and
+rename or a file added to HARNESS_FILES. Another check regenerates README.md's Guardrails list from
+the .claude/harness-rules.md section summaries (bin/sync-readme) and fails if it differs. A further check scans bin/ and
 bin/lib/ for every bash/sh script (by shebang or .sh extension) and fails,
 naming it, if it is missing from the shellcheck list in bin/ci, catching a
 new bin/ script nobody remembered to add to that list; a self-test proves
@@ -25,7 +26,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
-from readme_guardrails import synced_readme  # noqa: E402
+from readme_guardrails import heading_anchor, strip_fenced_code_blocks as _strip_fenced_code_blocks, synced_readme  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HARNESS_RULES = (ROOT / ".claude" / "harness-rules.md").read_text()
@@ -61,19 +62,9 @@ _NUMBER_WORDS = {
 }
 
 
-def _strip_fenced_code_blocks(text: str) -> str:
-    """Drop ```...``` blocks so example headings/links inside them (e.g. the
-    sample harness-rules.md snippet in README.md) aren't mistaken for real ones."""
-    return re.sub(r"```.*?```", "", text, flags=re.DOTALL)
-
-
 def _heading_anchors(text: str) -> set[str]:
     """GitHub-style heading slugs: lowercase, drop punctuation, spaces to hyphens."""
-    anchors = set()
-    for heading in re.findall(r"(?m)^#{1,6}\s+(.+?)\s*$", _strip_fenced_code_blocks(text)):
-        slug = re.sub(r"[^\w\s-]", "", heading.lower())
-        anchors.add(re.sub(r"\s+", "-", slug.strip()))
-    return anchors
+    return {heading_anchor(heading) for heading in re.findall(r"(?m)^#{1,6}\s+(.+?)\s*$", _strip_fenced_code_blocks(text))}
 
 
 def _readme_relative_links() -> list[str]:
