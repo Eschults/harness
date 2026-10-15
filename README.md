@@ -1,6 +1,6 @@
 # Autonomous PR harness
 
-Label a GitHub issue `claude` and a Claude Code session implements it, opens a pull request, reviews its own diff, and posts a review recapping what it found and fixed. A human reviews and merges; the agent never can.
+Label a GitHub issue `claude` and a Claude Code session implements it, opens a pull request, reviews its own diff, and posts a review recapping what it found and fixed. A human reviews and merges: the rules forbid the agent from approving or merging, and branch protection on your default branch enforces it.
 
 <p align="center">
   <picture>
@@ -15,7 +15,7 @@ It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on 
 ## What a run does
 
 - **Ends in one of three outcomes**: a PR ready for review, a draft PR that asks one question a human must answer, or a comment on the issue explaining why there is no PR.
-- **Reviews itself before exiting**: runs `/code-review --fix` on its PR, re-runs the tests, and posts a review listing what it found, what it fixed (with the commit), and what it left for you.
+- **Reviews itself before exiting** (ready-for-review PRs only): runs `/code-review --fix` on its PR, re-runs the tests, and posts a review listing what it found, what it fixed (with the commit), and what it left for you.
 - **Hands over cleanly**: drafts and recaps link the session, so an engineer can take it over from claude.ai or with `claude --teleport`.
 - **Keeps going after it exits**: with Auto-fix on, failing CI and review comments resume the session to push fixes.
 - **Optionally finds its own work**: the "Next to build" routine files the next issue on a schedule, and skips the run while earlier work still awaits review.
@@ -24,7 +24,7 @@ It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on 
 
 Every run, including Auto-fix sessions, follows [`.claude/harness-rules.md`](.claude/harness-rules.md). In short, the agent:
 
-- Never approves, merges, force-pushes, or marks someone else's draft ready.
+- Never approves, merges, or marks someone else's draft ready, and never rewrites commits it did not write.
 - Stops and hands back instead of guessing on auth, payments, permissions, PII, schema migrations, or ambiguous requirements.
 - Keeps diffs around 600 lines, shipping larger work as a self-contained slice plus a list of what remains.
 - Adds a regression test for every fix and tests for every feature, and opens no PR with a failing suite.
@@ -44,7 +44,7 @@ The harness is mostly prose, versioned in your repo where you can read and diff 
 | [`.claude/harness-rules.md`](.claude/harness-rules.md) | The rules every run follows. |
 | `.claude/HARNESS_VERSION` | The release this repo is pinned to. |
 
-Plus the `harness` CLI, which installs, checks, upgrades and removes them.
+Plus the `harness` CLI, which installs, checks, upgrades and removes them, and can start a run by hand.
 
 ## Setup
 
@@ -52,7 +52,7 @@ Install is the `harness` CLI, five files, two routines, one label, and two repo 
 
 #### 1. Install the harness
 
-Once per machine, on macOS or Linux (installs to `~/.local/bin`, which must be on your `PATH`):
+Once per machine, on macOS or Linux (installs to `~/.local/bin`, or `HARNESS_INSTALL_DIR` if set, which must be on your `PATH`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Eschults/harness/v1/install.sh | sh
@@ -100,6 +100,8 @@ gh variable set CLAUDE_ROUTINE_ID --body "$CLAUDE_ROUTINE_ID"
 gh secret set CLAUDE_ROUTINE_TOKEN --body "$CLAUDE_ROUTINE_TOKEN"
 ```
 
+To confirm both work, run `harness doctor --fire` now. It starts a real test session, which counts against your daily routine cap and does no work until the harness files are merged.
+
 #### 4. Create the label
 
 ```bash
@@ -114,7 +116,7 @@ Commit the harness files and merge them to your default branch, since the routin
 harness doctor
 ```
 
-It checks the files, the `CLAUDE.md` import, the label, the repo values, the default branch, that GitHub Actions and `claude.yml` are enabled, and that your pinned release is current. It never prints a secret. `harness doctor --fire` also starts a real test session to confirm the routine id and token work, which counts against your daily routine cap.
+It checks the files, the `CLAUDE.md` import, the label, the repo values, the default branch, that GitHub Actions and `claude.yml` are enabled, and that your pinned release is current. It never prints a secret.
 
 #### 6. (Optional) Create the "Next to build" routine
 
@@ -133,13 +135,13 @@ Set the trigger to **Schedule** at whatever frequency suits your team, leave **A
 
 ## Worth knowing
 
-- **A green workflow run means "session started"**, not "PR opened". The session comments its URL on the issue, or the reason it could not start.
+- **A green workflow run means "session started"**, not "PR opened". The workflow comments the session URL on the issue, or the reason it could not start one.
 - **Other tools can file work too.** Have your APM file a `claude`-labeled issue on high-severity errors, or your roadmap tool push cards to GitHub when they're ready to build.
 - **But not another GitHub Actions workflow.** Labels added with the default `GITHUB_TOKEN` don't trigger workflows, so the run never starts. That's why "Next to build" is a routine, not a cron workflow.
 - **Each run counts against your daily routine cap**, drawing down subscription usage. Branches, PRs, comments and labels appear as the GitHub user linked to your Claude account; commits appear as Claude.
 - **The routine token is a long-lived bearer token.** Anyone holding it can start the routine with any text. Rotate it like any other secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
-- **If GitHub Actions can't run `claude.yml`** (no minutes left, Actions disabled), `harness issue <issue-number>` starts the routine directly from your machine.
+- **If GitHub Actions can't run `claude.yml`** (no minutes left, Actions disabled), `harness issue <issue-number>` starts the routine directly from your machine, reading `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` from your environment or the repo's `.env`.
 
 ## Upgrading
 
@@ -157,7 +159,7 @@ Each repo pins its release in `.claude/HARNESS_VERSION` and `harness` runs the C
 harness uninstall
 ```
 
-It removes the harness files and the `CLAUDE.md` import, leaving the rest of `CLAUDE.md` alone, then prints the manual steps left: deleting the routines, the label, and the two repo values. Review the diff and commit it.
+It removes the harness files and the `CLAUDE.md` import, leaving the rest of `CLAUDE.md` alone, then prints the manual steps left: deleting the routines, the label, and the two repo values. Review the diff and commit it. The `harness` command stays installed for your other repos; once none use it, delete `~/.local/bin/harness` and `~/.local/share/harness`.
 
 ## License
 
