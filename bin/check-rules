@@ -24,6 +24,9 @@ import re
 import sys
 import tempfile
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+from readme_guardrails import synced_readme  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HARNESS_RULES = (ROOT / ".claude" / "harness-rules.md").read_text()
 CLAUDE_MD = (ROOT / "CLAUDE.md").read_text()
@@ -133,6 +136,14 @@ def _readme_install_file_count_check() -> tuple[str, bool, str]:
         f"README.md says '{word} files, two routines' ({readme_count}), but bin/harness-cli's HARNESS_FILES "
         f"lists {expected_count} file(s)",
     )
+
+def _readme_guardrails_check() -> tuple[str, bool, str]:
+    try:
+        ok = synced_readme(README, HARNESS_RULES) == README
+        message = "README.md's Guardrails list is out of date with .claude/harness-rules.md; run bin/sync-readme"
+    except ValueError as error:
+        ok, message = False, str(error)
+    return ("readme-guardrails-in-sync", ok, message)
 
 def _cli_readme_anchor_checks() -> list[tuple[str, bool, str]]:
     """Every $HARNESS_README#anchor the CLI prints must match a README.md heading."""
@@ -401,6 +412,7 @@ CHECKS = [
 ]
 CHECKS.extend(_readme_link_checks())
 CHECKS.append(_readme_install_file_count_check())
+CHECKS.append(_readme_guardrails_check())
 CHECKS.extend(_cli_readme_anchor_checks())
 CHECKS.append(_shellcheck_coverage_self_test())
 CHECKS.extend(_shellcheck_coverage_checks())
