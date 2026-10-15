@@ -57,12 +57,13 @@ poison_network
 
 stub_url_openers "$scratch/stub_bin"
 
-# Runs from a nested directory, so the CLI must find the repo root itself.
+# Runs from the given directory; the main round trip passes a nested
+# directory so the CLI must find the repo root itself.
 run_upgrade() {
-  local answer=${3:-y}
+  local dir=$1 src=$2 tags=$3 answer=${4:-y}
   (
-    cd "$repo/src/nested" || exit 1
-    export HARNESS_SRC="$1" HARNESS_TAGS_URL="$2"
+    cd "$dir" || exit 1
+    export HARNESS_SRC="$src" HARNESS_TAGS_URL="$tags"
     printf '%s\n' "$answer" | "$new_src/bin/harness-cli" upgrade
   )
 }
@@ -79,7 +80,7 @@ fi
 grep -q "check-harness-upgrade fixture marker" "$repo/.claude/harness-rules.md" && fail "expected the primed repo to not yet carry the newer fixture's marker"
 
 before=$(snapshot)
-if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" n 2>&1); then
+if ! output=$(run_upgrade "$repo/src/nested" "file://$new_src" "file://$tags_json" n 2>&1); then
   echo "$output" >&2
   fail "harness upgrade failed when the user declined"
 fi
@@ -88,7 +89,7 @@ after=$(snapshot)
 [ "$before" = "$after" ] || fail "expected a declined upgrade to leave every file untouched"
 echo "✓ a declined upgrade left every file untouched"
 
-if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" 2>&1); then
+if ! output=$(run_upgrade "$repo/src/nested" "file://$new_src" "file://$tags_json" 2>&1); then
   echo "$output" >&2
   fail "harness upgrade failed pulling in the fake newer release; check it honors \$HARNESS_TAGS_URL instead of hitting the real GitHub API"
 fi
@@ -108,7 +109,7 @@ echo "$output" | grep -q "v2.0.0" && fail "expected the v1 CLI to ignore the v2.
 echo "✓ upgrade ignored a tag from a newer major"
 
 before=$(snapshot)
-if ! output=$(run_upgrade "file://$new_src" "file://$tags_json" 2>&1); then
+if ! output=$(run_upgrade "$repo/src/nested" "file://$new_src" "file://$tags_json" 2>&1); then
   echo "$output" >&2
   fail "harness upgrade failed re-running against a repo already on the latest fake release"
 fi
@@ -118,7 +119,7 @@ after=$(snapshot)
 echo "✓ re-running upgrade on an up-to-date repo left every file untouched"
 
 before=$(snapshot)
-if output=$(run_upgrade "file://$new_src" "file://$bad_tags_json" 2>&1); then
+if output=$(run_upgrade "$repo/src/nested" "file://$new_src" "file://$bad_tags_json" 2>&1); then
   fail "expected harness upgrade to fail when no tag at \$HARNESS_TAGS_URL matches vX.Y.Z, got: $output"
 fi
 echo "$output" | grep -q "No v1.Y.Z release tag found" || fail "expected a clear error when no tag matches v1.Y.Z, got: $output"
@@ -157,6 +158,56 @@ if ! output=$(cd "$handoff_repo" && HARNESS_SRC="file://$new_src" HARNESS_UPGRAD
 fi
 [ "$(cat "$handoff_repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected the handed-off upgrade to pull in v1.9.9"
 echo "✓ an upgrade handed off by a v1.3.x CLI installs without asking again"
+
+# An uncommitted edit to a tracked harness file must block the upgrade
+# (per issue #90: overwriting it loses work git can never recover) and
+# leave every file exactly as it was.
+dirty_repo="$scratch/dirty-repo"
+git init -q "$dirty_repo"
+git -C "$dirty_repo" config user.email "check-harness-upgrade@example.com"
+git -C "$dirty_repo" config user.name "check-harness-upgrade"
+if ! output=$(cd "$dirty_repo" && HARNESS_SRC="file://$old_src" "$old_src/bin/harness-cli" install 2>&1); then
+  echo "$output" >&2
+  fail "harness install failed priming the dirty-file scratch repo"
+fi
+(cd "$dirty_repo" && git add -A && git commit -q -m "install harness")
+
+printf '\nlocal tweak\n' >> "$dirty_repo/.claude/harness-rules.md"
+
+dirty_snapshot() {
+  find "$dirty_repo" -path "$dirty_repo/.git" -prune -o -type f -print0 | sort -z | xargs -0 sha256sum
+}
+
+before=$(dirty_snapshot)
+if output=$(run_upgrade "$dirty_repo" "file://$new_src" "file://$tags_json" 2>&1); then
+  fail "expected harness upgrade to refuse with an uncommitted harness-rules.md edit, got: $output"
+fi
+echo "$output" | grep -q "Uncommitted changes" || fail "expected a clear uncommitted-changes message, got: $output"
+echo "$output" | grep -qF ".claude/harness-rules.md" || fail "expected the message to name the dirty file, got: $output"
+after=$(dirty_snapshot)
+[ "$before" = "$after" ] || fail "expected a blocked upgrade to leave every file untouched"
+echo "✓ an uncommitted edit to a harness file blocks the upgrade and leaves it intact"
+
+(cd "$dirty_repo" && git add -A && git commit -q -m "commit the tweak")
+if ! output=$(run_upgrade "$dirty_repo" "file://$new_src" "file://$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness upgrade failed once the harness-rules.md edit was committed"
+fi
+[ "$(cat "$dirty_repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected the upgrade to proceed once the tree was clean"
+echo "✓ committing the edit lets the upgrade proceed"
+
+# That upgrade's own fetched files are now uncommitted (the README tells the
+# user to review and commit them). The check runs before fetching anything,
+# so a repo already on the latest release still gets refused rather than
+# reaching "Already up to date" with a dirty harness file.
+before=$(dirty_snapshot)
+if output=$(run_upgrade "$dirty_repo" "file://$new_src" "file://$tags_json" 2>&1); then
+  fail "expected an up-to-date repo with uncommitted harness files to still be refused, got: $output"
+fi
+echo "$output" | grep -q "Uncommitted changes" || fail "expected the uncommitted-changes message even when already up to date, got: $output"
+after=$(dirty_snapshot)
+[ "$before" = "$after" ] || fail "expected the blocked no-op upgrade to leave every file untouched"
+echo "✓ the dirty check still blocks an already-up-to-date repo with uncommitted harness files"
 
 echo
 echo "harness-upgrade round trip: all passed"
