@@ -194,5 +194,18 @@ fi
 [ "$(cat "$dirty_repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected the upgrade to proceed once the tree was clean"
 echo "✓ committing the edit lets the upgrade proceed"
 
+# That upgrade's own fetched files are now uncommitted (the README tells the
+# user to review and commit them). The check runs before fetching anything,
+# so a repo already on the latest release still gets refused rather than
+# reaching "Already up to date" with a dirty harness file.
+before=$(dirty_snapshot)
+if output=$(run_upgrade "$dirty_repo" "file://$new_src" "file://$tags_json" 2>&1); then
+  fail "expected an up-to-date repo with uncommitted harness files to still be refused, got: $output"
+fi
+echo "$output" | grep -q "Uncommitted changes" || fail "expected the uncommitted-changes message even when already up to date, got: $output"
+after=$(dirty_snapshot)
+[ "$before" = "$after" ] || fail "expected the blocked no-op upgrade to leave every file untouched"
+echo "✓ the dirty check still blocks an already-up-to-date repo with uncommitted harness files"
+
 echo
 echo "harness-upgrade round trip: all passed"

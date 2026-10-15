@@ -197,7 +197,6 @@ cmd_upgrade() {
     fi
 
   fi
-
   install_harness
   echo "Pulled in $(<.claude/HARNESS_VERSION). Review the diff and commit."
 }
