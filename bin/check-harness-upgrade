@@ -164,6 +164,8 @@ echo "✓ an upgrade handed off by a v1.3.x CLI installs without asking again"
 # leave every file exactly as it was.
 dirty_repo="$scratch/dirty-repo"
 git init -q "$dirty_repo"
+git -C "$dirty_repo" config user.email "check-harness-upgrade@example.com"
+git -C "$dirty_repo" config user.name "check-harness-upgrade"
 if ! output=$(cd "$dirty_repo" && HARNESS_SRC="file://$old_src" "$old_src/bin/harness-cli" install 2>&1); then
   echo "$output" >&2
   fail "harness install failed priming the dirty-file scratch repo"
