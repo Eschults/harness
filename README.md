@@ -1,6 +1,6 @@
 # Autonomous PR harness
 
-Label a GitHub issue `claude` and a Claude Code session implements it, opens a pull request, reviews its own diff, and posts a review recapping what it found and fixed. A human reviews and merges: the rules forbid the agent from approving or merging, and branch protection on your default branch enforces it.
+Label a GitHub issue `claude` and a Claude Code session implements it, opens a pull request, reviews its own diff, and posts a review recapping what it found and fixed. A human reviews and merges: the rules forbid the agent from approving or merging, so require a review in your default branch's protection rules to enforce it.
 
 <p align="center">
   <picture>
