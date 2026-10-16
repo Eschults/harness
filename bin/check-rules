@@ -293,6 +293,35 @@ CHECKS = [
         "issue-to-pr.md should still require removing the claude label as the last action",
     ),
     (
+        "check-earlier-pr-before-writing-code",
+        "Before writing any code, check whether an earlier run already opened a pull request for this issue." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require checking for an earlier run's open PR before writing code",
+    ),
+    (
+        "continuing-earlier-pr-human-opened-no-second-pr",
+        "An open PR exists and a human opened it**: open no second PR. Comment its link on the issue, remove the `claude` label, and stop"
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require commenting the link and stopping, with no second PR, when a human already opened one",
+    ),
+    (
+        "continuing-earlier-pr-add-commits-no-rewrite",
+        "continue on that PR's branch instead of starting from the default branch. Add commits to it; never open a second PR for this issue; never rewrite history on a commit you did not write"
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require continuing on the earlier run's PR branch, with no second PR and no history rewrite",
+    ),
+    (
+        "continuing-earlier-pr-draft-question-answered",
+        "Answered: implement under that answer, then continue the normal flow below. Mark the draft ready for review only if an earlier run, not a human, opened it."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require marking a continued draft ready only when an earlier run, not a human, opened it",
+    ),
+    (
+        "continuing-earlier-pr-draft-question-unanswered",
+        "Not answered: comment that the question is still open, remove the `claude` label, and stop; do not guess the answer."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require commenting that an unanswered draft question stays open, instead of guessing",
+    ),
+    (
         "recap-review-no-approve-no-request-changes",
         "Never approve, since you cannot be the approval gate, and never request changes, since you already pushed every fix you were going to make."
         in ISSUE_TO_PR,
