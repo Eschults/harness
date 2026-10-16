@@ -298,6 +298,12 @@ CHECKS = [
         "issue-to-pr.md should still require checking for an earlier run's open PR before writing code",
     ),
     (
+        "continuing-earlier-pr-author-not-a-signal",
+        "Use the branch name instead: an earlier run's PR sits on a branch starting with `claude/`; any other branch means a human opened it."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still tell runs to classify an earlier PR by branch name, since GitHub author does not distinguish a human from a run",
+    ),
+    (
         "continuing-earlier-pr-human-opened-no-second-pr",
         "An open PR exists and a human opened it**: open no second PR. Comment its link on the issue, remove the `claude` label, and stop"
         in ISSUE_TO_PR,
@@ -311,9 +317,9 @@ CHECKS = [
     ),
     (
         "continuing-earlier-pr-draft-question-answered",
-        "Answered: implement under that answer, then continue the normal flow below. Mark the draft ready for review only if an earlier run, not a human, opened it."
+        "Answered: implement under that answer, then continue the normal flow below, marking the draft ready for review."
         in ISSUE_TO_PR,
-        "issue-to-pr.md should still require marking a continued draft ready only when an earlier run, not a human, opened it",
+        "issue-to-pr.md should still require implementing a continued draft's answer and marking it ready for review",
     ),
     (
         "continuing-earlier-pr-draft-question-unanswered",
