@@ -6,12 +6,26 @@ The `<routine-fire-payload>` block names one GitHub issue that someone labeled `
 
 1. `.claude/harness-rules.md` and `CLAUDE.md` are loaded for you and bind this run. This file is the procedure, it adds no rules of its own.
 2. Read the issue and every comment on it. A specification often continues in the comments, and the body alone will not show it.
-3. Reproduce the problem or pin down the feature's scope before writing code.
-4. Estimate the diff against the ~600-line cap in `.claude/harness-rules.md` before writing code. If the issue fits, build it whole. If it does not, follow "Splitting oversized work" below before choosing an outcome.
-5. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
-6. Open the PR per the three outcomes below, then comment the link on the issue.
-7. Review the PR per the section below: ready-for-review PRs only; skip it on a draft, which by definition is not finished.
-8. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
+3. Before writing any code, check whether an earlier run already opened a pull request for this issue. Follow "Continuing an earlier PR" below; it tells you whether to proceed as new work or pick up an existing PR.
+4. Reproduce the problem or pin down the feature's scope before writing code.
+5. Estimate the diff against the ~600-line cap in `.claude/harness-rules.md` before writing code. If the issue fits, build it whole. If it does not, follow "Splitting oversized work" below before choosing an outcome.
+6. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
+7. Open the PR per the three outcomes below, then comment the link on the issue.
+8. Review the PR per the section below: ready-for-review PRs only; skip it on a draft, which by definition is not finished.
+9. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
+
+## Continuing an earlier PR
+
+A re-applied `claude` label often means a run already touched this issue: one that died before pushing, a reviewer who just answered a draft's question, or a split run whose remainder is waiting. Before reproducing the problem or writing any code, look for that earlier work: search for an open pull request that names this issue in a `Fixes #<issue-number>` line (or another closing keyword) in its description, and read this issue's own comments for a link to one left by an earlier run. A PR's GitHub author does not tell a human-opened PR apart from an earlier run's: a cloud session acts under the repository owner's own account, so both show the same author. Use the branch name instead: an earlier run's PR sits on a branch starting with `claude/`; any other branch means a human opened it.
+
+- **No open PR found**: proceed exactly as the rest of this file describes, starting from the default branch.
+- **An open PR exists and a human opened it**: open no second PR. Comment its link on the issue, remove the `claude` label, and stop; the rest of this file does not apply to this run.
+- **An open PR exists and an earlier run opened it**: continue on that PR's branch instead of starting from the default branch. Add commits to it; never open a second PR for this issue; never rewrite history on a commit you did not write, per the existing PR rules.
+  - If that PR is a draft holding on a question, read the issue's comments for the answer before doing anything else.
+    - Answered: implement under that answer, then continue the normal flow below, marking the draft ready for review.
+    - Not answered: comment that the question is still open, remove the `claude` label, and stop; do not guess the answer.
+  - Otherwise, continue the normal flow below on that branch: estimate the diff, build, screenshot if needed, and so on.
+  - When you reach review and label removal, and when writing the PR description or recap, say that this run continued an earlier PR rather than opening a new one.
 
 ## The three outcomes
 
