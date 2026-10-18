@@ -345,9 +345,15 @@ CHECKS = [
     ),
     (
         "pr-template-locations-named",
-        "a `.github/pull_request_template.md`, a `.github/PULL_REQUEST_TEMPLATE.md`, a root or `docs/` copy of either, or a `PULL_REQUEST_TEMPLATE/` directory"
+        "a `.github/pull_request_template.md`, a `.github/PULL_REQUEST_TEMPLATE.md`, a root or `docs/` copy of either, or a `.github/PULL_REQUEST_TEMPLATE/` directory"
         in ISSUE_TO_PR,
-        "issue-to-pr.md should still name every place a PR template can live",
+        "issue-to-pr.md should still name every place a PR template can live, including that a multi-template directory must sit under .github/",
+    ),
+    (
+        "pr-template-draft-question-still-first",
+        "On a Draft PR, the blocker question still comes first, above everything else including the template's own first heading"
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the Draft blocker question to stay first even when mirroring a PR template",
     ),
     (
         "pr-template-is-layout-not-instructions",
