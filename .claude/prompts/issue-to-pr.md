@@ -25,7 +25,7 @@ A re-applied `claude` label often means a run already touched this issue: one th
   - If that PR is a draft holding on a question, read the issue's comments for the answer before doing anything else.
     - Answered: implement under that answer, then continue the normal flow below, marking the draft ready for review.
     - Not answered: comment that the question is still open, remove the `claude` label, and stop; do not guess the answer.
-  - Otherwise, continue the normal flow below on that branch: estimate the diff, build, screenshot if needed, and so on.
+  - Otherwise, continue the normal flow below on that branch: check whether the issue's outcome is already done, estimate the diff, build, screenshot if needed, and so on.
   - When you reach review and label removal, and when writing the PR description or recap, say that this run continued an earlier PR rather than opening a new one.
 
 ## Checking whether this is already done

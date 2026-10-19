@@ -328,6 +328,12 @@ CHECKS = [
         "issue-to-pr.md should still require commenting that an unanswered draft question stays open, instead of guessing",
     ),
     (
+        "continuing-earlier-pr-also-checks-already-done",
+        "Otherwise, continue the normal flow below on that branch: check whether the issue's outcome is already done, estimate the diff, build, screenshot if needed, and so on."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still route a continued earlier-run PR through the already-done check before estimating the diff",
+    ),
+    (
         "check-already-done-before-reproducing",
         "Before reproducing the problem or writing any code, check whether the issue's outcome already exists." in ISSUE_TO_PR,
         "issue-to-pr.md should still require checking whether the issue's outcome already exists before reproducing the problem",
