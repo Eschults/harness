@@ -328,6 +328,29 @@ CHECKS = [
         "issue-to-pr.md should still require commenting that an unanswered draft question stays open, instead of guessing",
     ),
     (
+        "check-already-done-before-reproducing",
+        "Before reproducing the problem or writing any code, check whether the issue's outcome already exists." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require checking whether the issue's outcome already exists before reproducing the problem",
+    ),
+    (
+        "already-done-sources-named",
+        "the default branch's own history for a commit that does what the issue asks, the merged pull requests for one that closes or names this issue, and the open issues and pull requests for another one describing the same change for the same person"
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still name the default branch, merged PRs, and open issues/PRs as the places to check for an existing outcome",
+    ),
+    (
+        "already-done-full-match-takes-no-pr",
+        "The outcome is fully there**: take the **No PR** outcome below. Comment which commit, pull request, or issue already covers it, remove the `claude` label, and open nothing."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the No PR outcome, with the covering commit/PR/issue named, when the issue's outcome is already fully there",
+    ),
+    (
+        "already-done-partial-match-not-a-stop",
+        "Only part of the request is there**: this is not a stop. Build the missing part, and say in the PR description what already existed."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require building the missing part, not stopping, on a partial match",
+    ),
+    (
         "recap-review-no-approve-no-request-changes",
         "Never approve, since you cannot be the approval gate, and never request changes, since you already pushed every fix you were going to make."
         in ISSUE_TO_PR,

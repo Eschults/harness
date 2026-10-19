@@ -7,12 +7,13 @@ The `<routine-fire-payload>` block names one GitHub issue that someone labeled `
 1. `.claude/harness-rules.md` and `CLAUDE.md` are loaded for you and bind this run. This file is the procedure, it adds no rules of its own.
 2. Read the issue and every comment on it. A specification often continues in the comments, and the body alone will not show it.
 3. Before writing any code, check whether an earlier run already opened a pull request for this issue. Follow "Continuing an earlier PR" below; it tells you whether to proceed as new work or pick up an existing PR.
-4. Reproduce the problem or pin down the feature's scope before writing code.
-5. Estimate the diff against the ~600-line cap in `.claude/harness-rules.md` before writing code. If the issue fits, build it whole. If it does not, follow "Splitting oversized work" below before choosing an outcome.
-6. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
-7. Before opening the PR, look for the repo's own PR template per "Fitting the repo's PR template" below. Open the PR per the three outcomes below, then comment the link on the issue.
-8. Review the PR per the section below: ready-for-review PRs only; skip it on a draft, which by definition is not finished.
-9. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
+4. Before reproducing the problem or writing any code, check whether the issue's outcome already exists. Follow "Checking whether this is already done" below; it tells you whether to proceed as new work, build only the missing part, or take the No PR outcome.
+5. Reproduce the problem or pin down the feature's scope before writing code.
+6. Estimate the diff against the ~600-line cap in `.claude/harness-rules.md` before writing code. If the issue fits, build it whole. If it does not, follow "Splitting oversized work" below before choosing an outcome.
+7. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
+8. Before opening the PR, look for the repo's own PR template per "Fitting the repo's PR template" below. Open the PR per the three outcomes below, then comment the link on the issue.
+9. Review the PR per the section below: ready-for-review PRs only; skip it on a draft, which by definition is not finished.
+10. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
 
 ## Continuing an earlier PR
 
@@ -26,6 +27,14 @@ A re-applied `claude` label often means a run already touched this issue: one th
     - Not answered: comment that the question is still open, remove the `claude` label, and stop; do not guess the answer.
   - Otherwise, continue the normal flow below on that branch: estimate the diff, build, screenshot if needed, and so on.
   - When you reach review and label removal, and when writing the PR description or recap, say that this run continued an earlier PR rather than opening a new one.
+
+## Checking whether this is already done
+
+A `claude` label does not mean the request is still open: two issues can describe the same change, a merged pull request can land it after this issue was filed, or a human can fix it by hand while the label sat in the queue. Before reproducing the problem or pinning down scope, look for the issue's outcome already in the project: the default branch's own history for a commit that does what the issue asks, the merged pull requests for one that closes or names this issue, and the open issues and pull requests for another one describing the same change for the same person.
+
+- **Nothing found**: proceed exactly as the rest of this file describes.
+- **The outcome is fully there**: take the **No PR** outcome below. Comment which commit, pull request, or issue already covers it, remove the `claude` label, and open nothing.
+- **Only part of the request is there**: this is not a stop. Build the missing part, and say in the PR description what already existed.
 
 ## The three outcomes
 
