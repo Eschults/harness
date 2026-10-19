@@ -30,10 +30,10 @@ A re-applied `claude` label often means a run already touched this issue: one th
 
 ## Checking whether this is already done
 
-A `claude` label does not mean the request is still open: two issues can describe the same change, a merged pull request can land it after this issue was filed, or a human can fix it by hand while the label sat in the queue. Before reproducing the problem or pinning down scope, look for the issue's outcome already in the project: the default branch's own history for a commit that does what the issue asks, the merged pull requests for one that closes or names this issue, and the open issues and pull requests for another one describing the same change for the same person.
+A `claude` label does not mean the request is still open: two issues can describe the same change, and the other one's pull request can already be in flight. Reproducing the problem already catches the case where the fix landed on the default branch, so this check is narrower: before reproducing the problem or pinning down scope, look at the open issues and pull requests for another one describing the same change for the same person.
 
 - **Nothing found**: proceed exactly as the rest of this file describes.
-- **The outcome is fully there**: take the **No PR** outcome below. Comment which commit, pull request, or issue already covers it, remove the `claude` label, and open nothing.
+- **The outcome is fully there**: take the **No PR** outcome below. Comment which pull request or issue already covers it, remove the `claude` label, and open nothing.
 - **Only part of the request is there**: this is not a stop. Build the missing part, and say in the PR description what already existed.
 
 ## The three outcomes

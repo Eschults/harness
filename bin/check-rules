@@ -340,15 +340,21 @@ CHECKS = [
     ),
     (
         "already-done-sources-named",
-        "the default branch's own history for a commit that does what the issue asks, the merged pull requests for one that closes or names this issue, and the open issues and pull requests for another one describing the same change for the same person"
+        "look at the open issues and pull requests for another one describing the same change for the same person"
         in ISSUE_TO_PR,
-        "issue-to-pr.md should still name the default branch, merged PRs, and open issues/PRs as the places to check for an existing outcome",
+        "issue-to-pr.md should still name open issues/PRs for the same person as the place to check for an existing outcome",
+    ),
+    (
+        "already-done-narrower-than-reproducing",
+        "Reproducing the problem already catches the case where the fix landed on the default branch, so this check is narrower"
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still explain that this check is narrower than reproducing the problem, since a merged fix on the default branch is already caught there",
     ),
     (
         "already-done-full-match-takes-no-pr",
-        "The outcome is fully there**: take the **No PR** outcome below. Comment which commit, pull request, or issue already covers it, remove the `claude` label, and open nothing."
+        "The outcome is fully there**: take the **No PR** outcome below. Comment which pull request or issue already covers it, remove the `claude` label, and open nothing."
         in ISSUE_TO_PR,
-        "issue-to-pr.md should still require the No PR outcome, with the covering commit/PR/issue named, when the issue's outcome is already fully there",
+        "issue-to-pr.md should still require the No PR outcome, with the covering PR/issue named, when the issue's outcome is already fully there",
     ),
     (
         "already-done-partial-match-not-a-stop",
