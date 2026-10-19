@@ -328,6 +328,41 @@ CHECKS = [
         "issue-to-pr.md should still require commenting that an unanswered draft question stays open, instead of guessing",
     ),
     (
+        "continuing-earlier-pr-also-checks-already-done",
+        "Otherwise, continue the normal flow below on that branch: check whether the issue's outcome is already done, estimate the diff, build, screenshot if needed, and so on."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still route a continued earlier-run PR through the already-done check before estimating the diff",
+    ),
+    (
+        "check-already-done-before-reproducing",
+        "Before reproducing the problem or writing any code, check whether the issue's outcome already exists." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require checking whether the issue's outcome already exists before reproducing the problem",
+    ),
+    (
+        "already-done-sources-named",
+        "look at the open issues and pull requests for another one describing the same change for the same person"
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still name open issues/PRs for the same person as the place to check for an existing outcome",
+    ),
+    (
+        "already-done-narrower-than-reproducing",
+        "Reproducing the problem already catches the case where the fix landed on the default branch, so this check is narrower"
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still explain that this check is narrower than reproducing the problem, since a merged fix on the default branch is already caught there",
+    ),
+    (
+        "already-done-full-match-takes-no-pr",
+        "The outcome is fully there**: take the **No PR** outcome below. Comment which pull request or issue already covers it, remove the `claude` label, and open nothing."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the No PR outcome, with the covering PR/issue named, when the issue's outcome is already fully there",
+    ),
+    (
+        "already-done-partial-match-not-a-stop",
+        "Only part of the request is there**: this is not a stop. Build the missing part, and say in the PR description what already existed."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require building the missing part, not stopping, on a partial match",
+    ),
+    (
         "recap-review-no-approve-no-request-changes",
         "Never approve, since you cannot be the approval gate, and never request changes, since you already pushed every fix you were going to make."
         in ISSUE_TO_PR,
