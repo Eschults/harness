@@ -22,7 +22,7 @@ It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on 
 
 ## Guardrails
 
-Every run, including Auto-fix sessions, follows [`.claude/harness-rules.md`](.claude/harness-rules.md). One line per section, the agent:
+Every autonomous run, including Auto-fix sessions, follows [`.claude/harness-rules.md`](.claude/harness-rules.md). One line per section, the agent:
 
 <!-- guardrails:start (one bullet per .claude/harness-rules.md section; see bin/sync-readme) -->
 - **[Scope discipline](.claude/harness-rules.md#scope-discipline)**: Touches only what the task needs, never edits security-sensitive or infra files without approval, and keeps diffs around 600 lines. <!-- rules-fingerprint: 4da36d7365f1 -->
@@ -44,7 +44,7 @@ The harness is mostly prose, versioned in your repo where you can read and diff 
 | [`.github/workflows/claude.yml`](.github/workflows/claude.yml) | On a `claude` label, asks the routine to start a session. No Claude runs here. |
 | [`.claude/prompts/issue-to-pr.md`](.claude/prompts/issue-to-pr.md) | The procedure for implementing an issue. |
 | [`.claude/prompts/next-to-build.md`](.claude/prompts/next-to-build.md) | The procedure for choosing and filing the next issue. |
-| [`.claude/harness-rules.md`](.claude/harness-rules.md) | The rules every run follows. |
+| [`.claude/harness-rules.md`](.claude/harness-rules.md) | The rules every autonomous run follows. |
 | `.claude/HARNESS_VERSION` | The release this repo is pinned to. |
 
 Plus the `harness` CLI, which installs, checks, upgrades and removes them, and can start a run by hand.
