@@ -6,14 +6,23 @@ The `<routine-fire-payload>` block names one GitHub issue that someone labeled `
 
 1. `.claude/harness-rules.md` and `CLAUDE.md` are loaded for you and bind this run. This file is the procedure, it adds no rules of its own.
 2. Read the issue and every comment on it. A specification often continues in the comments, and the body alone will not show it.
-3. Before writing any code, check whether an earlier run already opened a pull request for this issue. Follow "Continuing an earlier PR" below; it tells you whether to proceed as new work or pick up an existing PR.
-4. Before reproducing the problem or writing any code, check whether the issue's outcome already exists. Follow "Checking whether this is already done" below; it tells you whether to proceed as new work, build only the missing part, or take the No PR outcome.
-5. Reproduce the problem or pin down the feature's scope before writing code.
-6. Estimate the diff against the ~600-line cap in `.claude/harness-rules.md` before writing code. If the issue fits, build it whole. If it does not, follow "Splitting oversized work" below before choosing an outcome.
-7. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
-8. Before opening the PR, look for the repo's own PR template per "Fitting the repo's PR template" below. Open the PR per the three outcomes below, then comment the link on the issue.
-9. Review the PR per the section below: ready-for-review PRs only; skip it on a draft, which by definition is not finished.
-10. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
+3. Before looking for an earlier PR or writing any code, check whether the issue is still open. Follow "Checking whether the issue is closed" below; it tells you whether to proceed as new work or take the No PR outcome.
+4. Before writing any code, check whether an earlier run already opened a pull request for this issue. Follow "Continuing an earlier PR" below; it tells you whether to proceed as new work or pick up an existing PR.
+5. Before reproducing the problem or writing any code, check whether the issue's outcome already exists. Follow "Checking whether this is already done" below; it tells you whether to proceed as new work, build only the missing part, or take the No PR outcome.
+6. Reproduce the problem or pin down the feature's scope before writing code.
+7. Estimate the diff against the ~600-line cap in `.claude/harness-rules.md` before writing code. If the issue fits, build it whole. If it does not, follow "Splitting oversized work" below before choosing an outcome.
+8. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
+9. Before opening the PR, look for the repo's own PR template per "Fitting the repo's PR template" below. Open the PR per the three outcomes below, then comment the link on the issue.
+10. Review the PR per the section below: ready-for-review PRs only; skip it on a draft, which by definition is not finished.
+11. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
+
+## Checking whether the issue is closed
+
+A re-applied `claude` label does not mean the request is still open: a human can close an issue as completed or not planned after it was queued, or apply the label to an old issue while triaging. Before looking for an earlier PR or writing any code, look at the issue's current state and, if it is closed, the reason it was closed and any comment left when it closed.
+
+- **Open**: proceed exactly as the rest of this file describes.
+- **Closed**: take the **No PR** outcome below. Comment that the run stopped because the issue is closed, name the closing reason, remove the `claude` label, and write no code. Do not reopen the issue.
+- **Closed, but a later comment explicitly asks for the work** (for example a maintainer writing "reopened scope, please build"): this is still a stop, not a signal to proceed. Comment that the issue should be reopened and the `claude` label re-applied before a run builds it, then remove the label.
 
 ## Continuing an earlier PR
 

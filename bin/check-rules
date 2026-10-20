@@ -293,6 +293,23 @@ CHECKS = [
         "issue-to-pr.md should still require removing the claude label as the last action",
     ),
     (
+        "check-closed-before-earlier-pr",
+        "Before looking for an earlier PR or writing any code, check whether the issue is still open." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require checking whether the issue is closed before looking for an earlier PR or writing code",
+    ),
+    (
+        "closed-issue-takes-no-pr-no-reopen",
+        "Comment that the run stopped because the issue is closed, name the closing reason, remove the `claude` label, and write no code. Do not reopen the issue."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the No PR outcome, naming the closing reason, with no code written and no reopening, on a closed issue",
+    ),
+    (
+        "closed-issue-reopen-request-is-still-a-stop",
+        'this is still a stop, not a signal to proceed. Comment that the issue should be reopened and the `claude` label re-applied before a run builds it'
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still treat a closed issue's later comment asking for the work as a stop, asking a human to reopen and re-label rather than guessing",
+    ),
+    (
         "check-earlier-pr-before-writing-code",
         "Before writing any code, check whether an earlier run already opened a pull request for this issue." in ISSUE_TO_PR,
         "issue-to-pr.md should still require checking for an earlier run's open PR before writing code",
