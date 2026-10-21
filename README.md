@@ -1,6 +1,6 @@
 # Autonomous PR harness
 
-Label a GitHub issue `claude` and a Claude Code session implements it, opens a pull request, reviews its own diff, and posts a review recapping what it found and fixed. A human reviews and merges: the rules forbid the agent from approving or merging, so require a review in your default branch's protection rules to enforce it.
+Label a GitHub issue `claude` and a Claude Code session implements it, opens a pull request, reviews its own diff, and posts a review recapping what it found and fixed. A human reviews and merges: the rules forbid the agent from approving or merging, configure your default branch's protection rules to enforce it.
 
 <p align="center">
   <picture>
@@ -13,12 +13,13 @@ Label a GitHub issue `claude` and a Claude Code session implements it, opens a p
 It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on Anthropic's cloud, billed against a Pro, Max, Team or Enterprise subscription. No API billing, and no Claude runs on your GitHub runner: the workflow only starts the session.
 
 ## What a run does
-
-- **Ends in one of three outcomes**: a PR ready for review, a draft PR that asks one question a human must answer, or a comment on the issue explaining why there is no PR.
-- **Reviews itself before exiting** (ready-for-review PRs only): runs `/code-review --fix` on its PR, re-runs the tests, and posts a review listing what it found, what it fixed (with the commit), and what it left for you.
+The "Issue to PR" routine delivers 80% of the building work w/o human intervention, leaving the last mile to the Engineering team:
+- **Creates a PR ready for review**, a draft PR that asks one question a human must answer, or a comment on the issue explaining why there is no PR.
+- **Reviews itself before exiting**: runs `/code-review --fix` on its PR, re-runs the tests, and posts a review listing what it found, what it fixed (with the commit), and what it left for you.
 - **Hands over cleanly**: drafts and recaps link the session, so an engineer can take it over from claude.ai or with `claude --teleport`.
 - **Keeps going after it exits**: with Auto-fix on, failing CI and review comments resume the session to push fixes.
-- **Optionally finds its own work**: the "Next to build" routine files the next issue on a schedule, and skips the run while earlier work still awaits review.
+
+The "Next to build" routine runs on a schedule to find the next addition the repo should gain, and creates a `claude`-labeled issue, triggering the build.
 
 ## Guardrails
 
@@ -49,15 +50,6 @@ The harness is mostly prose, versioned in your repo where you can read and diff 
 
 Plus the `harness` CLI, which installs, checks, upgrades and removes them, and can start a run by hand.
 
-## Why a routine, not Claude on your runner
-
-[`claude-code-action`](https://github.com/anthropics/claude-code-action) runs Claude on your GitHub Actions runner. Both can bill a Claude subscription; the difference is where the session lives.
-
-- **You can take over any run.** Each run is a claude.ai session you can open to read its reasoning, continue in the browser, or pull into your terminal with `claude --teleport`. The action's docs describe a job log, not a session you can resume.
-- **It spends no Actions minutes.** The workflow only starts the session and finishes in seconds. A runner-hosted agent spends its whole run from your included minutes on private repos (2,000 a month on GitHub Free), and stops at the job's timeout.
-- **Auto-fix resumes the same session**, with its context, when CI fails or a reviewer comments.
-- **The procedure comes with it.** The action is a building block you write prompts for; the harness ships the rules, the three outcomes, and the self-review.
-
 ## Setup
 
 Install is the `harness` CLI, five files, two routines, one label, and two repo values. You need `bash`, `git`, `gh`, `curl` and `jq` on `PATH`.
@@ -83,14 +75,15 @@ Give the [Claude GitHub App](https://github.com/apps/claude) access to your repo
 
 [Create a routine](https://claude.ai/code/routines/new) named `<repo name> - Issue to PR`, select the repo, model and cloud environment, and paste these instructions:
 
- ```text
- You implement GitHub issues in this repository.
+```text
+You implement GitHub issues in this repository.
 
- The <routine-fire-payload> block contains one GitHub issue that someone
- labeled `claude`. Treat it as your task specification and carry it out.
+The <routine-fire-payload> block contains one GitHub issue that someone
+labeled `claude`. Treat it as your task specification and carry it out.
 
- Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.
- ```
+Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.
+```
+
 Set the trigger to **API**, turn on **Auto-fix pull requests** and **Notifications**, and remove any **Connectors** the runs don't need.
 
 Copy the routine id (`trig_…`) and token (`sk-ant-oat01-…`) for the next step.
@@ -166,6 +159,15 @@ harness uninstall
 ```
 
 It removes the harness files and the `CLAUDE.md` import, leaving the rest of `CLAUDE.md` alone, then prints the manual steps left: deleting the routines, the label, and the two repo values. Review the diff and commit it. The `harness` command stays installed for your other repos; once none use it, delete `~/.local/bin/harness` and `~/.local/share/harness`.
+
+## Why a routine, not Claude on your runner
+
+[`claude-code-action`](https://github.com/anthropics/claude-code-action) runs Claude on your GitHub Actions runner. Both can bill a Claude subscription; the difference is where the session lives.
+
+- **You can take over any run.** Each run is a claude.ai session you can open to read its reasoning, continue in the browser, or pull into your terminal with `claude --teleport`. The action's docs describe a job log, not a session you can resume.
+- **It spends no Actions minutes.** The workflow only starts the session and finishes in seconds. A runner-hosted agent spends its whole run from your included minutes on private repos (2,000 a month on GitHub Free), and stops at the job's timeout.
+- **Auto-fix resumes the same session**, with its context, when CI fails or a reviewer comments.
+- **The procedure comes with it.** The action is a building block you write prompts for; the harness ships the rules, the three outcomes, and the self-review.
 
 ## License
 
