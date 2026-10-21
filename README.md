@@ -79,9 +79,8 @@ harness install
 This adds the five files and a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md`, and creates the `claude` label (color `D97757`, description `starts a Claude Code run`) when `gh` is on `PATH` and authenticated for your repo — leaving an existing label alone, and otherwise skipping it, in which case `harness doctor` tells you the command to create it by hand. Safe to re-run. `harness help` lists every command.
 
 #### 2. Create the "Issue to PR" routine
-
-1. Give the [Claude GitHub App](https://github.com/apps/claude) access to your repo, so cloud sessions can clone it and push `claude/` branches.
-2. [Create a routine](https://claude.ai/code/routines/new) named `<repo name> - Issue to PR`, select the repo, model and cloud environment, and paste these instructions:
+- Give the [Claude GitHub App](https://github.com/apps/claude) access to your repo, so cloud sessions can clone it and push `claude/` branches.
+- [Create a routine](https://claude.ai/code/routines/new) named `<repo name> - Issue to PR`, select the repo, model and cloud environment, and paste these instructions:
 
    ```text
    You implement GitHub issues in this repository.
@@ -92,8 +91,8 @@ This adds the five files and a one-line `@.claude/harness-rules.md` import to yo
    Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.
    ```
 
-3. Set the trigger to **API**, turn on **Auto-fix pull requests** and **Notifications**, and remove any **Connectors** the runs don't need.
-4. Copy the routine id (`trig_…`) and token (`sk-ant-oat01-…`) for the next step.
+- Set the trigger to **API**, turn on **Auto-fix pull requests** and **Notifications**, and remove any **Connectors** the runs don't need.
+- Copy the routine id (`trig_…`) and token (`sk-ant-oat01-…`) for the next step.
 
 #### 3. Set two repo values
 
