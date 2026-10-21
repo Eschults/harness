@@ -556,16 +556,15 @@ cmd_version() {
   cli_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
   version=${cli_dir##*/}
   if ! [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "harness (not a downloaded release: ${BASH_SOURCE[0]})"
-    return 0
+    echo "Not a downloaded release: ${BASH_SOURCE[0]}" >&2
+    return 1
   fi
   if root=$(git rev-parse --show-toplevel 2>/dev/null) && [ -f "$root/.claude/HARNESS_VERSION" ]; then
     pinned=$(<"$root/.claude/HARNESS_VERSION")
   fi
+  echo "$version"
   if [ -n "$pinned" ] && [ "$pinned" != "$version" ]; then
-    echo "harness $version (repo pinned at $pinned)"
-  else
-    echo "harness $version"
+    echo "Repo pinned at $pinned." >&2
   fi
 }
 
