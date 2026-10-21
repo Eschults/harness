@@ -563,8 +563,8 @@ cmd_version() {
     pinned=$(<"$root/.claude/HARNESS_VERSION")
   fi
   echo "$version"
-  if [ -n "$pinned" ] && [ "$pinned" != "$version" ]; then
-    echo "Repo pinned at $pinned." >&2
+  if [ -n "$pinned" ] && [ "$(printf '%s\n%s\n' "$pinned" "$version" | sort -V | head -1)" != "$version" ]; then
+    echo "Repo pinned at $pinned; run harness upgrade to update it." >&2
   fi
 }
 

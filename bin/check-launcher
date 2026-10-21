@@ -138,13 +138,13 @@ echo "✓ a repo pinned before v1.3.0 runs the latest CLI"
 
 output=$(run_launcher "$scratch/pre-cli" --version 2>"$scratch/stderr") || fail "expected --version in a pre-CLI repo to succeed, got: $output $(<"$scratch/stderr")"
 [ "$output" = "v1.9.9" ] || fail "expected --version to print the CLI that runs, got: $output"
-[ "$(<"$scratch/stderr")" = "Repo pinned at v1.2.0." ] || fail "expected the older pin on stderr, got: $(<"$scratch/stderr")"
+[ "$(<"$scratch/stderr")" = "Repo pinned at v1.2.0; run harness upgrade to update it." ] || fail "expected the older pin and an upgrade hint on stderr, got: $(<"$scratch/stderr")"
 echo "✓ --version in a repo pinned before v1.3.0 names the latest CLI and the pin"
 
 # --- the CLI answers --version itself, for launchers older than the flag ---
 output=$(cd "$scratch/pinned" && "$HARNESS_HOME/v1.9.9/harness" --version 2>"$scratch/stderr") || fail "expected the CLI to answer --version, got: $output $(<"$scratch/stderr")"
 [ "$output" = "v1.9.9" ] || fail "expected the CLI to read its version from its folder, got: $output"
-[ "$(<"$scratch/stderr")" = "Repo pinned at v1.4.0." ] || fail "expected the differing pin on stderr, got: $(<"$scratch/stderr")"
+[ "$(<"$scratch/stderr")" = "Repo pinned at v1.4.0; run harness upgrade to update it." ] || fail "expected the older pin and an upgrade hint on stderr, got: $(<"$scratch/stderr")"
 output=$(cd "$scratch/fresh" && "$HARNESS_HOME/v1.9.9/harness" -v 2>&1) || fail "expected the CLI to answer -v, got: $output"
 [ "$output" = "v1.9.9" ] || fail "expected no pin note when the pin matches, got: $output"
 if output=$(bin/harness-cli --version 2>&1); then

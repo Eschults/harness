@@ -130,8 +130,8 @@ update_launcher() {
 version_line() {
   local version=$1 pinned=$2
   echo "$version"
-  if [ -n "$pinned" ] && [ "$pinned" != "$version" ]; then
-    echo "Repo pinned at $pinned." >&2
+  if [ -n "$pinned" ] && ! version_at_least "$pinned" "$version"; then
+    echo "Repo pinned at $pinned; run harness upgrade to update it." >&2
   fi
 }
 
