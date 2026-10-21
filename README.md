@@ -76,7 +76,7 @@ Then, from inside your project repo:
 harness install
 ```
 
-This adds the five files and a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md`. Safe to re-run. `harness help` lists every command.
+This adds the five files and a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md`, and creates the `claude` label (color `D97757`, description `starts a Claude Code run`) when `gh` is on `PATH` and authenticated for your repo — leaving an existing label alone, and otherwise skipping it, in which case `harness doctor` tells you the command to create it by hand. Safe to re-run. `harness help` lists every command.
 
 #### 2. Create the "Issue to PR" routine
 
@@ -112,15 +112,9 @@ gh variable set CLAUDE_ROUTINE_ID --body "$CLAUDE_ROUTINE_ID"
 gh secret set CLAUDE_ROUTINE_TOKEN --body "$CLAUDE_ROUTINE_TOKEN"
 ```
 
-To confirm both work, run `harness doctor --fire` and look for the `routine fire` line; the label and default-branch checks fail until steps 4 and 5. It starts a real test session, which uses subscription usage and does no work until the harness files are merged.
+To confirm both work, run `harness doctor --fire` and look for the `routine fire` line; the default-branch check fails until step 4. It starts a real test session, which uses subscription usage and does no work until the harness files are merged.
 
-#### 4. Create the label
-
-```bash
-gh label create claude --color D97757 --description "starts a Claude Code run" --force
-```
-
-#### 5. Merge and check
+#### 4. Merge and check
 
 Commit the harness files and merge them to your default branch, since the routine reads them from there. Then:
 
@@ -130,7 +124,7 @@ harness doctor
 
 It checks the files, the `CLAUDE.md` import, the label, the repo values, the default branch, that GitHub Actions and `claude.yml` are enabled, and that your pinned release is current. It never prints a secret.
 
-#### 6. (Optional) Create the "Next to build" routine
+#### 5. (Optional) Create the "Next to build" routine
 
 [Create a second routine](https://claude.ai/code/routines/new) named `<repo name> - Next to Build`, with the same repo, model and environment, and these instructions:
 

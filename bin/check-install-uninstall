@@ -20,6 +20,41 @@ outside_repo=$(mktemp -d)
 original_claude_md=$(mktemp)
 trap 'rm -rf "$scratch" "$outside_repo" "$original_claude_md"' EXIT
 
+# A PATH with every external tool harness-cli install/uninstall can call,
+# gh deliberately left out, so the round-trip assertions below (which don't
+# exercise label creation) stay deterministic whether or not gh happens to
+# be installed and authenticated in the environment running this check.
+no_gh_bin="$scratch/no_gh_bin"
+mkdir -p "$no_gh_bin"
+for cmd in bash dirname mkdir curl grep awk mv rmdir find cat git rm jq sort tail; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_gh_bin/$cmd"
+done
+
+# Stub gh for the claude-label tests below: routes on the first two args,
+# answers from env vars the caller sets, and never touches the network or a
+# real repo. `gh label create` calls are appended to $gh_create_log so a
+# test can assert whether install left an existing label untouched.
+stub_bin="$scratch/stub_bin"
+mkdir -p "$stub_bin"
+gh_create_log="$scratch/gh-label-create.log"
+cat > "$stub_bin/gh" <<STUBEOF
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "auth status") exit "\${STUB_GH_AUTH_EXIT:-0}" ;;
+  "label list")
+    [ "\${STUB_GH_LABEL_LIST_EXIT:-0}" = 0 ] || exit "\${STUB_GH_LABEL_LIST_EXIT}"
+    printf '%s\n' "\${STUB_GH_LABELS:-}"
+    ;;
+  "label create")
+    echo "\$*" >> "$gh_create_log"
+    exit "\${STUB_GH_LABEL_CREATE_EXIT:-0}"
+    ;;
+  *) exit 1 ;;
+esac
+STUBEOF
+chmod +x "$stub_bin/gh"
+
 git init -q "$scratch"
 mkdir -p "$scratch/src/nested"
 
@@ -36,8 +71,9 @@ export HARNESS_SRC="file://$root"
 poison_network
 
 # Runs from a nested directory to prove the CLI finds the repo root itself.
+# No gh on PATH by default; see no_gh_bin above.
 run_harness() {
-  (cd "$scratch/src/nested" && "$root/bin/harness-cli" "$@")
+  (cd "$scratch/src/nested" && PATH="$no_gh_bin" "$root/bin/harness-cli" "$@")
 }
 
 count_import_lines() {
@@ -71,6 +107,68 @@ echo "✓ install removed the pre-CLI bin/ scripts"
 
 [ "$(count_import_lines)" = "1" ] || fail "expected exactly one @.claude/harness-rules.md line after install, got $(count_import_lines)"
 echo "✓ install added exactly one CLAUDE.md import line"
+
+echo
+echo "--- claude label creation ---"
+
+label_create_dir="$scratch/label-create"
+git init -q "$label_create_dir"
+: > "$gh_create_log"
+if ! output=$(cd "$label_create_dir" && HARNESS_SRC="file://$root" PATH="$stub_bin:$no_gh_bin" \
+  STUB_GH_LABELS="" "$root/bin/harness-cli" install 2>&1); then
+  echo "$output" >&2
+  fail "harness install failed while creating the claude label"
+fi
+grep -qF "label create claude" "$gh_create_log" 2>/dev/null || fail "expected harness install to call gh label create when the label is missing, got log: $(cat "$gh_create_log" 2>/dev/null)"
+grep -qF "D97757" "$gh_create_log" 2>/dev/null || fail "expected harness install to create the claude label with color D97757"
+echo "$output" | grep -q "label" && fail "expected the Next message to drop the label step once install creates it, got: $output"
+echo "✓ harness install creates the claude label and drops it from the Next message"
+
+label_exists_dir="$scratch/label-exists"
+git init -q "$label_exists_dir"
+: > "$gh_create_log"
+if ! output=$(cd "$label_exists_dir" && HARNESS_SRC="file://$root" PATH="$stub_bin:$no_gh_bin" \
+  STUB_GH_LABELS="claude" "$root/bin/harness-cli" install 2>&1); then
+  echo "$output" >&2
+  fail "harness install failed when the claude label already exists"
+fi
+[ -s "$gh_create_log" ] && fail "expected harness install to leave an existing claude label untouched, but it called gh label create"
+echo "$output" | grep -q "label" && fail "expected the Next message to drop the label step when the label already exists, got: $output"
+echo "✓ harness install leaves an existing claude label untouched"
+
+label_no_gh_dir="$scratch/label-no-gh"
+git init -q "$label_no_gh_dir"
+if ! output=$(cd "$label_no_gh_dir" && HARNESS_SRC="file://$root" PATH="$no_gh_bin" "$root/bin/harness-cli" install 2>&1); then
+  echo "$output" >&2
+  fail "harness install failed when gh is missing"
+fi
+echo "$output" | grep -q "label" || fail "expected the Next message to still list the label step when gh is missing, got: $output"
+echo "✓ harness install skips the claude label when gh is missing, and says so in the Next message"
+
+label_auth_fail_dir="$scratch/label-auth-fail"
+git init -q "$label_auth_fail_dir"
+: > "$gh_create_log"
+if ! output=$(cd "$label_auth_fail_dir" && HARNESS_SRC="file://$root" PATH="$stub_bin:$no_gh_bin" \
+  STUB_GH_AUTH_EXIT=1 "$root/bin/harness-cli" install 2>&1); then
+  echo "$output" >&2
+  fail "harness install failed when gh is not authenticated"
+fi
+[ -s "$gh_create_log" ] && fail "expected harness install to skip label creation when gh is not authenticated, but it called gh label create"
+echo "$output" | grep -q "label" || fail "expected the Next message to still list the label step when gh is not authenticated, got: $output"
+echo "✓ harness install skips the claude label when gh is not authenticated, and says so in the Next message"
+
+label_list_fail_dir="$scratch/label-list-fail"
+git init -q "$label_list_fail_dir"
+: > "$gh_create_log"
+if ! output=$(cd "$label_list_fail_dir" && HARNESS_SRC="file://$root" PATH="$stub_bin:$no_gh_bin" \
+  STUB_GH_LABEL_LIST_EXIT=1 "$root/bin/harness-cli" install 2>&1); then
+  echo "$output" >&2
+  fail "harness install failed when gh label list fails"
+fi
+[ -s "$gh_create_log" ] && fail "expected harness install to skip label creation when gh label list fails, but it called gh label create"
+echo "$output" | grep -q "label" || fail "expected the Next message to still list the label step when gh label list fails, got: $output"
+echo "✓ harness install skips the claude label when gh label list fails, and says so in the Next message"
+echo
 
 if ! output=$(run_harness install 2>&1); then
   echo "$output" >&2
