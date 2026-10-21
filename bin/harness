@@ -4,6 +4,7 @@
 # .claude/HARNESS_VERSION, downloading each version once into $HARNESS_HOME.
 # install and upgrade run the latest release, since both move a repo forward,
 # and upgrade also replaces this launcher with the latest release's.
+# --version prints the version it would run, since older CLIs don't know their own.
 set -euo pipefail
 
 HARNESS_DEFAULT_SRC=https://raw.githubusercontent.com/Eschults/harness/v1
@@ -126,8 +127,16 @@ update_launcher() {
   echo "Updated the harness command at $self."
 }
 
+version_line() {
+  local version=$1 pinned=$2
+  echo "$version"
+  if [ -n "$pinned" ] && ! version_at_least "$pinned" "$version"; then
+    echo "Repo pinned at $pinned; run harness upgrade to update it." >&2
+  fi
+}
+
 main() {
-  local version
+  local version pinned=""
   case "${1:-}" in
     install) version=$(latest_version) ;;
     upgrade)
@@ -136,6 +145,7 @@ main() {
       ;;
     *)
       if version=$(pinned_version); then
+        pinned=$version
         if ! is_release_version "$version"; then
           echo ".claude/HARNESS_VERSION holds '$version', not a vX.Y.Z release; run harness install." >&2
           exit 1
@@ -146,6 +156,10 @@ main() {
       fi
       ;;
   esac
+  if [[ "${1:-}" == --version || "${1:-}" == -v ]]; then
+    version_line "$version" "$pinned"
+    return 0
+  fi
   ensure_cli "$version"
   HARNESS_SRC="${HARNESS_SRC:-$(harness_base)/$version}" exec "$(harness_home)/$version/harness" "$@"
 }

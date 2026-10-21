@@ -35,6 +35,7 @@ Commands:
   doctor [--fire]  Check the install end to end; --fire also fires the routine once
   issue <number>   Fire the "Issue to PR" routine for one issue, bypassing GitHub Actions
   uninstall        Remove the harness files and the CLAUDE.md import
+  -v, --version    Print the harness version this repo runs
 
 Run it from anywhere inside your project's git repo.
 EOF
@@ -549,6 +550,24 @@ cmd_doctor() {
   exit "$doctor_failed"
 }
 
+# A downloaded CLI lives at $HARNESS_HOME/vX.Y.Z/harness, so its folder names its version.
+cmd_version() {
+  local cli_dir version root pinned=""
+  cli_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  version=${cli_dir##*/}
+  if ! [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Not a downloaded release: ${BASH_SOURCE[0]}" >&2
+    return 1
+  fi
+  if root=$(git rev-parse --show-toplevel 2>/dev/null) && [ -f "$root/.claude/HARNESS_VERSION" ]; then
+    pinned=$(<"$root/.claude/HARNESS_VERSION")
+  fi
+  echo "$version"
+  if [ -n "$pinned" ] && [ "$(printf '%s\n%s\n' "$pinned" "$version" | sort -V | head -1)" != "$version" ]; then
+    echo "Repo pinned at $pinned; run harness upgrade to update it." >&2
+  fi
+}
+
 main() {
   harness_command=${1:-}
   [ $# -gt 0 ] && shift
@@ -559,6 +578,7 @@ main() {
     issue) cmd_issue "$@" ;;
     uninstall) cmd_uninstall ;;
     help | -h | --help) usage ;;
+    -v | --version) cmd_version ;;
     "")
       usage >&2
       exit 1
