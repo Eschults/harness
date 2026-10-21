@@ -35,6 +35,7 @@ Commands:
   doctor [--fire]  Check the install end to end; --fire also fires the routine once
   issue <number>   Fire the "Issue to PR" routine for one issue, bypassing GitHub Actions
   uninstall        Remove the harness files and the CLAUDE.md import
+  -v, --version    Print the harness version this repo runs
 
 Run it from anywhere inside your project's git repo.
 EOF

@@ -4,6 +4,7 @@
 # .claude/HARNESS_VERSION, downloading each version once into $HARNESS_HOME.
 # install and upgrade run the latest release, since both move a repo forward,
 # and upgrade also replaces this launcher with the latest release's.
+# --version prints the version it would run, since older CLIs don't know their own.
 set -euo pipefail
 
 HARNESS_DEFAULT_SRC=https://raw.githubusercontent.com/Eschults/harness/v1
@@ -146,6 +147,10 @@ main() {
       fi
       ;;
   esac
+  if [[ "${1:-}" == --version || "${1:-}" == -v ]]; then
+    echo "harness $version"
+    return 0
+  fi
   ensure_cli "$version"
   HARNESS_SRC="${HARNESS_SRC:-$(harness_base)/$version}" exec "$(harness_home)/$version/harness" "$@"
 }

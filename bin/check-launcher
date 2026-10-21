@@ -78,6 +78,15 @@ fi
 [ -x "$HARNESS_HOME/v1.4.0/harness" ] || fail "expected the v1.4.0 CLI to be cached under \$HARNESS_HOME/v1.4.0"
 echo "✓ a pinned repo runs its pinned CLI version, pointed at that release, with no tag lookup"
 
+# --- --version and -v print the pinned version without downloading it ---
+make_repo "$scratch/version-pinned" v1.3.1
+for flag in --version -v; do
+  output=$(HARNESS_TAGS_URL="file://$scratch/no-such-tags.json" run_launcher "$scratch/version-pinned" "$flag" 2>&1) || fail "expected $flag to succeed, got: $output"
+  [ "$output" = "harness v1.3.1" ] || fail "expected $flag to print the pinned version, got: $output"
+done
+[ ! -e "$HARNESS_HOME/v1.3.1" ] || fail "expected --version not to download the CLI"
+echo "✓ --version and -v print the pinned version with no download or tag lookup"
+
 # --- the cached version keeps working once its release is unreachable ---
 mv "$releases/v1.4.0" "$scratch/v1.4.0-offline"
 output=$(run_launcher "$scratch/pinned" doctor 2>&1) || fail "expected the cached v1.4.0 CLI to run offline, got: $output"
