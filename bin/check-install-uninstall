@@ -144,6 +144,30 @@ if ! output=$(cd "$label_no_gh_dir" && HARNESS_SRC="file://$root" PATH="$no_gh_b
 fi
 echo "$output" | grep -q "label" || fail "expected the Next message to still list the label step when gh is missing, got: $output"
 echo "✓ harness install skips the claude label when gh is missing, and says so in the Next message"
+
+label_auth_fail_dir="$scratch/label-auth-fail"
+git init -q "$label_auth_fail_dir"
+: > "$gh_create_log"
+if ! output=$(cd "$label_auth_fail_dir" && HARNESS_SRC="file://$root" PATH="$stub_bin:$no_gh_bin" \
+  STUB_GH_AUTH_EXIT=1 "$root/bin/harness-cli" install 2>&1); then
+  echo "$output" >&2
+  fail "harness install failed when gh is not authenticated"
+fi
+[ -s "$gh_create_log" ] && fail "expected harness install to skip label creation when gh is not authenticated, but it called gh label create"
+echo "$output" | grep -q "label" || fail "expected the Next message to still list the label step when gh is not authenticated, got: $output"
+echo "✓ harness install skips the claude label when gh is not authenticated, and says so in the Next message"
+
+label_list_fail_dir="$scratch/label-list-fail"
+git init -q "$label_list_fail_dir"
+: > "$gh_create_log"
+if ! output=$(cd "$label_list_fail_dir" && HARNESS_SRC="file://$root" PATH="$stub_bin:$no_gh_bin" \
+  STUB_GH_LABEL_LIST_EXIT=1 "$root/bin/harness-cli" install 2>&1); then
+  echo "$output" >&2
+  fail "harness install failed when gh label list fails"
+fi
+[ -s "$gh_create_log" ] && fail "expected harness install to skip label creation when gh label list fails, but it called gh label create"
+echo "$output" | grep -q "label" || fail "expected the Next message to still list the label step when gh label list fails, got: $output"
+echo "✓ harness install skips the claude label when gh label list fails, and says so in the Next message"
 echo
 
 if ! output=$(run_harness install 2>&1); then

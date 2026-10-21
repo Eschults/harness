@@ -146,6 +146,12 @@ install_harness() {
   fi
 }
 
+# --limit: gh label list defaults to 30 and the claude label can sort past
+# that on a repo that already has many labels.
+gh_label_names() {
+  gh label list --limit 1000 --json name --jq '.[].name' 2>/dev/null
+}
+
 # Ensures the claude label exists, color D97757, description "starts a
 # Claude Code run". Leaves an existing label alone, even one with a
 # different color or description, since install must never fight an
@@ -156,7 +162,7 @@ ensure_claude_label() {
   command -v gh >/dev/null 2>&1 || return 1
   gh auth status >/dev/null 2>&1 || return 1
   local labels
-  labels=$(gh label list --limit 1000 --json name --jq '.[].name' 2>/dev/null) || return 1
+  labels=$(gh_label_names) || return 1
   echo "$labels" | grep -qxF claude && return 0
   gh label create claude --color D97757 --description "starts a Claude Code run" >/dev/null 2>&1
 }
@@ -171,11 +177,9 @@ cmd_install() {
   ensure_claude_label || label_done=0
   echo "Installed the harness at $(<.claude/HARNESS_VERSION)."
   if [ "$first_install" -eq 1 ]; then
-    if [ "$label_done" -eq 1 ]; then
-      echo "Next: create the routines and repo values ($HARNESS_README#setup), then run harness doctor."
-    else
-      echo "Next: create the routines, label, and repo values ($HARNESS_README#setup), then run harness doctor."
-    fi
+    local remaining="create the routines and repo values"
+    [ "$label_done" -eq 1 ] || remaining="create the routines, label, and repo values"
+    echo "Next: $remaining ($HARNESS_README#setup), then run harness doctor."
   else
     echo "Next: run harness doctor to check the setup."
   fi
@@ -429,12 +433,10 @@ cmd_doctor() {
   elif ! gh auth status >/dev/null 2>&1; then
     for c in "${gh_checks[@]}"; do skip "$c" "gh is not authenticated; run gh auth login"; done
   else
-    # --limit: gh label list defaults to 30 and the claude label can sort past
-    # that on a repo that already has many labels. A failed list call (rate
-    # limit, a token without label read access) is a lookup problem, not
-    # evidence the label is missing, so it must skip rather than report a
-    # false failure.
-    if labels=$(gh label list --limit 1000 --json name --jq '.[].name' 2>/dev/null); then
+    # A failed list call (rate limit, a token without label read access) is a
+    # lookup problem, not evidence the label is missing, so it must skip
+    # rather than report a false failure.
+    if labels=$(gh_label_names); then
       if echo "$labels" | grep -qxF claude; then
         ok "claude label exists"
       else
