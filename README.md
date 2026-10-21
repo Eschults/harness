@@ -13,7 +13,7 @@ Label a GitHub issue `claude` and a Claude Code session implements it, opens a p
 It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on Anthropic's cloud, billed against a Pro, Max, Team or Enterprise subscription. No API billing, and no Claude runs on your GitHub runner: the workflow only starts the session.
 
 ## What a run does
-The "Issue to PR" routine delivers 80% of the building work w/o human intervention, leaving the last mile to the Engineering team:
+The "Issue to PR" routine delivers most of the building work w/o human intervention, leaving only the last mile to the Engineering team. It:
 - **Creates a PR ready for review**, a draft PR that asks one question a human must answer, or a comment on the issue explaining why there is no PR.
 - **Reviews itself before exiting**: runs `/code-review --fix` on its PR, re-runs the tests, and posts a review listing what it found, what it fixed (with the commit), and what it left for you.
 - **Hands over cleanly**: drafts and recaps link the session, so an engineer can take it over from claude.ai or with `claude --teleport`.
