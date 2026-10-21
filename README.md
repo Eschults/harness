@@ -116,6 +116,8 @@ To confirm both work, run `harness doctor --fire` and look for the `routine fire
 
 #### 4. Create the label
 
+`harness install` creates the `claude` label (color `D97757`, description `starts a Claude Code run`) when `gh` is on `PATH` and authenticated for your repo, and leaves an existing label alone. If it couldn't — no `gh`, not authenticated, or the call failed — create it yourself:
+
 ```bash
 gh label create claude --color D97757 --description "starts a Claude Code run" --force
 ```

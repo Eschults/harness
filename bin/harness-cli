@@ -146,15 +146,36 @@ install_harness() {
   fi
 }
 
+# Ensures the claude label exists, color D97757, description "starts a
+# Claude Code run". Leaves an existing label alone, even one with a
+# different color or description, since install must never fight an
+# adopter's own edit to it. Returns non-zero when gh is missing,
+# unauthenticated, or a call fails, so the caller can skip quietly and point
+# at the README fallback instead of guessing at the label's real state.
+ensure_claude_label() {
+  command -v gh >/dev/null 2>&1 || return 1
+  gh auth status >/dev/null 2>&1 || return 1
+  local labels
+  labels=$(gh label list --limit 1000 --json name --jq '.[].name' 2>/dev/null) || return 1
+  echo "$labels" | grep -qxF claude && return 0
+  gh label create claude --color D97757 --description "starts a Claude Code run" >/dev/null 2>&1
+}
+
 cmd_install() {
   require_tools curl
   cd_repo_root
   local first_install=0
   [ -f .claude/HARNESS_VERSION ] || first_install=1
   install_harness
+  local label_done=1
+  ensure_claude_label || label_done=0
   echo "Installed the harness at $(<.claude/HARNESS_VERSION)."
   if [ "$first_install" -eq 1 ]; then
-    echo "Next: create the routines, label, and repo values ($HARNESS_README#setup), then run harness doctor."
+    if [ "$label_done" -eq 1 ]; then
+      echo "Next: create the routines and repo values ($HARNESS_README#setup), then run harness doctor."
+    else
+      echo "Next: create the routines, label, and repo values ($HARNESS_README#setup), then run harness doctor."
+    fi
   else
     echo "Next: run harness doctor to check the setup."
   fi
