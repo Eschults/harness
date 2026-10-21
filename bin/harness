@@ -127,8 +127,17 @@ update_launcher() {
   echo "Updated the harness command at $self."
 }
 
+version_line() {
+  local version=$1 pinned=$2
+  if [ -n "$pinned" ] && [ "$pinned" != "$version" ]; then
+    echo "harness $version (repo pinned at $pinned)"
+  else
+    echo "harness $version"
+  fi
+}
+
 main() {
-  local version
+  local version pinned=""
   case "${1:-}" in
     install) version=$(latest_version) ;;
     upgrade)
@@ -137,6 +146,7 @@ main() {
       ;;
     *)
       if version=$(pinned_version); then
+        pinned=$version
         if ! is_release_version "$version"; then
           echo ".claude/HARNESS_VERSION holds '$version', not a vX.Y.Z release; run harness install." >&2
           exit 1
@@ -148,7 +158,7 @@ main() {
       ;;
   esac
   if [[ "${1:-}" == --version || "${1:-}" == -v ]]; then
-    echo "harness $version"
+    version_line "$version" "$pinned"
     return 0
   fi
   ensure_cli "$version"

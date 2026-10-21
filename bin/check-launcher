@@ -136,6 +136,19 @@ output=$(run_launcher "$scratch/pre-cli" doctor 2>&1) || true
 echo "$output" | grep -q "harness is on v1.2.0 but v1.9.9 is the latest release" || fail "expected a pre-CLI pin to run the latest CLI, got: $output"
 echo "✓ a repo pinned before v1.3.0 runs the latest CLI"
 
+output=$(run_launcher "$scratch/pre-cli" --version 2>&1) || fail "expected --version in a pre-CLI repo to succeed, got: $output"
+[ "$output" = "harness v1.9.9 (repo pinned at v1.2.0)" ] || fail "expected --version to name the CLI that runs and the older pin, got: $output"
+echo "✓ --version in a repo pinned before v1.3.0 names the latest CLI and the pin"
+
+# --- the CLI answers --version itself, for launchers older than the flag ---
+output=$(cd "$scratch/pinned" && "$HARNESS_HOME/v1.9.9/harness" --version 2>&1) || fail "expected the CLI to answer --version, got: $output"
+[ "$output" = "harness v1.9.9 (repo pinned at v1.4.0)" ] || fail "expected the CLI to read its version from its folder, got: $output"
+output=$(cd "$scratch/fresh" && "$HARNESS_HOME/v1.9.9/harness" -v 2>&1) || fail "expected the CLI to answer -v, got: $output"
+[ "$output" = "harness v1.9.9" ] || fail "expected no pin note when the pin matches, got: $output"
+output=$(bin/harness-cli --version 2>&1) || fail "expected a checkout's CLI to answer --version, got: $output"
+echo "$output" | grep -q "not a downloaded release" || fail "expected a checkout's CLI to say it isn't a release, got: $output"
+echo "✓ the CLI answers --version and -v from its own folder, for launchers that pass the flag through"
+
 # --- the v1.3.x fallback ---
 make_repo "$scratch/v131" v1.3.1
 output=$(run_launcher "$scratch/v131" doctor 2>&1) || fail "expected a v1.3.1 pin to fall back to that release's bin/harness, got: $output"
@@ -174,11 +187,20 @@ chmod +x "$HARNESS_HOME/v1.4.0/harness"
 output=$(HARNESS_TAGS_URL="file://$scratch/no-such-tags.json" run_launcher "$scratch/outside" help 2>&1) || fail "expected help outside a repo to use a cached CLI, got: $output"
 echo "$output" | grep -q "^cli v1.4.0 " || fail "expected the newest cached CLI outside a repo, got: $output"
 echo "✓ outside a repo, the newest downloaded CLI runs with no tag lookup"
+output=$(HARNESS_TAGS_URL="file://$scratch/no-such-tags.json" run_launcher "$scratch/outside" --version 2>&1) || fail "expected --version outside a repo to succeed, got: $output"
+[ "$output" = "harness v1.4.0" ] || fail "expected --version outside a repo to print the newest cached version, got: $output"
+echo "✓ --version outside a repo prints the newest downloaded version with no tag lookup"
 
 export HARNESS_HOME="$scratch/home-empty"
 output=$(run_launcher "$scratch/outside" help 2>&1) || fail "expected help outside a repo with nothing cached to download the latest CLI, got: $output"
 echo "$output" | grep -q "Usage: harness <command>" || fail "expected the latest CLI's usage, got: $output"
 echo "✓ outside a repo with nothing downloaded, the latest CLI runs"
+
+export HARNESS_HOME="$scratch/home-empty-version"
+output=$(run_launcher "$scratch/outside" --version 2>&1) || fail "expected --version outside a repo with nothing cached to succeed, got: $output"
+[ "$output" = "harness v1.9.9" ] || fail "expected --version outside a repo with nothing cached to print the latest release, got: $output"
+[ ! -e "$HARNESS_HOME/v1.9.9" ] || fail "expected --version not to download the CLI"
+echo "✓ --version outside a repo with nothing downloaded prints the latest release without downloading it"
 
 echo
 echo "launcher check: all passed"
