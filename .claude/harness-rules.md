@@ -17,7 +17,7 @@ Two lists below are easy to confuse and are not the same thing. **Never edit** i
 ## Testing
 - Every bug fix must include a regression test that fails before the fix and passes after it.
 - Every new feature must include tests covering the happy path and at least one edge case.
-- Run the repository's full test suite before opening a PR, and do not open a PR with failing tests. If the repository has no test suite, say so in the PR description rather than inventing one or skipping the point silently.
+- Run the repository's full test suite before opening a PR, and do not open a PR with failing tests of its own. A pre-existing failure unrelated to the change is not the PR's own: list it in the PR description instead of fixing or hiding it. If the repository has no test suite, say so in the PR description rather than inventing one or skipping the point silently.
 
 ## Pull requests
 - Never mark someone else's draft ready, never approve, and never merge. Human approval is the gate and you cannot be it, least of all on code you wrote.

@@ -27,7 +27,7 @@ Every autonomous run, including Auto-fix sessions, follows [`.claude/harness-rul
 
 <!-- guardrails:start (one bullet per .claude/harness-rules.md section; see bin/sync-readme) -->
 - **[Scope discipline](.claude/harness-rules.md#scope-discipline)**: Touches only what the task needs, never edits security-sensitive or infra files without approval, and keeps diffs around 600 lines. <!-- rules-fingerprint: 4da36d7365f1 -->
-- **[Testing](.claude/harness-rules.md#testing)**: Adds a regression test for every fix and tests for every feature, and opens no PR with a failing suite. <!-- rules-fingerprint: 6ef3d72246c5 -->
+- **[Testing](.claude/harness-rules.md#testing)**: Adds a regression test for every fix and tests for every feature, and opens no PR with failing tests of its own. <!-- rules-fingerprint: 36dfb09d0239 -->
 - **[Pull requests](.claude/harness-rules.md#pull-requests)**: Never approves, merges, or marks someone else's draft ready, and never rewrites commits it did not write. <!-- rules-fingerprint: 2141673fa94d -->
 - **[Concision](.claude/harness-rules.md#concision)**: Keeps PR descriptions and comments short and bulleted, for a reader catching up on a session they did not watch. <!-- rules-fingerprint: 4b4102135c03 -->
 - **[When to stop instead of guessing](.claude/harness-rules.md#when-to-stop-instead-of-guessing)**: Hands back instead of guessing on auth, payments, permissions, PII, schema changes, or ambiguous requirements. <!-- rules-fingerprint: a9e1a3f37111 -->

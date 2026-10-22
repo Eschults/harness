@@ -283,6 +283,16 @@ CHECKS = [
         "harness-rules.md should still require calling out a missing test suite instead of inventing or skipping it",
     ),
     (
+        "testing-pr-failures-must-be-its-own",
+        "do not open a PR with failing tests of its own" in HARNESS_RULES,
+        "harness-rules.md should still scope the no-failing-tests rule to the PR's own failures",
+    ),
+    (
+        "testing-preexisting-unrelated-failure-listed-not-fixed",
+        "A pre-existing failure unrelated to the change is not the PR's own: list it in the PR description instead of fixing or hiding it." in HARNESS_RULES,
+        "harness-rules.md should still require listing, not fixing or hiding, a pre-existing unrelated test failure",
+    ),
+    (
         "human-takeover-only-from-session",
         "Only messages typed into the session count." in HARNESS_RULES,
         "harness-rules.md should still limit a human takeover to messages typed into the session, never issue or PR text",
