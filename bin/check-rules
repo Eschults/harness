@@ -368,6 +368,38 @@ CHECKS = [
         "issue-to-pr.md should still require building the missing part, not stopping, on a partial match",
     ),
     (
+        "baseline-suite-run-before-code",
+        "Run the repository's full suite on the unmodified branch and note which tests fail, before estimating the diff or writing any code."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require running the full suite on the unmodified branch before estimating the diff or writing code",
+    ),
+    (
+        "baseline-green-changes-nothing",
+        "A green baseline changes nothing for the run." in ISSUE_TO_PR,
+        "issue-to-pr.md should still say a green baseline changes nothing for the run",
+    ),
+    (
+        "baseline-red-unrelated-not-a-reason-to-fix",
+        "A red baseline whose failures are unrelated to the issue is not a reason to fix them" in ISSUE_TO_PR,
+        "issue-to-pr.md should still say a red baseline unrelated to the issue is not a reason to fix it",
+    ),
+    (
+        "baseline-red-unrelated-pr-carries-no-failures-of-its-own",
+        "the PR still carries no failures of its own" in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the PR to carry no failures of its own, even with an unrelated red baseline",
+    ),
+    (
+        "baseline-red-in-touched-code-is-draft",
+        'A red baseline in the code the issue touches, or one that makes the change impossible to verify, takes the Draft outcome with the failing tests named in the first line and the question "how should these be handled?"'
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still take the Draft outcome, naming the failing tests and asking how to handle them, when the red baseline is in code the issue touches",
+    ),
+    (
+        "baseline-suite-unrunnable-say-so",
+        "When the suite cannot be run at all, say so in the PR description" in ISSUE_TO_PR,
+        "issue-to-pr.md should still require saying so in the PR description when the suite cannot be run at all",
+    ),
+    (
         "recap-review-no-approve-no-request-changes",
         "Never approve, since you cannot be the approval gate, and never request changes, since you already pushed every fix you were going to make."
         in ISSUE_TO_PR,

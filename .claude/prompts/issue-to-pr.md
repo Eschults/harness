@@ -9,11 +9,12 @@ The `<routine-fire-payload>` block names one GitHub issue that someone labeled `
 3. Before writing any code, check whether an earlier run already opened a pull request for this issue. Follow "Continuing an earlier PR" below; it tells you whether to proceed as new work or pick up an existing PR.
 4. Before reproducing the problem or writing any code, check whether the issue's outcome already exists. Follow "Checking whether this is already done" below; it tells you whether to proceed as new work, build only the missing part, or take the No PR outcome.
 5. Reproduce the problem or pin down the feature's scope before writing code.
-6. Estimate the diff against the ~600-line cap in `.claude/harness-rules.md` before writing code. If the issue fits, build it whole. If it does not, follow "Splitting oversized work" below before choosing an outcome.
-7. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
-8. Before opening the PR, look for the repo's own PR template per "Fitting the repo's PR template" below. Open the PR per the three outcomes below, then comment the link on the issue.
-9. Review the PR per the section below: ready-for-review PRs only; skip it on a draft, which by definition is not finished.
-10. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
+6. Run the repository's full suite on the unmodified branch and note which tests fail, before estimating the diff or writing any code. A green baseline changes nothing for the run. A red baseline whose failures are unrelated to the issue is not a reason to fix them: build the change, and list the existing failures in the PR description so the reviewer can tell them from any the change introduces; the PR still carries no failures of its own. A red baseline in the code the issue touches, or one that makes the change impossible to verify, takes the Draft outcome with the failing tests named in the first line and the question "how should these be handled?". When the suite cannot be run at all, say so in the PR description instead of skipping the point silently.
+7. Estimate the diff against the ~600-line cap in `.claude/harness-rules.md` before writing code. If the issue fits, build it whole. If it does not, follow "Splitting oversized work" below before choosing an outcome.
+8. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
+9. Before opening the PR, look for the repo's own PR template per "Fitting the repo's PR template" below. Open the PR per the three outcomes below, then comment the link on the issue.
+10. Review the PR per the section below: ready-for-review PRs only; skip it on a draft, which by definition is not finished.
+11. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
 
 ## Continuing an earlier PR
 
