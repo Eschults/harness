@@ -45,6 +45,14 @@ harness_src() {
   echo "${HARNESS_SRC:-$HARNESS_DEFAULT_SRC}"
 }
 
+# The raw-content base for one exact release tag, unlike harness_src() which
+# points at the floating major ref (v1) install/upgrade pull from. Doctor
+# needs the exact pinned tag to tell whether a file has drifted from it.
+# Overridable for tests via HARNESS_RELEASE_SRC, same style as harness_tags_url().
+harness_release_src() {
+  echo "${HARNESS_RELEASE_SRC:-${HARNESS_DEFAULT_SRC%/*}}/$1"
+}
+
 harness_tags_url() {
   echo "${HARNESS_TAGS_URL:-https://api.github.com/repos/Eschults/harness/tags}"
 }
@@ -90,6 +98,22 @@ dirty_harness_files() {
     if ! git diff --quiet -- "$f" 2>/dev/null || ! git diff --cached --quiet -- "$f" 2>/dev/null; then
       echo "$f"
     fi
+  done
+}
+
+# Lists tracked harness files (except HARNESS_VERSION itself) whose local
+# content differs from the same file at release $1. Fails (non-zero) when a
+# file can't be fetched, so the caller can tell "the release is unreachable"
+# apart from "nothing differs". A missing local file is left to the
+# file-presence check and never counted as drifted.
+drifted_harness_files() {
+  local version=$1 f base remote
+  base=$(harness_release_src "$version")
+  for f in "${HARNESS_FILES[@]}"; do
+    [ "$f" = ".claude/HARNESS_VERSION" ] && continue
+    [ -f "$f" ] || continue
+    remote=$(curl -fsSL "$base/$f") || return 1
+    [ "$remote" = "$(cat "$f")" ] || echo "$f"
   done
 }
 
@@ -367,6 +391,7 @@ bad() {
   doctor_failed=1
 }
 skip() { echo "- $1 (skipped: $2)"; }
+warn() { echo "⚠ $1"; }
 
 # Verifies the install end to end: the local files, whether the pinned
 # .claude/HARNESS_VERSION is the latest release, the CLAUDE.md import, the
@@ -417,6 +442,23 @@ cmd_doctor() {
     fi
   else
     skip "harness version" ".claude/HARNESS_VERSION is missing"
+  fi
+
+  if [ -n "${pinned:-}" ]; then
+    local drifted
+    if drifted=$(drifted_harness_files "$pinned"); then
+      if [ -n "$drifted" ]; then
+        while IFS= read -r f; do
+          warn "$f differs from the pinned release ($pinned); harness upgrade will overwrite it"
+        done <<< "$drifted"
+      else
+        ok "every harness file matches the pinned release ($pinned)"
+      fi
+    else
+      skip "harness files match the pinned release" "could not fetch harness files from $pinned"
+    fi
+  else
+    skip "harness files match the pinned release" ".claude/HARNESS_VERSION is missing"
   fi
 
   # Matches the substring check install itself uses to decide whether to

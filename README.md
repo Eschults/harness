@@ -115,7 +115,7 @@ Commit the harness files and merge them to your default branch, since the routin
 harness doctor
 ```
 
-It checks the files, the `CLAUDE.md` import, the label, the repo values, the default branch, that GitHub Actions and `claude.yml` are enabled, and that your pinned release is current. It never prints a secret.
+It checks the files, the `CLAUDE.md` import, the label, the repo values, the default branch, that GitHub Actions and `claude.yml` are enabled, that your pinned release is current, and whether any harness file has drifted from it since install (a warning, since `harness upgrade` would overwrite it). It never prints a secret.
 
 #### 5. (Optional) Create the "Next to build" routine
 

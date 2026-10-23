@@ -183,6 +183,56 @@ assert_contains "$output" '- harness version (skipped: could not look up the lat
 echo "$output" | grep -q '✗' && fail "expected a failed version lookup to be a skip, never a false failure, got: $output"
 echo "✓ a failed harness version lookup is skipped rather than reported as behind"
 
+# --- every harness file matches the pinned release ---
+repo="$scratch/release-match"
+build_healthy_repo "$repo"
+echo "v9.9.9" > "$repo/.claude/HARNESS_VERSION"
+release_match_src="$scratch/release-match-src"
+for f in "${HARNESS_FILES[@]}"; do
+  [ "$f" = ".claude/HARNESS_VERSION" ] && continue
+  mkdir -p "$release_match_src/v9.9.9/$(dirname "$f")"
+  cp "$f" "$release_match_src/v9.9.9/$f"
+done
+if ! output=$(HARNESS_RELEASE_SRC="file://$release_match_src" run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected harness doctor to exit 0 when every harness file matches the pinned release"
+fi
+assert_contains "$output" '✓ every harness file matches the pinned release (v9.9.9)' "release match"
+echo "$output" | grep -q '⚠' && fail "expected no drift warning when every file matches the pinned release, got: $output"
+echo "✓ harness files matching the pinned release pass with one line"
+
+# --- a harness file edited since install drifts from the pinned release ---
+repo="$scratch/release-drift"
+build_healthy_repo "$repo"
+echo "v9.9.9" > "$repo/.claude/HARNESS_VERSION"
+release_drift_src="$scratch/release-drift-src"
+for f in "${HARNESS_FILES[@]}"; do
+  [ "$f" = ".claude/HARNESS_VERSION" ] && continue
+  mkdir -p "$release_drift_src/v9.9.9/$(dirname "$f")"
+  cp "$f" "$release_drift_src/v9.9.9/$f"
+done
+printf '\nadopter tweak\n' >> "$repo/.claude/harness-rules.md"
+if ! output=$(HARNESS_RELEASE_SRC="file://$release_drift_src" run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected harness doctor to exit 0 when a harness file differs from the pinned release"
+fi
+assert_contains "$output" '⚠ .claude/harness-rules.md differs from the pinned release (v9.9.9); harness upgrade will overwrite it' "edited harness file"
+echo "$output" | grep -q '✗' && fail "expected a harness file that drifted from the pinned release to warn, never fail the run, got: $output"
+echo "✓ an edited harness file warns instead of failing, and names harness upgrade's effect"
+
+# --- pinned release can't be fetched ---
+repo="$scratch/release-unreachable"
+build_healthy_repo "$repo"
+echo "v9.9.9" > "$repo/.claude/HARNESS_VERSION"
+if ! output=$(HARNESS_RELEASE_SRC="file://$scratch/no-such-release-src" run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected harness doctor to exit 0 when the pinned release can't be fetched"
+fi
+assert_contains "$output" '- harness files match the pinned release (skipped: could not fetch harness files from v9.9.9)' "release unreachable"
+echo "$output" | grep -q '⚠' && fail "expected an unreachable pinned release to skip the comparison, not warn about drift, got: $output"
+echo "$output" | grep -q '✗' && fail "expected an unreachable pinned release to skip the comparison, never fail the run, got: $output"
+echo "✓ an unreachable pinned release skips the comparison instead of failing"
+
 # --- missing curl ---
 # Excludes curl from PATH entirely, rather than hiding it behind a stub, so
 # the check can only pass by actually finding the real binary.
