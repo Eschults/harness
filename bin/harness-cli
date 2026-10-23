@@ -107,14 +107,23 @@ dirty_harness_files() {
 # apart from "nothing differs". A missing local file is left to the
 # file-presence check and never counted as drifted.
 drifted_harness_files() {
-  local version=$1 f base remote
+  local version=$1 f base tmp
   base=$(harness_release_src "$version")
+  # cmp on a fetched file, not a $(...)-captured string: command substitution
+  # strips trailing newlines, which would hide a file that differs only by
+  # one. Redirect with `>`, not curl's own -o, so a test's curl stub that
+  # special-cases -o for the --fire check doesn't intercept this call too.
+  tmp=$(mktemp) || return 1
   for f in "${HARNESS_FILES[@]}"; do
     [ "$f" = ".claude/HARNESS_VERSION" ] && continue
     [ -f "$f" ] || continue
-    remote=$(curl -fsSL "$base/$f") || return 1
-    [ "$remote" = "$(cat "$f")" ] || echo "$f"
+    if ! curl -fsSL "$base/$f" > "$tmp"; then
+      rm -f "$tmp"
+      return 1
+    fi
+    cmp -s "$tmp" "$f" || echo "$f"
   done
+  rm -f "$tmp"
 }
 
 require_clean_harness_files() {
