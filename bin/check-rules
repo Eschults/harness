@@ -12,7 +12,11 @@ the same HARNESS_FILES as bin/harness-cli. Another set of checks extracts every 
 the "N files, two routines" count) out of README.md and verifies them against
 the working tree, catching link rot and a stale file count left behind by a
 rename or a file added to HARNESS_FILES. Another check fails when a .claude/harness-rules.md section has
-changed since its hand-written README.md Guardrails summary was last reviewed (bin/sync-readme). A further check scans bin/ and
+changed since its hand-written README.md Guardrails summary was last reviewed (bin/sync-readme). Another
+check extracts the two routine instructions blocks pasted into README.md steps 2 and 5 and fails if either
+names a .claude/prompts/*.md path that does not exist, drops the instruction to read CLAUDE.md, or (for the
+"Issue to PR" block) names a payload tag that does not match the one in .claude/prompts/issue-to-pr.md, or
+if README.md is missing one of the two blocks. A further check scans bin/ and
 bin/lib/ for every bash/sh script (by shebang or .sh extension) and fails,
 naming it, if it is missing from the shellcheck list in bin/ci, catching a
 new bin/ script nobody remembered to add to that list; a self-test proves
@@ -242,6 +246,121 @@ def _shellcheck_coverage_self_test() -> tuple[str, bool, str]:
         missing = _missing_from_shellcheck_list(root, ci_text)
         if missing:
             return (name, False, f"expected no missing scripts after removing the stray ones; got {missing}")
+
+        return (name, True, "")
+
+
+_ROUTINE_BLOCK_HEADINGS = {
+    "Issue to PR": r"####\s*2\.[^\n]*\n",
+    "Next to Build": r"####\s*5\.[^\n]*\n",
+}
+
+
+def _readme_routine_block(readme_text: str, label: str) -> str | None:
+    """The fenced ```text block pasted right after a routine's README heading."""
+    pattern = _ROUTINE_BLOCK_HEADINGS[label] + r".*?```text\n(.*?)```"
+    match = re.search(pattern, readme_text, re.DOTALL)
+    return match.group(1) if match else None
+
+
+def _prompt_paths(text: str) -> list[str]:
+    return re.findall(r"\.claude/prompts/[\w-]+\.md", text)
+
+
+def _payload_tag(text: str) -> str | None:
+    match = re.search(r"<([a-zA-Z][\w-]*)>", text)
+    return match.group(1) if match else None
+
+
+def _routine_block_checks(readme_text: str, issue_to_pr_text: str, root: pathlib.Path) -> list[tuple[str, bool, str]]:
+    checks = []
+    blocks = {label: _readme_routine_block(readme_text, label) for label in _ROUTINE_BLOCK_HEADINGS}
+    for label, block in blocks.items():
+        if block is None:
+            checks.append((
+                f"readme-routine-block:{label}",
+                False,
+                f'README.md is missing the "{label}" routine instructions block',
+            ))
+            continue
+        for path in _prompt_paths(block):
+            checks.append((
+                f"readme-routine-block-path:{label}:{path}",
+                (root / path).is_file(),
+                f'README.md\'s "{label}" routine instructions name {path!r}, which does not exist in the working tree',
+            ))
+        checks.append((
+            f"readme-routine-block-reads-claude-md:{label}",
+            "Read CLAUDE.md" in block,
+            f'README.md\'s "{label}" routine instructions should tell the routine to read CLAUDE.md',
+        ))
+    issue_block = blocks.get("Issue to PR")
+    if issue_block is not None:
+        readme_tag = _payload_tag(issue_block)
+        prompt_tag = _payload_tag(issue_to_pr_text)
+        checks.append((
+            "readme-routine-block-payload-tag",
+            readme_tag is not None and readme_tag == prompt_tag,
+            f'README.md\'s "Issue to PR" routine instructions name the payload tag {readme_tag!r}, '
+            f"but issue-to-pr.md names {prompt_tag!r}",
+        ))
+    return checks
+
+
+def _readme_routine_block_checks() -> list[tuple[str, bool, str]]:
+    return _routine_block_checks(README, ISSUE_TO_PR, ROOT)
+
+
+def _routine_block_self_test() -> tuple[str, bool, str]:
+    """Proves _routine_block_checks() actually catches each failure mode, in a scratch
+    tree, before trusting its result against the real README and issue-to-pr.md."""
+    name = "routine-block-self-test"
+    issue_to_pr_text = "The `<routine-fire-payload>` block names one GitHub issue."
+
+    def make_readme(issue_tag="routine-fire-payload", next_path=".claude/prompts/next-to-build.md",
+                     next_reads_claude_md=True, include_next_block=True) -> str:
+        issue_block = (
+            f"You implement GitHub issues.\n\nThe <{issue_tag}> block names one issue.\n\n"
+            "Read CLAUDE.md and .claude/prompts/issue-to-pr.md, and follow both exactly.\n"
+        )
+        readme = (
+            '#### 2. Create the "Issue to PR" routine\n'
+            f"```text\n{issue_block}```\n\n"
+            "#### 3. Set two repo values\n"
+        )
+        if include_next_block:
+            next_block = (
+                "You decide what to build next.\n\n"
+                + ("Read CLAUDE.md and " if next_reads_claude_md else "Follow ")
+                + f"{next_path}, and follow both exactly.\n"
+            )
+            readme += (
+                '#### 5. (Optional) Create the "Next to build" routine\n'
+                f"```text\n{next_block}```\n"
+            )
+        return readme
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / ".claude" / "prompts").mkdir(parents=True)
+        (root / ".claude" / "prompts" / "issue-to-pr.md").write_text("placeholder")
+        (root / ".claude" / "prompts" / "next-to-build.md").write_text("placeholder")
+
+        good = make_readme()
+        failing = [check_name for check_name, ok, _ in _routine_block_checks(good, issue_to_pr_text, root) if not ok]
+        if failing:
+            return (name, False, f"expected well-formed README routine blocks to pass; got failing checks {failing}")
+
+        cases = {
+            "missing block": lambda: make_readme(include_next_block=False),
+            "bad prompt path": lambda: make_readme(next_path=".claude/prompts/does-not-exist.md"),
+            "mismatched payload tag": lambda: make_readme(issue_tag="wrong-tag"),
+            "missing Read CLAUDE.md": lambda: make_readme(next_reads_claude_md=False),
+        }
+        for case_name, build in cases.items():
+            failing = [check_name for check_name, ok, _ in _routine_block_checks(build(), issue_to_pr_text, root) if not ok]
+            if not failing:
+                return (name, False, f"expected case {case_name!r} to fail at least one check, but all passed")
 
         return (name, True, "")
 
@@ -516,6 +635,8 @@ CHECKS.append(_readme_guardrails_check())
 CHECKS.extend(_cli_readme_anchor_checks())
 CHECKS.append(_shellcheck_coverage_self_test())
 CHECKS.extend(_shellcheck_coverage_checks())
+CHECKS.append(_routine_block_self_test())
+CHECKS.extend(_readme_routine_block_checks())
 
 
 def main() -> int:
