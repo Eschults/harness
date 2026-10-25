@@ -251,8 +251,8 @@ def _shellcheck_coverage_self_test() -> tuple[str, bool, str]:
 
 
 _ROUTINE_BLOCK_HEADINGS = {
-    "Issue to PR": r"####\s*2\.[^\n]*\n",
-    "Next to Build": r"####\s*5\.[^\n]*\n",
+    "Issue to PR": r'####[^\n]*"Issue to PR"[^\n]*\n',
+    "Next to Build": r'####[^\n]*"Next to build"[^\n]*\n',
 }
 
 
@@ -268,7 +268,10 @@ def _prompt_paths(text: str) -> list[str]:
 
 
 def _payload_tag(text: str) -> str | None:
-    match = re.search(r"<([a-zA-Z][\w-]*)>", text)
+    """The tag in "...<tag>` block..." or "...<tag> block...", never an unrelated <...>
+    placeholder elsewhere in the file (issue-to-pr.md uses that shape for other things too,
+    e.g. `<issue-number>`)."""
+    match = re.search(r"<([a-zA-Z][\w-]*)>`?\s*block", text)
     return match.group(1) if match else None
 
 
