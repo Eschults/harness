@@ -46,7 +46,7 @@ The harness is mostly prose, versioned in your repo where you can read and diff 
 | [`.claude/prompts/issue-to-pr.md`](.claude/prompts/issue-to-pr.md) | The procedure for implementing an issue. |
 | [`.claude/prompts/next-to-build.md`](.claude/prompts/next-to-build.md) | The procedure for choosing and filing the next issue. |
 | [`.claude/harness-rules.md`](.claude/harness-rules.md) | The rules every autonomous run follows. |
-| [`.claude/harness-review.md`](.claude/harness-review.md) | The rules `/code-review` and `/security-review` apply to the self-review. |
+| [`.claude/harness-review.md`](.claude/harness-review.md) | The rules `/code-review` and `/security-review` apply to every review. |
 | `.claude/HARNESS_VERSION` | The release this repo is pinned to. |
 
 Plus the `harness` CLI, which installs, checks, upgrades and removes them, and can start a run by hand.
