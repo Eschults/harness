@@ -32,6 +32,13 @@ REVIEW_MD="REVIEW.md"
 # content inlined is what actually reaches the service.
 REVIEW_BLOCK_START='<!-- harness-review:start (synced by harness install/upgrade from .claude/harness-review.md; do not edit between these markers) -->'
 REVIEW_BLOCK_END='<!-- harness-review:end -->'
+# Stable substrings to find an already-written block by, independent of the
+# explanatory text in REVIEW_BLOCK_START/END above. A later release wording
+# that parenthetical differently must still recognize and refresh a block an
+# older release wrote, rather than treating it as absent and appending a
+# second one alongside the orphaned original.
+REVIEW_BLOCK_START_MARKER='<!-- harness-review:start'
+REVIEW_BLOCK_END_MARKER='<!-- harness-review:end'
 
 usage() {
   cat <<'EOF'
@@ -191,10 +198,18 @@ install_harness() {
 
 # The harness-review.md content as a self-contained REVIEW.md block, with
 # marker comments so install/upgrade can find and replace it, and uninstall
-# can remove exactly it without touching anything else in REVIEW.md.
+# can remove exactly it without touching anything else in REVIEW.md. The
+# content is routed through a variable, not catted straight through, so a
+# source file missing its final newline still gets exactly one before
+# REVIEW_BLOCK_END: command substitution strips all trailing newlines, and
+# the printf below adds back exactly one. Without this, the end marker lands
+# glued onto the content's last line instead of its own line, so later syncs
+# can never find it and keep appending new blocks instead of replacing it.
 review_md_block() {
+  local content
+  content=$(cat .claude/harness-review.md)
   printf '%s\n' "$REVIEW_BLOCK_START"
-  cat .claude/harness-review.md
+  printf '%s\n' "$content"
   printf '%s\n' "$REVIEW_BLOCK_END"
 }
 
@@ -206,8 +221,8 @@ sync_review_md_block() {
   local tmp start_line="" end_line=""
   tmp=$(mktemp) || return 1
   if [ -f "$REVIEW_MD" ]; then
-    start_line=$(grep -nxF "$REVIEW_BLOCK_START" "$REVIEW_MD" | head -1 | cut -d: -f1) || true
-    [ -n "$start_line" ] && { end_line=$(grep -nxF "$REVIEW_BLOCK_END" "$REVIEW_MD" | head -1 | cut -d: -f1) || true; }
+    start_line=$(grep -nF -- "$REVIEW_BLOCK_START_MARKER" "$REVIEW_MD" | head -1 | cut -d: -f1) || true
+    [ -n "$start_line" ] && { end_line=$(grep -nF -- "$REVIEW_BLOCK_END_MARKER" "$REVIEW_MD" | head -1 | cut -d: -f1) || true; }
   fi
   if [ -f "$REVIEW_MD" ] && [ -n "$start_line" ] && [ -n "$end_line" ] && [ "$end_line" -gt "$start_line" ]; then
     head -n "$((start_line - 1))" "$REVIEW_MD" > "$tmp"
@@ -229,12 +244,12 @@ sync_review_md_block() {
 # undoing install having created it from nothing.
 remove_review_md_block() {
   [ -f "$REVIEW_MD" ] || return 0
-  grep -qxF "$REVIEW_BLOCK_START" "$REVIEW_MD" || return 0
+  grep -qF -- "$REVIEW_BLOCK_START_MARKER" "$REVIEW_MD" || return 0
   local tmp
   tmp=$(mktemp) || return 1
-  awk -v start="$REVIEW_BLOCK_START" -v end="$REVIEW_BLOCK_END" '
-    $0 == start { skipping = 1; if (have && pending == "") have = 0; next }
-    skipping { if ($0 == end) skipping = 0; next }
+  awk -v start="$REVIEW_BLOCK_START_MARKER" -v end="$REVIEW_BLOCK_END_MARKER" '
+    index($0, start) == 1 { skipping = 1; if (have && pending == "") have = 0; next }
+    skipping { if (index($0, end) == 1) skipping = 0; next }
     { if (have) print pending; pending = $0; have = 1 }
     END { if (have) print pending }
   ' "$REVIEW_MD" > "$tmp"
@@ -545,7 +560,7 @@ cmd_doctor() {
     bad "CLAUDE.md does not import $RULES_IMPORT; run harness install"
   fi
 
-  if [ -f "$REVIEW_MD" ] && grep -qxF "$REVIEW_BLOCK_START" "$REVIEW_MD"; then
+  if [ -f "$REVIEW_MD" ] && grep -qF -- "$REVIEW_BLOCK_START_MARKER" "$REVIEW_MD"; then
     ok "$REVIEW_MD includes the harness review block"
   else
     bad "$REVIEW_MD does not include the harness review block; run harness install"

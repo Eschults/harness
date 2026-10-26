@@ -1,6 +1,6 @@
 # Harness review rules
 
-What a reviewer flags in a PR an autonomous run opened, at what severity, and what it skips. The `/code-review` and `/security-review` passes in the Review step of `.claude/prompts/issue-to-pr.md` apply these rules to every self-review. `harness install`/`harness upgrade` also copy this file's content into a marked block in the repo's `REVIEW.md`, so a plan that runs the managed Code Review service applies the same rules there too.
+What a reviewer flags in a PR an autonomous run opened, at what severity, and what it skips. The `/code-review` and `/security-review` passes in the Review step of `.claude/prompts/issue-to-pr.md` apply these rules to every self-review. `harness install`/`harness upgrade` also copy this file's content into a marked block in the repo's `REVIEW.md`, so a repo that runs the managed Code Review service applies the same rules there too.
 
 ## Always blocking
 
