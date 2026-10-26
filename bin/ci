@@ -13,7 +13,7 @@ fi
 
 echo "Running shellcheck ($(shellcheck --version | grep ^version:))"
 shellcheck_failed=0
-for f in install.sh bin/ci bin/harness bin/harness-cli bin/harness-upgrade bin/release bin/lib/fetch-files.sh bin/lib/version-check.sh bin/lib/check-helpers.sh bin/check-install-uninstall bin/check-harness-upgrade bin/check-claude-workflow bin/check-release bin/check-doctor bin/check-issue bin/check-launcher; do
+for f in install.sh bin/ci bin/harness bin/harness-cli bin/harness-upgrade bin/release bin/lib/fetch-files.sh bin/lib/version-check.sh bin/lib/check-helpers.sh bin/check-install-uninstall bin/check-harness-upgrade bin/check-claude-workflow bin/check-release bin/check-doctor bin/check-issue bin/check-stats bin/check-launcher; do
   if shellcheck_output=$(shellcheck -x "$f" 2>&1); then
     echo "✓ shellcheck: $f"
   else
@@ -73,6 +73,14 @@ else
 fi
 echo
 
+echo "Running the harness-stats check"
+if ./bin/check-stats; then
+  stats_failed=0
+else
+  stats_failed=1
+fi
+echo
+
 echo "Running the launcher check"
 if ./bin/check-launcher; then
   launcher_failed=0
@@ -94,6 +102,7 @@ failed_suites=()
 [ "$release_failed" -eq 0 ] || failed_suites+=("release round trip")
 [ "$doctor_failed" -eq 0 ] || failed_suites+=("harness-doctor check")
 [ "$issue_failed" -eq 0 ] || failed_suites+=("harness issue check")
+[ "$stats_failed" -eq 0 ] || failed_suites+=("harness-stats check")
 [ "$launcher_failed" -eq 0 ] || failed_suites+=("launcher check")
 [ "$rules_failed" -eq 0 ] || failed_suites+=("rules check")
 

@@ -34,6 +34,7 @@ Commands:
   upgrade          Pull in the latest harness release
   doctor [--fire]  Check the install end to end; --fire also fires the routine once
   issue <number>   Fire the "Issue to PR" routine for one issue, bypassing GitHub Actions
+  stats [--since <N>d]  Report what claude/ pull requests become (default 30d)
   uninstall        Remove the harness files and the CLAUDE.md import
   -v, --version    Print the harness version this repo runs
 
@@ -393,6 +394,200 @@ cmd_issue() {
   echo "Fired: $session_url"
 }
 
+# Prints an ISO-8601 UTC timestamp $1 days before now, or before
+# $HARNESS_STATS_NOW when set (so tests get a deterministic cutoff). Tries
+# GNU date first, then BSD/macOS date, since the CLI runs on both.
+stats_since_iso() {
+  local days=$1 base=${HARNESS_STATS_NOW:-now}
+  date -u -d "$base -${days} days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null && return
+  if [ "$base" = now ]; then
+    date -u -v-"${days}"d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null && return
+  else
+    date -ju -f '%Y-%m-%dT%H:%M:%SZ' -v-"${days}"d "$base" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null && return
+  fi
+  return 1
+}
+
+# Pages through a gh api GET endpoint whose response is a bare JSON array,
+# appending each page's items as one compact JSON object per line to $1.
+# $2 is the endpoint; any further args are extra -f fields. Stops once a
+# page returns fewer than 100 items. Fails (non-zero) if any page's call
+# fails, so a caller never mistakes a lookup error for an empty result.
+paginate_gh_api() {
+  local out=$1 endpoint=$2
+  shift 2
+  local page=1 per_page=100 tmp count
+  : > "$out"
+  while :; do
+    tmp=$(mktemp) || return 1
+    if ! gh api "$endpoint" -f per_page="$per_page" -f page="$page" "$@" > "$tmp" 2>/dev/null; then
+      rm -f "$tmp"
+      return 1
+    fi
+    jq -c '.[]' "$tmp" >> "$out"
+    count=$(jq 'length' "$tmp")
+    rm -f "$tmp"
+    [ "$count" -lt "$per_page" ] && break
+    page=$((page + 1))
+  done
+}
+
+# Same page shape as paginate_gh_api, but for state=all pull requests sorted
+# by created desc: stops as soon as a page's oldest PR predates $2, so a
+# long-lived repo's full PR history is never fetched for a short --since
+# window. Writes only PRs with created_at >= $2.
+fetch_prs_since() {
+  local out=$1 since_iso=$2 page=1 per_page=100 tmp count oldest
+  : > "$out"
+  while :; do
+    tmp=$(mktemp) || return 1
+    if ! gh api 'repos/{owner}/{repo}/pulls' -f state=all -f sort=created -f direction=desc \
+      -f per_page="$per_page" -f page="$page" > "$tmp" 2>/dev/null; then
+      rm -f "$tmp"
+      return 1
+    fi
+    jq -c --arg since "$since_iso" '.[] | select(.created_at >= $since)' "$tmp" >> "$out"
+    count=$(jq 'length' "$tmp")
+    oldest=$(jq -r '.[-1].created_at // empty' "$tmp")
+    rm -f "$tmp"
+    [ "$count" -lt "$per_page" ] && break
+    [ -n "$oldest" ] && [[ "$oldest" < "$since_iso" ]] && break
+    page=$((page + 1))
+  done
+}
+
+# True when every commit on PR $1's branch was authored by the run itself
+# (git author email noreply@anthropic.com, the identity every routine
+# commit carries) rather than a human push. Fails (non-zero, treated as "not
+# solo" by the caller) if the commits can't be listed.
+stats_pr_is_claude_only() {
+  local number=$1 tmp non_claude
+  tmp=$(mktemp) || return 1
+  if ! paginate_gh_api "$tmp" "repos/{owner}/{repo}/pulls/$number/commits"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  non_claude=$(jq -s '[.[] | select((.commit.author.email // "") != "noreply@anthropic.com")] | length' "$tmp")
+  rm -f "$tmp"
+  [ "$non_claude" -eq 0 ]
+}
+
+# The jq summary of claude/-branch PR stats, run against $prs (every PR
+# touched by the --since window, any branch) and $commits (default-branch
+# commits since the cutoff). Embedded here, not a sibling bin/lib/*.jq file:
+# `harness` downloads only this one file per release (see ensure_cli in
+# bin/harness), so a separate file would 404 for anyone but this checkout.
+stats_jq_filter() {
+  cat <<'JQ'
+$prs as $all
+| $commits as $default_commits
+| [$all[] | select(.head.ref | startswith("claude/"))] as $claude
+| [$claude[] | select(.merged_at != null)] as $merged
+| [$claude[] | select(.state == "closed" and .merged_at == null)] as $closed_unmerged
+| [$claude[] | select(.draft == true and .state == "open")] as $still_draft
+| [
+    $merged[] | . as $pr
+    | (
+        [$all[] | select(.merged_at != null and .title == ("Revert \"" + $pr.title + "\"")) | .html_url]
+        + [$default_commits[] | select(.commit.message | contains("This reverts commit " + ($pr.merge_commit_sha // "~"))) | .html_url]
+      ) as $links
+    | select(($links | length) > 0)
+    | {number: $pr.number, title: $pr.title, reverted_by: $links}
+  ] as $reverts
+| ([$claude[] | (.labels // [])[].name | select(startswith("risk:"))] | unique) as $tiers
+| (
+    if ($tiers | length) == 0 then null
+    else [
+      $tiers[] as $tier
+      | {
+          tier: $tier,
+          opened: ([$claude[] | select(any((.labels // [])[]; .name == $tier))] | length),
+          merged: ([$merged[] | select(any((.labels // [])[]; .name == $tier))] | length)
+        }
+    ]
+    end
+  ) as $by_tier
+| {
+    opened: ($claude | length),
+    merged: ($merged | length),
+    closed_unmerged: ($closed_unmerged | length),
+    still_draft: ($still_draft | length),
+    merged_numbers: [$merged[] | .number],
+    reverts: $reverts,
+    by_tier: $by_tier
+  }
+JQ
+}
+
+cmd_stats() {
+  local since_days=30
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --since)
+        [ $# -ge 2 ] || { echo "Usage: harness stats [--since <N>d]" >&2; exit 1; }
+        since_days=${2%d}
+        shift 2
+        ;;
+      *)
+        echo "Unknown option: $1. Usage: harness stats [--since <N>d]" >&2
+        exit 1
+        ;;
+    esac
+  done
+  [[ "$since_days" =~ ^[0-9]+$ ]] || { echo "Invalid --since value: expected <N>d (e.g. 30d)" >&2; exit 1; }
+
+  require_tools gh jq
+  cd_repo_root
+
+  if ! gh auth status >/dev/null 2>&1; then
+    echo "gh is not authenticated; run gh auth login." >&2
+    exit 1
+  fi
+
+  local since_iso default_branch
+  since_iso=$(stats_since_iso "$since_days") || { echo "Could not compute the --since cutoff date." >&2; exit 1; }
+  default_branch=$(gh api 'repos/{owner}/{repo}' --jq .default_branch 2>/dev/null) ||
+    { echo "Could not look up the default branch." >&2; exit 1; }
+
+  # Global, not local: the EXIT trap runs after this function's scope is gone.
+  stats_scratch=$(mktemp -d)
+  trap 'rm -rf "$stats_scratch"' EXIT
+
+  local prs_file="$stats_scratch/prs.jsonl" commits_file="$stats_scratch/commits.jsonl"
+  fetch_prs_since "$prs_file" "$since_iso" || { echo "Could not list pull requests." >&2; exit 1; }
+  paginate_gh_api "$commits_file" 'repos/{owner}/{repo}/commits' -f sha="$default_branch" -f since="$since_iso" ||
+    { echo "Could not list commits on $default_branch." >&2; exit 1; }
+
+  local summary
+  summary=$(jq -n --slurpfile prs "$prs_file" --slurpfile commits "$commits_file" "$(stats_jq_filter)") ||
+    { echo "Could not summarize pull request data." >&2; exit 1; }
+
+  echo "Harness stats since $since_iso (last ${since_days}d)"
+  echo
+  echo "claude/ pull requests: $(jq -r .opened <<< "$summary") opened, $(jq -r .merged <<< "$summary") merged, $(jq -r .closed_unmerged <<< "$summary") closed unmerged, $(jq -r .still_draft <<< "$summary") still draft"
+
+  local solo=0 checked=0 num
+  while IFS= read -r num; do
+    [ -n "$num" ] || continue
+    checked=$((checked + 1))
+    stats_pr_is_claude_only "$num" && solo=$((solo + 1))
+  done < <(jq -r '.merged_numbers[]' <<< "$summary")
+  echo "Merged with no human pushes: $solo/$checked"
+
+  local revert_count
+  revert_count=$(jq '.reverts | length' <<< "$summary")
+  echo "Reverted: $revert_count"
+  if [ "$revert_count" -gt 0 ]; then
+    jq -r '.reverts[] | "  #\(.number) \(.title) -> " + (.reverted_by | join(", "))' <<< "$summary"
+  fi
+
+  if jq -e '.by_tier != null' <<< "$summary" >/dev/null; then
+    echo
+    echo "By risk tier:"
+    jq -r '.by_tier[] | "  \(.tier): \(.opened) opened, \(.merged) merged"' <<< "$summary"
+  fi
+}
+
 doctor_failed=0
 ok() { echo "✓ $1"; }
 bad() {
@@ -627,6 +822,7 @@ main() {
     upgrade) cmd_upgrade ;;
     doctor) cmd_doctor "$@" ;;
     issue) cmd_issue "$@" ;;
+    stats) cmd_stats "$@" ;;
     uninstall) cmd_uninstall ;;
     help | -h | --help) usage ;;
     -v | --version) cmd_version ;;
