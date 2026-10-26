@@ -490,7 +490,7 @@ CHECKS = [
         "issue-to-pr.md should still require building the missing part, not stopping, on a partial match",
     ),
     (
-        "review-runs-security-review-after-code-review",
+        "review-passes-run-without-fix",
         "Inside that subagent, run `/code-review <PR number>` and `/security-review` on the same diff, neither with `--fix`."
         in ISSUE_TO_PR,
         "issue-to-pr.md should still require running /code-review and /security-review on the same diff, neither applying fixes itself",
