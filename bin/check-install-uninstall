@@ -18,7 +18,8 @@ source bin/harness-cli
 scratch=$(mktemp -d)
 outside_repo=$(mktemp -d)
 original_claude_md=$(mktemp)
-trap 'rm -rf "$scratch" "$outside_repo" "$original_claude_md"' EXIT
+original_review_md=$(mktemp)
+trap 'rm -rf "$scratch" "$outside_repo" "$original_claude_md" "$original_review_md"' EXIT
 
 # A PATH with every external tool harness-cli install/uninstall can call,
 # gh deliberately left out, so the round-trip assertions below (which don't
@@ -26,7 +27,7 @@ trap 'rm -rf "$scratch" "$outside_repo" "$original_claude_md"' EXIT
 # be installed and authenticated in the environment running this check.
 no_gh_bin="$scratch/no_gh_bin"
 mkdir -p "$no_gh_bin"
-for cmd in bash dirname mkdir curl grep awk mv rmdir find cat git rm jq sort tail; do
+for cmd in bash dirname mkdir curl grep awk mv rmdir find cat git rm jq sort tail mktemp head cut cp; do
   cmd_path=$(command -v "$cmd") || continue
   ln -sf "$cmd_path" "$no_gh_bin/$cmd"
 done
@@ -107,6 +108,10 @@ echo "✓ install removed the pre-CLI bin/ scripts"
 
 [ "$(count_import_lines)" = "1" ] || fail "expected exactly one @.claude/harness-rules.md line after install, got $(count_import_lines)"
 echo "✓ install added exactly one CLAUDE.md import line"
+
+grep -qxF '<!-- harness-review:start (synced by harness install/upgrade from .claude/harness-review.md; do not edit between these markers) -->' "$scratch/REVIEW.md" \
+  || fail "expected install to create REVIEW.md with the harness review block, since none existed"
+echo "✓ install created REVIEW.md with the harness review block"
 
 echo
 echo "--- claude label creation ---"
@@ -191,6 +196,46 @@ done
 
 cmp -s "$scratch/CLAUDE.md" "$original_claude_md" || fail "expected CLAUDE.md to return to its pre-install content byte for byte"
 echo "✓ uninstall removed every harness file and restored CLAUDE.md"
+
+[ ! -e "$scratch/REVIEW.md" ] || fail "expected uninstall to remove REVIEW.md, since install created it from nothing"
+echo "✓ uninstall removed the REVIEW.md it had created from nothing"
+
+echo
+echo "--- REVIEW.md with the adopter's own content ---"
+
+review_dir="$scratch/review-adopter-content"
+git init -q "$review_dir"
+printf '# Our rules\n\nNo nits on generated code.\n' > "$original_review_md"
+cp "$original_review_md" "$review_dir/REVIEW.md"
+
+run_harness_in() {
+  local dir=$1
+  shift
+  (cd "$dir" && HARNESS_SRC="file://$root" PATH="$no_gh_bin" "$root/bin/harness-cli" "$@")
+}
+
+if ! output=$(run_harness_in "$review_dir" install 2>&1); then
+  echo "$output" >&2
+  fail "harness install failed with a pre-existing REVIEW.md"
+fi
+grep -qxF '# Our rules' "$review_dir/REVIEW.md" || fail "expected install to keep the adopter's own REVIEW.md content"
+grep -qxF '<!-- harness-review:start (synced by harness install/upgrade from .claude/harness-review.md; do not edit between these markers) -->' "$review_dir/REVIEW.md" \
+  || fail "expected install to append the harness review block to an existing REVIEW.md"
+echo "✓ install appended the harness review block, keeping the adopter's own REVIEW.md content"
+
+if ! output=$(run_harness_in "$review_dir" install 2>&1); then
+  echo "$output" >&2
+  fail "harness install failed re-running against a REVIEW.md that already has the block"
+fi
+[ "$(grep -c 'harness-review:start' "$review_dir/REVIEW.md")" = "1" ] || fail "expected re-running install to refresh the block in place, not duplicate it"
+echo "✓ re-running install refreshed the REVIEW.md block instead of duplicating it"
+
+if ! output=$(run_harness_in "$review_dir" uninstall 2>&1); then
+  echo "$output" >&2
+  fail "harness uninstall failed removing the REVIEW.md block"
+fi
+cmp -s "$review_dir/REVIEW.md" "$original_review_md" || fail "expected uninstall to restore REVIEW.md to its pre-install content byte for byte"
+echo "✓ uninstall removed the block and restored the adopter's REVIEW.md content byte for byte"
 
 if ! output=$(run_harness uninstall 2>&1); then
   echo "$output" >&2

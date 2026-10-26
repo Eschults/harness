@@ -85,8 +85,9 @@ printf '%s' "${STUB_CURL_STATUS:-200}"
 STUB
 chmod +x "$stub_bin/curl"
 
-# Builds a scratch repo with every HARNESS_FILES entry and the CLAUDE.md
-# import, all copied from this checkout's real content.
+# Builds a scratch repo with every HARNESS_FILES entry, the CLAUDE.md
+# import, and a REVIEW.md holding the harness review block, all copied from
+# this checkout's real content.
 build_healthy_repo() {
   local dir=$1
   git init -q "$dir"
@@ -95,6 +96,11 @@ build_healthy_repo() {
     cp "$f" "$dir/$f"
   done
   printf '# Adopter rules\n\n@.claude/harness-rules.md\n' > "$dir/CLAUDE.md"
+  {
+    echo '<!-- harness-review:start (synced by harness install/upgrade from .claude/harness-review.md; do not edit between these markers) -->'
+    cat "$dir/.claude/harness-review.md"
+    echo '<!-- harness-review:end -->'
+  } > "$dir/REVIEW.md"
 }
 
 run_doctor() {
@@ -284,6 +290,16 @@ if output=$(run_doctor "$repo"); then
 fi
 assert_contains "$output" '✗ CLAUDE.md does not import' "missing import"
 echo "✓ a missing CLAUDE.md import fails the check that names it"
+
+# --- missing REVIEW.md block ---
+repo="$scratch/missing-review-block"
+build_healthy_repo "$repo"
+rm "$repo/REVIEW.md"
+if output=$(run_doctor "$repo"); then
+  fail "expected harness doctor to fail when REVIEW.md has no harness review block"
+fi
+assert_contains "$output" '✗ REVIEW.md does not include the harness review block' "missing review block"
+echo "✓ a missing REVIEW.md block fails the check that names it"
 
 # --- CLAUDE.md import on a line with trailing content ---
 # harness install only checks that the import is present as a substring

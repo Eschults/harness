@@ -11,6 +11,7 @@ HARNESS_FILES=(
   ".claude/prompts/issue-to-pr.md"
   ".claude/prompts/next-to-build.md"
   ".claude/harness-rules.md"
+  ".claude/harness-review.md"
   ".claude/HARNESS_VERSION"
 )
 # What the pre-CLI harness vendored into bin/; install and uninstall remove it.
@@ -24,6 +25,13 @@ LEGACY_FILES=(
   "bin/lib/version-check.sh"
 )
 RULES_IMPORT='@.claude/harness-rules.md'
+REVIEW_MD="REVIEW.md"
+# A plain `@.claude/harness-review.md` line in REVIEW.md is not followed by
+# the managed Code Review service: it only includes a file beside REVIEW.md
+# at the repo root, never one in a subdirectory. A marked block with the
+# content inlined is what actually reaches the service.
+REVIEW_BLOCK_START='<!-- harness-review:start (synced by harness install/upgrade from .claude/harness-review.md; do not edit between these markers) -->'
+REVIEW_BLOCK_END='<!-- harness-review:end -->'
 
 usage() {
   cat <<'EOF'
@@ -178,6 +186,63 @@ install_harness() {
   if ! grep -qF "$RULES_IMPORT" CLAUDE.md 2>/dev/null; then
     printf '\n%s\n' "$RULES_IMPORT" >> CLAUDE.md
   fi
+  sync_review_md_block
+}
+
+# The harness-review.md content as a self-contained REVIEW.md block, with
+# marker comments so install/upgrade can find and replace it, and uninstall
+# can remove exactly it without touching anything else in REVIEW.md.
+review_md_block() {
+  printf '%s\n' "$REVIEW_BLOCK_START"
+  cat .claude/harness-review.md
+  printf '%s\n' "$REVIEW_BLOCK_END"
+}
+
+# Writes the current .claude/harness-review.md into REVIEW.md as a marked
+# block: replaces an existing block in place (so upgrade refreshes it), or
+# appends a new one, creating REVIEW.md when it doesn't exist. Every other
+# line in REVIEW.md is the adopter's own and is left untouched.
+sync_review_md_block() {
+  local tmp start_line="" end_line=""
+  tmp=$(mktemp) || return 1
+  if [ -f "$REVIEW_MD" ]; then
+    start_line=$(grep -nxF "$REVIEW_BLOCK_START" "$REVIEW_MD" | head -1 | cut -d: -f1) || true
+    [ -n "$start_line" ] && { end_line=$(grep -nxF "$REVIEW_BLOCK_END" "$REVIEW_MD" | head -1 | cut -d: -f1) || true; }
+  fi
+  if [ -f "$REVIEW_MD" ] && [ -n "$start_line" ] && [ -n "$end_line" ] && [ "$end_line" -gt "$start_line" ]; then
+    head -n "$((start_line - 1))" "$REVIEW_MD" > "$tmp"
+    review_md_block >> "$tmp"
+    tail -n "+$((end_line + 1))" "$REVIEW_MD" >> "$tmp"
+  elif [ -f "$REVIEW_MD" ] && [ -s "$REVIEW_MD" ]; then
+    cp "$REVIEW_MD" "$tmp"
+    printf '\n' >> "$tmp"
+    review_md_block >> "$tmp"
+  else
+    review_md_block > "$tmp"
+  fi
+  mv "$tmp" "$REVIEW_MD"
+}
+
+# Removes exactly the marked block sync_review_md_block wrote, plus the
+# blank-line separator install added before it, the same lookback install's
+# CLAUDE.md import removal uses. Deletes REVIEW.md if that leaves it empty,
+# undoing install having created it from nothing.
+remove_review_md_block() {
+  [ -f "$REVIEW_MD" ] || return 0
+  grep -qxF "$REVIEW_BLOCK_START" "$REVIEW_MD" || return 0
+  local tmp
+  tmp=$(mktemp) || return 1
+  awk -v start="$REVIEW_BLOCK_START" -v end="$REVIEW_BLOCK_END" '
+    $0 == start { skipping = 1; if (have && pending == "") have = 0; next }
+    skipping { if ($0 == end) skipping = 0; next }
+    { if (have) print pending; pending = $0; have = 1 }
+    END { if (have) print pending }
+  ' "$REVIEW_MD" > "$tmp"
+  if [ -s "$tmp" ]; then
+    mv "$tmp" "$REVIEW_MD"
+  else
+    rm -f "$tmp" "$REVIEW_MD"
+  fi
 }
 
 # --limit: gh label list defaults to 30 and the claude label can sort past
@@ -283,6 +348,8 @@ cmd_uninstall() {
     ' CLAUDE.md > CLAUDE.md.harness-uninstall-tmp
     mv CLAUDE.md.harness-uninstall-tmp CLAUDE.md
   fi
+
+  remove_review_md_block
 
   cat <<EOF
 Removed the local harness files. Finish the cleanup on GitHub:
@@ -476,6 +543,12 @@ cmd_doctor() {
     ok "CLAUDE.md imports $RULES_IMPORT"
   else
     bad "CLAUDE.md does not import $RULES_IMPORT; run harness install"
+  fi
+
+  if [ -f "$REVIEW_MD" ] && grep -qxF "$REVIEW_BLOCK_START" "$REVIEW_MD"; then
+    ok "$REVIEW_MD includes the harness review block"
+  else
+    bad "$REVIEW_MD does not include the harness review block; run harness install"
   fi
 
   local gh_checks=("claude label" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret" "harness files on the default branch" "GitHub Actions enabled" "claude.yml workflow active")

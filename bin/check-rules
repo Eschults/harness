@@ -34,6 +34,7 @@ from readme_guardrails import heading_anchor, guardrails_problems, strip_fenced_
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HARNESS_RULES = (ROOT / ".claude" / "harness-rules.md").read_text()
+HARNESS_REVIEW = (ROOT / ".claude" / "harness-review.md").read_text()
 CLAUDE_MD = (ROOT / "CLAUDE.md").read_text()
 ISSUE_TO_PR = (ROOT / ".claude" / "prompts" / "issue-to-pr.md").read_text()
 NEXT_TO_BUILD = (ROOT / ".claude" / "prompts" / "next-to-build.md").read_text()
@@ -491,8 +492,34 @@ CHECKS = [
     ),
     (
         "review-runs-security-review-after-code-review",
-        "Run `/security-review` on the same diff, and apply its findings under the test below." in ISSUE_TO_PR,
+        "also pointed at `.claude/harness-review.md`, and apply its findings under the test below." in ISSUE_TO_PR,
         "issue-to-pr.md should still require running /security-review on the same diff after /code-review --fix",
+    ),
+    (
+        "code-review-given-harness-review-rules",
+        "giving it `.claude/harness-review.md` as the rules to apply" in ISSUE_TO_PR,
+        "issue-to-pr.md should still tell /code-review --fix to apply .claude/harness-review.md",
+    ),
+    (
+        "harness-review-always-blocking-never-edit-own-rules",
+        "A PR from a `claude/` branch edits `.claude/harness-rules.md`, `.claude/harness-review.md`, `REVIEW.md`, `CLAUDE.md`, `.claude/settings.json`, or `.github/workflows/`."
+        in HARNESS_REVIEW,
+        "harness-review.md should still always-block a claude/ PR that edits the rules that review it",
+    ),
+    (
+        "harness-review-flag-dont-block-unrelated-refactor",
+        "A refactor unrelated to the issue." in HARNESS_REVIEW,
+        "harness-review.md should still flag, not block, a refactor unrelated to the issue",
+    ),
+    (
+        "harness-review-skip-generated-files",
+        "Generated files and lockfiles." in HARNESS_REVIEW,
+        "harness-review.md should still skip generated files and lockfiles",
+    ),
+    (
+        "harness-review-format-severity-first-no-praise",
+        "Severity first." in HARNESS_REVIEW and "No praise." in HARNESS_REVIEW,
+        "harness-review.md should still require severity-first findings with no praise",
     ),
     (
         "review-finding-blocking-definition",
