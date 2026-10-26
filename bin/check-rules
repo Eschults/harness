@@ -490,6 +490,28 @@ CHECKS = [
         "issue-to-pr.md should still require building the missing part, not stopping, on a partial match",
     ),
     (
+        "review-runs-security-review-after-code-review",
+        "Run `/security-review` on the same diff, and apply its findings under the test below." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require running /security-review on the same diff after /code-review --fix",
+    ),
+    (
+        "review-finding-blocking-definition",
+        "A finding is **blocking** when it is a security issue, or a correctness defect: a wrong result, a crash, or data loss."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still define a blocking finding as a security issue or a correctness defect (wrong result, crash, data loss)",
+    ),
+    (
+        "review-blocking-finding-converts-to-draft",
+        'When a blocking finding is left unfixed, the PR does not stay ready for review: convert it to a draft, state the blocking finding as its question per "The three outcomes", and hand off on the issue per "Handing off a draft".'
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require converting the PR to a draft, with the blocking finding as the question, when a blocking finding is left unfixed",
+    ),
+    (
+        "recap-review-lists-blocking-first",
+        "**What the review found**, blocking findings first, then non-blocking, one line each." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the recap to list blocking findings before non-blocking ones",
+    ),
+    (
         "recap-review-no-approve-no-request-changes",
         "Never approve, since you cannot be the approval gate, and never request changes, since you already pushed every fix you were going to make."
         in ISSUE_TO_PR,

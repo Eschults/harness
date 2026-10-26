@@ -15,7 +15,7 @@ It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on 
 ## What a run does
 The "Issue to PR" routine delivers most of the building work w/o human intervention, leaving only the last mile to the Engineering team. It:
 - **Creates a PR ready for review**, a draft PR that asks one question a human must answer, or a comment on the issue explaining why there is no PR.
-- **Reviews itself before exiting**: runs `/code-review --fix` on its PR, re-runs the tests, and posts a review listing what it found, what it fixed (with the commit), and what it left for you.
+- **Reviews itself before exiting**: runs `/code-review --fix` and `/security-review` on its PR, re-runs the tests, and posts a review listing what it found (blocking issues first), what it fixed (with the commit), and what it left for you — converting the PR to a draft if a blocking finding stays open.
 - **Hands over cleanly**: drafts and recaps link the session, so an engineer can take it over from claude.ai or with `claude --teleport`.
 - **Keeps going after it exits**: with Auto-fix on, failing CI and review comments resume the session to push fixes.
 

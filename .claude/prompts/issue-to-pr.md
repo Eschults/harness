@@ -82,11 +82,16 @@ Say in the description that the images are review-only and come out before merge
 Once the PR is open and ready for review, review your own work before you exit. Nothing runs after you: whatever you leave unexamined ships to a human unexamined.
 
 1. **Run `/code-review <PR number> --fix`.** The skill scopes the diff, ranks findings, and applies the fixes. Do not hand-roll a review in its place, and do not skip it because you feel good about the code — that feeling is exactly what the pass is checking.
-2. **Run the full test suite again.** A fix that breaks the build is worse than the finding it resolved.
-3. **Commit and push to the PR's branch.** One commit for the review pass. If you fixed nothing, push nothing.
-4. **Post the recap as a PR review**, per below.
+2. **Run `/security-review` on the same diff, and apply its findings under the test below.** It looks for a different class of problem than `/code-review` does, so one pass is never a substitute for the other.
+3. **Run the full test suite again.** A fix that breaks the build is worse than the finding it resolved.
+4. **Commit and push to the PR's branch.** One commit for the review pass. If you fixed nothing, push nothing.
+5. **Post the recap as a PR review**, per below.
 
 Apply a fix when it is clearly correct, confined to the PR's own scope, and allowed by the rules. Report instead of fixing when it needs a human decision or is a design question rather than a defect. Never drop a finding silently — anything you chose not to fix goes in the recap with the reason.
+
+A finding is **blocking** when it is a security issue, or a correctness defect: a wrong result, a crash, or data loss. Everything else is **non-blocking** — judge every finding against this test yourself; a tool's own severity label is not it.
+
+When a blocking finding is left unfixed, the PR does not stay ready for review: convert it to a draft, state the blocking finding as its question per "The three outcomes", and hand off on the issue per "Handing off a draft".
 
 Findings belong on the pull request, never in the diff. A finding about one line also goes on that line, and the recap carries every finding either way. Never write a comment into the source to record a finding, justify a fix, or flag something you left.
 
@@ -100,7 +105,7 @@ If the review will not post, say so in the first line of the fallback comment an
 
 A reviewer should be able to read only this and know what changed and what still needs them:
 
-1. **What the review found**, grouped by severity, one line each.
+1. **What the review found**, blocking findings first, then non-blocking, one line each.
 2. **What you fixed**, with the commit SHA, and confirmation that the suite passes.
-3. **What you left**, each with its reason. This is the part a human has to act on, so do not bury it.
+3. **What you left**, each with its reason, naming which ones are blocking. This is the part a human has to act on, so do not bury it.
 4. **A link to this session**, so the reasoning behind every call above is inspectable. Show both the claude.ai Web UI link, and the `claude --teleport` command to take over from a Terminal (rendered as a multi-line code block).
