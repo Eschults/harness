@@ -11,8 +11,8 @@ The `<routine-fire-payload>` block names one GitHub issue that someone labeled `
 5. Reproduce the problem or pin down the feature's scope before writing code.
 6. Estimate the diff against the ~600-line cap in `.claude/harness-rules.md` before writing code. If the issue fits, build it whole. If it does not, follow "Splitting oversized work" below before choosing an outcome.
 7. If the change is visible in a UI, screenshot it and commit the images, per the section below. The PR description links them, so they must exist before it does.
-8. If the change alters how a module behaves, write an explainer per "Explainers for behavior changes" below. A copy change, a typo fix, a version bump, or a `risk:low` PR gets none.
-9. Before opening the PR, look for the repo's own PR template per "Fitting the repo's PR template" below. Open the PR per the three outcomes below, then comment the link on the issue, and the explainer's link too when you wrote one.
+8. If the change alters how a module behaves, write an explainer per "Explainers for behavior changes" below. A copy change, a typo fix, a version bump, or a change you'd tag `risk:low` gets none.
+9. Before opening the PR, look for the repo's own PR template per "Fitting the repo's PR template" below. Open the PR per the three outcomes below, then comment the link on the issue, and the explainer's own link too when you published one.
 10. Review the PR per the section below: ready-for-review PRs only; skip it on a draft, which by definition is not finished.
 11. Remove the `claude` label as your last action. The label means "waiting for an agent", so leaving it on a handled issue makes the queue lie.
 
@@ -80,7 +80,7 @@ Say in the description that the images are review-only and come out before merge
 
 ## Explainers for behavior changes
 
-A reviewer who understands the area reviews the diff faster than one reading it cold. Write an explainer when the PR changes how a module behaves; skip it for a copy change, a typo fix, a version bump, or a PR already tagged `risk:low`.
+A reviewer who understands the area reviews the diff faster than one reading it cold. Write an explainer when the PR changes how a module behaves; skip it for a copy change, a typo fix, a version bump, or a change you'd tag `risk:low`.
 
 Check the repo's `CLAUDE.md` for an `## Explainers` section first. When one exists, it sets the explainer's style — voice, depth, preferred diagram shape — and you follow it over the default form below, per "This repo's additions" in `.claude/harness-rules.md`.
 
@@ -101,7 +101,7 @@ Once the PR is open and ready for review, review your own work before you exit. 
 1. **Run `/code-review <PR number> --fix`. When the repo has a `REVIEW.md`, read it and give its rules to the pass too, since `/code-review` doesn't read it on its own.** The skill scopes the diff, ranks findings, and applies the fixes. Do not hand-roll a review in its place, and do not skip it because you feel good about the code — that feeling is exactly what the pass is checking.
 2. **Run `/security-review` on the same diff, likewise feeding it `REVIEW.md` when the repo has one, and apply its findings under the test below.** It looks for a different class of problem than `/code-review` does, so one pass is never a substitute for the other.
 3. **Run the full test suite again.** A fix that breaks the build is worse than the finding it resolved.
-4. **Commit and push to the PR's branch.** One commit for the review pass. If you fixed nothing, push nothing.
+4. **Commit and push to the PR's branch.** One commit for the review pass. If you fixed nothing, push nothing. If a fix changes code an explainer describes, update the explainer in the same commit.
 5. **Post the recap as a PR review**, per below.
 
 Apply a fix when it is clearly correct, confined to the PR's own scope, and allowed by the rules. Report instead of fixing when it needs a human decision or is a design question rather than a defect. Never drop a finding silently — anything you chose not to fix goes in the recap with the reason.

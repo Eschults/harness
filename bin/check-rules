@@ -597,14 +597,20 @@ CHECKS = [
     (
         "explainer-step-skips-trivial-changes",
         'If the change alters how a module behaves, write an explainer per "Explainers for behavior changes" below. '
-        "A copy change, a typo fix, a version bump, or a `risk:low` PR gets none." in ISSUE_TO_PR,
-        "issue-to-pr.md should still require an explainer for behavior changes, skipping copy/typo/version-bump/risk:low PRs",
+        "A copy change, a typo fix, a version bump, or a change you'd tag `risk:low` gets none." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require an explainer for behavior changes, skipping copy/typo/version-bump/risk:low changes",
+    ),
+    (
+        "explainer-skip-condition-is-self-assessed-not-a-label",
+        "a change you'd tag `risk:low`" in ISSUE_TO_PR and "a PR already tagged `risk:low`" not in ISSUE_TO_PR,
+        "issue-to-pr.md should let a run skip the explainer by its own risk judgment, not require a risk:low label "
+        "that cannot exist before the PR is opened",
     ),
     (
         "explainer-link-carried-into-template-content-and-comment",
         "the explainer section or its link" in ISSUE_TO_PR
-        and "and the explainer's link too when you wrote one." in ISSUE_TO_PR,
-        "issue-to-pr.md should still carry the explainer's link into the template's required content and the issue comment",
+        and "and the explainer's own link too when you published one." in ISSUE_TO_PR,
+        "issue-to-pr.md should still carry the explainer's own link into the template's required content and the issue comment",
     ),
     (
         "explainer-follows-claude-md-style-section",
@@ -645,6 +651,11 @@ CHECKS = [
         "harness-rules-documents-explainers-style-section",
         "A repo's `CLAUDE.md` can add an `## Explainers` section setting the explainer's style" in HARNESS_RULES,
         "harness-rules.md's 'This repo's additions' should still document that CLAUDE.md can add an `## Explainers` style section",
+    ),
+    (
+        "review-refreshes-stale-explainer",
+        "If a fix changes code an explainer describes, update the explainer in the same commit." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require refreshing an explainer in the same commit when a review fix changes the code it describes",
     ),
     (
         "next-to-build-files-with-claude-label",
