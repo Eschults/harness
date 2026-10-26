@@ -104,7 +104,7 @@ run_doctor() {
     cd "$dir"
     PATH="$stub_bin:$PATH" \
     STUB_GH_AUTH_EXIT="${STUB_GH_AUTH_EXIT:-0}" \
-    STUB_GH_LABELS="${STUB_GH_LABELS-claude}" \
+    STUB_GH_LABELS="${STUB_GH_LABELS-$(printf 'claude\nrisk:low\nrisk:medium\nrisk:high\n')}" \
     STUB_GH_LABEL_LIST_EXIT="${STUB_GH_LABEL_LIST_EXIT:-0}" \
     STUB_GH_VARIABLES="${STUB_GH_VARIABLES-CLAUDE_ROUTINE_ID}" \
     STUB_GH_VARIABLE_LIST_EXIT="${STUB_GH_VARIABLE_LIST_EXIT:-0}" \
@@ -302,10 +302,23 @@ echo "✓ a CLAUDE.md import line harness install already accepts passes the che
 repo="$scratch/missing-label"
 build_healthy_repo "$repo"
 if output=$(STUB_GH_LABELS="" run_doctor "$repo"); then
-  fail "expected harness doctor to fail when the claude label is missing"
+  fail "expected harness doctor to fail when every harness label is missing"
 fi
-assert_contains "$output" '✗ claude label is missing' "missing label"
-echo "✓ a missing claude label fails the check that names it"
+assert_contains "$output" '✗ claude label is missing; run: gh label create "claude" --color D97757 --description "starts a Claude Code run" --force' "missing label"
+assert_contains "$output" '✗ risk:low label is missing; run: gh label create "risk:low" --color 0E8A16' "missing label"
+assert_contains "$output" '✗ risk:medium label is missing; run: gh label create "risk:medium" --color FBCA04' "missing label"
+assert_contains "$output" '✗ risk:high label is missing; run: gh label create "risk:high" --color B60205' "missing label"
+echo "✓ every missing harness label fails the check that names it, with the command to create it"
+
+# --- one risk label missing, the rest present ---
+repo="$scratch/missing-one-risk-label"
+build_healthy_repo "$repo"
+if output=$(STUB_GH_LABELS="$(printf 'claude\nrisk:low\nrisk:medium\n')" run_doctor "$repo"); then
+  fail "expected harness doctor to fail when only risk:high is missing"
+fi
+assert_contains "$output" '✗ risk:high label is missing' "missing one risk label"
+echo "$output" | grep -qF '✗ claude label is missing' && fail "expected the claude label to still pass when only risk:high is missing, got: $output"
+echo "✓ a single missing risk label fails only the check that names it"
 
 # --- missing variable ---
 repo="$scratch/missing-variable"
@@ -359,6 +372,7 @@ if ! output=$(STUB_GH_LABEL_LIST_EXIT=1 STUB_GH_VARIABLE_LIST_EXIT=1 STUB_GH_SEC
   fail "expected harness doctor to exit 0 when gh label/variable/secret list fails but every other check passes"
 fi
 assert_contains "$output" '- claude label (skipped: could not list labels)' "label list failure"
+assert_contains "$output" '- risk:high label (skipped: could not list labels)' "label list failure"
 assert_contains "$output" '- CLAUDE_ROUTINE_ID variable (skipped: could not list variables)' "variable list failure"
 assert_contains "$output" '- CLAUDE_ROUTINE_TOKEN secret (skipped: could not list secrets)' "secret list failure"
 echo "$output" | grep -q '✗' && fail "expected a failed label/variable/secret list to be a skip, never a false failure, got: $output"
@@ -424,6 +438,9 @@ if ! output=$(cd "$repo" && PATH="$no_gh_bin" "$cli" doctor); then
   fail "expected harness doctor to exit 0 when gh is missing and every local check passes"
 fi
 assert_contains "$output" '- claude label (skipped: gh is not installed)' "gh missing"
+assert_contains "$output" '- risk:low label (skipped: gh is not installed)' "gh missing"
+assert_contains "$output" '- risk:medium label (skipped: gh is not installed)' "gh missing"
+assert_contains "$output" '- risk:high label (skipped: gh is not installed)' "gh missing"
 assert_contains "$output" '- harness files on the default branch (skipped: gh is not installed)' "gh missing"
 assert_contains "$output" '- GitHub Actions enabled (skipped: gh is not installed)' "gh missing"
 assert_contains "$output" '- claude.yml workflow active (skipped: gh is not installed)' "gh missing"

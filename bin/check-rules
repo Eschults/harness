@@ -659,6 +659,61 @@ CHECKS = [
         bool(HARNESS_FILES) and _harness_files(LEGACY_FETCH_FILES) == HARNESS_FILES,
         "bin/lib/fetch-files.sh's HARNESS_FILES should match bin/harness-cli's, so pre-CLI installs upgrade to the same files",
     ),
+    (
+        "risk-tier-defaults",
+        "`risk:high` if any changed path is a \"When to stop\" topic, a never-edit path (above, or one `CLAUDE.md` adds), "
+        "CI/workflow configuration, a dependency, or a public API; `risk:low` if every changed path is docs, copy, or tests "
+        "and none of the above applies; `risk:medium` otherwise." in HARNESS_RULES,
+        "harness-rules.md should still set the risk:low/medium/high defaults by what the diff touches",
+    ),
+    (
+        "risk-tier-label-and-state-reason",
+        "Add the label, and state the tier with a one-line reason as the first line of the PR description, below a draft's blocker question if it has one."
+        in HARNESS_RULES,
+        "harness-rules.md should still require labeling the PR and stating the tier with a one-line reason as the description's first line",
+    ),
+    (
+        "risk-tier-never-changes-approval-rule",
+        "The tier changes nothing else here: never approve or merge regardless of it, and a human stays the gate." in HARNESS_RULES,
+        "harness-rules.md should still say the risk tier never lets the harness approve or merge",
+    ),
+    (
+        "risk-tier-claude-md-additive",
+        "Treat a path `CLAUDE.md` adds to a risk tier as additive to the tier's defaults above, never as a replacement for them." in HARNESS_RULES,
+        "harness-rules.md should still treat a CLAUDE.md risk-tier path addition as additive, never a replacement",
+    ),
+    (
+        "issue-to-pr-classifies-risk-tier-before-opening-pr",
+        'Classify and label the PR\'s risk tier per "Labeling the PR\'s risk tier" below.' in ISSUE_TO_PR,
+        "issue-to-pr.md should still require classifying and labeling the risk tier before opening the PR",
+    ),
+    (
+        "issue-to-pr-risk-tier-label-set",
+        "Every PR, ready for review or draft, carries exactly one risk label: `risk:low`, `risk:medium`, or `risk:high`."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require exactly one risk label on every PR",
+    ),
+    (
+        "issue-to-pr-risk-tier-line-placement",
+        "state the tier with a one-line reason as the description's first line: below a draft's blocker question if it has one, "
+        "above everything else otherwise, including a PR template's own first heading." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the risk tier line first in the description, below a draft question when there is one",
+    ),
+    (
+        "issue-to-pr-risk-tier-line-after-draft-question",
+        'The risk tier line, per "Labeling the PR\'s risk tier" above, comes right after that question.' in ISSUE_TO_PR,
+        "issue-to-pr.md should still place the risk tier line right after a draft's blocker question when mirroring a PR template",
+    ),
+    (
+        "readme-explains-codeowners-for-risk-high",
+        "CODEOWNERS" in README and "risk:high" in README and "Required number of approvals" in README,
+        "README.md should still explain requiring two approvals on risk:high via CODEOWNERS and branch protection",
+    ),
+    (
+        "readme-never-approves-any-tier",
+        "The harness never approves or merges any of them, whatever the tier" in README,
+        "README.md should still say the harness never approves or merges any PR, whatever its risk tier",
+    ),
 ]
 CHECKS.extend(_readme_link_checks())
 CHECKS.append(_readme_install_file_count_check())
