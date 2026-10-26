@@ -491,8 +491,14 @@ CHECKS = [
     ),
     (
         "review-runs-security-review-after-code-review",
-        "Run `/security-review` on the same diff, and apply its findings under the test below." in ISSUE_TO_PR,
+        "likewise feeding it `REVIEW.md` when the repo has one, and apply its findings under the test below." in ISSUE_TO_PR,
         "issue-to-pr.md should still require running /security-review on the same diff after /code-review --fix",
+    ),
+    (
+        "code-review-reads-repo-review-md",
+        "When the repo has a `REVIEW.md`, read it and give its rules to the pass too, since `/code-review` doesn't read it on its own."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still tell /code-review --fix to read and apply the repo's own REVIEW.md when it has one",
     ),
     (
         "review-finding-blocking-definition",
