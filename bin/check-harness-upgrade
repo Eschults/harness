@@ -34,7 +34,6 @@ build_fixture() {
 build_fixture "$old_src" "v1.0.1"
 build_fixture "$new_src" "v1.9.9"
 printf '\n<!-- check-harness-upgrade fixture marker: v1.9.9 -->\n' >> "$new_src/.claude/harness-rules.md"
-printf '\n<!-- check-harness-upgrade review fixture marker: v1.9.9 -->\n' >> "$new_src/.claude/harness-review.md"
 
 # A file only the newer release's CLI names, to prove upgrade fetches with that CLI's list.
 extra_file=".claude/new-fixture-file.txt"
@@ -79,7 +78,6 @@ if ! output=$(cd "$repo" && HARNESS_SRC="file://$old_src" "$old_src/bin/harness-
 fi
 [ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v1.0.1" ] || fail "expected the primed repo to start at v1.0.1"
 grep -q "check-harness-upgrade fixture marker" "$repo/.claude/harness-rules.md" && fail "expected the primed repo to not yet carry the newer fixture's marker"
-grep -q "check-harness-upgrade review fixture marker" "$repo/REVIEW.md" && fail "expected the primed repo's REVIEW.md to not yet carry the newer fixture's review marker"
 
 before=$(snapshot)
 if ! output=$(run_upgrade "$repo/src/nested" "file://$new_src" "file://$tags_json" n 2>&1); then
@@ -106,9 +104,6 @@ done
 grep -q "check-harness-upgrade fixture marker" "$repo/.claude/harness-rules.md" || fail "expected the newer fixture's marker to show up after upgrading"
 echo "✓ upgrade pulled every harness file's newer content"
 echo "✓ upgrade fetched $extra_file, which only the newer release's CLI named"
-
-grep -q "check-harness-upgrade review fixture marker" "$repo/REVIEW.md" || fail "expected upgrade to refresh REVIEW.md's harness review block with the newer fixture's content"
-echo "✓ upgrade refreshed the REVIEW.md harness review block in place"
 
 echo "$output" | grep -q "v2.0.0" && fail "expected the v1 CLI to ignore the v2.0.0 tag, got: $output"
 echo "✓ upgrade ignored a tag from a newer major"

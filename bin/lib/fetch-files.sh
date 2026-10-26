@@ -5,7 +5,6 @@ HARNESS_FILES=(
   ".claude/prompts/issue-to-pr.md"
   ".claude/prompts/next-to-build.md"
   ".claude/harness-rules.md"
-  ".claude/harness-review.md"
   ".claude/HARNESS_VERSION"
 )
 

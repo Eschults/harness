@@ -46,14 +46,13 @@ The harness is mostly prose, versioned in your repo where you can read and diff 
 | [`.claude/prompts/issue-to-pr.md`](.claude/prompts/issue-to-pr.md) | The procedure for implementing an issue. |
 | [`.claude/prompts/next-to-build.md`](.claude/prompts/next-to-build.md) | The procedure for choosing and filing the next issue. |
 | [`.claude/harness-rules.md`](.claude/harness-rules.md) | The rules every autonomous run follows. |
-| [`.claude/harness-review.md`](.claude/harness-review.md) | The rules `/code-review` and `/security-review` apply to every review. |
 | `.claude/HARNESS_VERSION` | The release this repo is pinned to. |
 
 Plus the `harness` CLI, which installs, checks, upgrades and removes them, and can start a run by hand.
 
 ## Setup
 
-Install is the `harness` CLI, six files, two routines, one label, and two repo values. You need `bash`, `git`, `gh`, `curl` and `jq` on `PATH`.
+Install is the `harness` CLI, five files, two routines, one label, and two repo values. You need `bash`, `git`, `gh`, `curl` and `jq` on `PATH`.
 
 #### 1. Install the harness
 
@@ -69,7 +68,7 @@ Then, from inside your project repo:
 harness install
 ```
 
-This adds the six files, a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md`, and a marked review-rules block to your `REVIEW.md` (creating it when missing, leaving the rest of either file alone), and creates the `claude` label (color `D97757`, description `starts a Claude Code run`) when `gh` is on `PATH` and authenticated for your repo — leaving an existing label alone, and otherwise skipping it, in which case `harness doctor` tells you the command to create it by hand. Safe to re-run. `harness help` lists every command.
+This adds the five files and a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md`, and creates the `claude` label (color `D97757`, description `starts a Claude Code run`) when `gh` is on `PATH` and authenticated for your repo — leaving an existing label alone, and otherwise skipping it, in which case `harness doctor` tells you the command to create it by hand. Safe to re-run. `harness help` lists every command.
 
 #### 2. Create the "Issue to PR" routine
 Give the [Claude GitHub App](https://github.com/apps/claude) access to your repo, so cloud sessions can clone it and push `claude/` branches.
@@ -136,6 +135,7 @@ Set the trigger to **Schedule** at whatever frequency suits your team, leave **A
 ## Worth knowing
 
 - **A green workflow run means "session started"**, not "PR opened". The workflow comments the session URL on the issue, or the reason it could not start one.
+- **Add a `REVIEW.md` at your repo root to steer the self-review.** `/code-review` and `/security-review` don't read it on their own, so the Review step reads it when present and feeds it to both passes — for example `Treat any change under migrations/ as Important` or `Skip nits in generated code under src/gen/`.
 - **Other tools can file work too.** Have your APM file a `claude`-labeled issue on high-severity errors, or your roadmap tool push cards to GitHub when they're ready to build.
 - **But not another GitHub Actions workflow.** Labels added with the default `GITHUB_TOKEN` don't trigger workflows, so the run never starts. That's why "Next to build" is a routine, not a cron workflow.
 - **Each run draws down subscription usage**, and API fires are rate-limited per hour ([limits](https://code.claude.com/docs/en/routines#usage-and-limits)). Branches, PRs, comments and labels appear as the GitHub user linked to your Claude account; commits appear as Claude.
@@ -159,7 +159,7 @@ Each repo pins its release in `.claude/HARNESS_VERSION` and `harness` runs the C
 harness uninstall
 ```
 
-It removes the harness files, the `CLAUDE.md` import, and the review-rules block from `REVIEW.md`, leaving the rest of either file alone (and removing `REVIEW.md` itself if install had created it from nothing), then prints the manual steps left: deleting the routines, the label, and the two repo values. Review the diff and commit it. The `harness` command stays installed for your other repos; once none use it, delete `~/.local/bin/harness` and `~/.local/share/harness`.
+It removes the harness files and the `CLAUDE.md` import, leaving the rest of `CLAUDE.md` alone, then prints the manual steps left: deleting the routines, the label, and the two repo values. Review the diff and commit it. The `harness` command stays installed for your other repos; once none use it, delete `~/.local/bin/harness` and `~/.local/share/harness`.
 
 ## Why a routine, not Claude on your runner
 
