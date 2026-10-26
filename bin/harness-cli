@@ -194,31 +194,23 @@ gh_label_names() {
   gh label list --limit 1000 --json name --jq '.[].name' 2>/dev/null
 }
 
-# Ensures one label exists ($1 name, $2 color, $3 description). Leaves an
-# existing label alone, even one with a different color or description,
-# since install must never fight an adopter's own edit to it. Returns
-# non-zero when gh is missing, unauthenticated, or a call fails, so the
-# caller can skip quietly and point at the README fallback instead of
-# guessing at the label's real state.
-ensure_label() {
-  local name=$1 color=$2 description=$3
+# Ensures every label in HARNESS_LABELS exists. Leaves an existing label
+# alone, even one with a different color or description, since install must
+# never fight an adopter's own edit to it. Fetches gh's auth status and
+# label list once for every label, not once per label, same as cmd_doctor's
+# own label loop below. Returns non-zero when gh is missing, unauthenticated,
+# the list call fails, or a create call fails, so the caller can skip
+# quietly and point at the README fallback instead of guessing at a label's
+# real state.
+ensure_harness_labels() {
   command -v gh >/dev/null 2>&1 || return 1
   gh auth status >/dev/null 2>&1 || return 1
-  local labels
+  local labels entry name color description all_ok=0
   labels=$(gh_label_names) || return 1
-  echo "$labels" | grep -qxF "$name" && return 0
-  gh label create "$name" --color "$color" --description "$description" >/dev/null 2>&1
-}
-
-# Ensures every label in HARNESS_LABELS exists, trying each one even after
-# an earlier one fails, so one missing/unauthenticated gh doesn't also hide
-# whether the others got created. Returns non-zero unless every one of them
-# is confirmed in place.
-ensure_harness_labels() {
-  local entry name color description all_ok=0
   for entry in "${HARNESS_LABELS[@]}"; do
     IFS='|' read -r name color description <<< "$entry"
-    ensure_label "$name" "$color" "$description" || all_ok=1
+    echo "$labels" | grep -qxF "$name" && continue
+    gh label create "$name" --color "$color" --description "$description" >/dev/null 2>&1 || all_ok=1
   done
   return "$all_ok"
 }
