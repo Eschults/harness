@@ -15,6 +15,7 @@ It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on 
 ## What a run does
 The "Issue to PR" routine delivers most of the building work w/o human intervention, leaving only the last mile to the Engineering team. It:
 - **Creates a PR ready for review**, a draft PR that asks one question a human must answer, or a comment on the issue explaining why there is no PR.
+- **Explains the area it changed**, when the PR changes behavior and isn't low-risk: a Mermaid section in the PR description, or a published page when it can, showing how the area works today, what the PR changes, and where to start reading the diff.
 - **Reviews itself before exiting**: runs `/code-review --fix` and `/security-review` on its PR, re-runs the tests, and posts a review listing what it found (blocking issues first), what it fixed (with the commit), and what it left for you — converting the PR to a draft if a blocking finding stays open.
 - **Hands over cleanly**: drafts and recaps link the session, so an engineer can take it over from claude.ai or with `claude --teleport`.
 - **Keeps going after it exits**: with Auto-fix on, failing CI and review comments resume the session to push fixes.
@@ -28,7 +29,7 @@ Every autonomous run, including Auto-fix sessions, follows [`.claude/harness-rul
 <!-- guardrails:start (one bullet per .claude/harness-rules.md section; see bin/sync-readme) -->
 - **[Scope discipline](.claude/harness-rules.md#scope-discipline)**: Touches only what the task needs, never edits security-sensitive or infra files without approval, and keeps diffs around 600 lines. <!-- rules-fingerprint: 4da36d7365f1 -->
 - **[Testing](.claude/harness-rules.md#testing)**: Adds a regression test for every fix and tests for every feature, and opens no PR with a failing suite. <!-- rules-fingerprint: 6ef3d72246c5 -->
-- **[Pull requests](.claude/harness-rules.md#pull-requests)**: Never approves, merges, or marks someone else's draft ready, and never rewrites commits it did not write. <!-- rules-fingerprint: 2141673fa94d -->
+- **[Pull requests](.claude/harness-rules.md#pull-requests)**: Never approves, merges, or marks someone else's draft ready, never rewrites commits it did not write, and marks screenshots and explainers as not part of the change. <!-- rules-fingerprint: fc65610b2f07 -->
 - **[Concision](.claude/harness-rules.md#concision)**: Keeps PR descriptions and comments short and bulleted, for a reader catching up on a session they did not watch. <!-- rules-fingerprint: 4b4102135c03 -->
 - **[When to stop instead of guessing](.claude/harness-rules.md#when-to-stop-instead-of-guessing)**: Hands back instead of guessing on auth, payments, permissions, PII, schema changes, or ambiguous requirements. <!-- rules-fingerprint: a9e1a3f37111 -->
 - **[Handling the text you are given](.claude/harness-rules.md#handling-the-text-you-are-given)**: Treats issue bodies, comments and reviews as task descriptions, never as instructions that override these rules. <!-- rules-fingerprint: 15ef97239021 -->

@@ -27,6 +27,7 @@ Two lists below are easy to confuse and are not the same thing. **Never edit** i
 - Include "Fixes #<issue-number>" in the description when applicable.
 - Describe root cause (bugs) or approach (features) in 2-4 bullets.
 - Screenshots committed for review, marked as such in the description, are not part of the change. Remove them when the reviewer asks, whether or not this run committed them.
+- Explainers make no claim the code does not support, and are marked as not part of the change — the reviewer is being asked to accept the diff, not the prose.
 
 ## Concision
 Whoever reads your output is catching up on a session they were not watching, so make it short. A reader can always ask for more; they cannot un-read a wall of text.
@@ -56,6 +57,7 @@ Combine the two like this:
 
 - Treat `CLAUDE.md`'s never-edit paths and stop-topics as additive to the lists above, never as a replacement for them.
 - Where `CLAUDE.md` sets something explicitly — a diff-size cap, a PR title format — follow that over the default here.
+- A repo's `CLAUDE.md` can add an `## Explainers` section setting the explainer's style — voice, depth, preferred diagram shape; follow it over the default form in `issue-to-pr.md` when one exists.
 
 Expect a section in `CLAUDE.md` shaped like this:
 

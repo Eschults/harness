@@ -595,6 +595,58 @@ CHECKS = [
         "issue-to-pr.md should still require the Draft outcome with the \"how should this be split?\" question when no slice fits",
     ),
     (
+        "explainer-step-skips-trivial-changes",
+        'If the change alters how a module behaves, write an explainer per "Explainers for behavior changes" below. '
+        "A copy change, a typo fix, a version bump, or a `risk:low` PR gets none." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require an explainer for behavior changes, skipping copy/typo/version-bump/risk:low PRs",
+    ),
+    (
+        "explainer-link-carried-into-template-content-and-comment",
+        "the explainer section or its link" in ISSUE_TO_PR
+        and "and the explainer's link too when you wrote one." in ISSUE_TO_PR,
+        "issue-to-pr.md should still carry the explainer's link into the template's required content and the issue comment",
+    ),
+    (
+        "explainer-follows-claude-md-style-section",
+        "Check the repo's `CLAUDE.md` for an `## Explainers` section first." in ISSUE_TO_PR
+        and "it sets the explainer's style — voice, depth, preferred diagram shape — and you follow it over the default form below, per "
+        '"This repo\'s additions" in `.claude/harness-rules.md`.' in ISSUE_TO_PR,
+        "issue-to-pr.md should still follow a repo's CLAUDE.md `## Explainers` section for style when one exists",
+    ),
+    (
+        "explainer-three-parts",
+        "**How the area works today.**" in ISSUE_TO_PR
+        and "**Where this PR lands.**" in ISSUE_TO_PR
+        and "**Where to start reading.**" in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the explainer's three parts: how the area works today, where this PR lands, where to start reading",
+    ),
+    (
+        "explainer-guaranteed-form-and-published-page",
+        "The guaranteed form is a section in the PR description holding this, with a Mermaid diagram." in ISSUE_TO_PR
+        and "link a published explainer page at the top of the description instead" in ISSUE_TO_PR,
+        "issue-to-pr.md should still guarantee a Mermaid section in the PR description, with a published page linked at the top when the session can publish one",
+    ),
+    (
+        "explainer-names-no-specific-tool",
+        "a published explainer page" in ISSUE_TO_PR and "Artifact" not in ISSUE_TO_PR,
+        "issue-to-pr.md should describe publishing 'a published explainer page' without naming a specific tool",
+    ),
+    (
+        "explainer-no-unsupported-claims-not-part-of-change",
+        "Make no claim the code does not support, and mark the explainer as not part of the change" in ISSUE_TO_PR,
+        "issue-to-pr.md should still ban unsupported claims in the explainer and mark it as not part of the change",
+    ),
+    (
+        "harness-rules-pull-requests-explainer-bullet",
+        "Explainers make no claim the code does not support, and are marked as not part of the change" in HARNESS_RULES,
+        "harness-rules.md should still require explainers to make no unsupported claim and to be marked as not part of the change",
+    ),
+    (
+        "harness-rules-documents-explainers-style-section",
+        "A repo's `CLAUDE.md` can add an `## Explainers` section setting the explainer's style" in HARNESS_RULES,
+        "harness-rules.md's 'This repo's additions' should still document that CLAUDE.md can add an `## Explainers` style section",
+    ),
+    (
         "next-to-build-files-with-claude-label",
         'Create it with the `claude` label, to let the "Issue to PR" routine take over' in NEXT_TO_BUILD,
         "next-to-build.md should still file the new issue with the claude label",
