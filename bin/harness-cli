@@ -485,12 +485,27 @@ $prs as $all
 | [$claude[] | select(.merged_at != null)] as $merged
 | [$claude[] | select(.state == "closed" and .merged_at == null)] as $closed_unmerged
 | [$claude[] | select(.draft == true and .state == "open")] as $still_draft
+| ($merged | sort_by(.merged_at)) as $merged_by_time
+| [
+    $all[] | select(.merged_at != null) as $r
+    | ($merged_by_time
+        | map(select(("Revert \"" + .title + "\"") == $r.title and .merged_at <= $r.merged_at))
+        | sort_by(.merged_at)
+        | last
+      ) as $target
+    | select($target != null)
+    | {number: $target.number, link: $r.html_url}
+  ] as $title_hits
+| [
+    $merged[] as $pr
+    | $default_commits[]
+    | select(.commit.message | contains("This reverts commit " + ($pr.merge_commit_sha // "~")))
+    | {number: $pr.number, link: .html_url}
+  ] as $commit_hits
+| ($title_hits + $commit_hits) as $all_hits
 | [
     $merged[] | . as $pr
-    | (
-        [$all[] | select(.merged_at != null and .title == ("Revert \"" + $pr.title + "\"")) | .html_url]
-        + [$default_commits[] | select(.commit.message | contains("This reverts commit " + ($pr.merge_commit_sha // "~"))) | .html_url]
-      ) as $links
+    | ([$all_hits[] | select(.number == $pr.number) | .link] | unique) as $links
     | select(($links | length) > 0)
     | {number: $pr.number, title: $pr.title, reverted_by: $links}
   ] as $reverts

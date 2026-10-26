@@ -154,6 +154,19 @@ assert_contains "$output" "Reverted: 0" "empty revert count"
 echo "$output" | grep -qF "By risk tier" && fail "expected no risk tier section when no PR carries a risk label, got: $output"
 echo "✓ no claude/ PRs reports zeroed counts and no risk tier section"
 
+# --- a revert PR's title matches two same-titled merged PRs: only the one it
+# actually followed (closest preceding merge) counts as reverted, not both ---
+reset_fixtures
+pr50=$(pr 50 "Fix: bump dep" "claude/bump-dep-1" closed 2026-10-10T00:00:00Z false sha-50 2026-10-10T00:00:00Z '[]')
+pr51=$(pr 51 "Fix: bump dep" "claude/bump-dep-2" closed 2026-10-15T00:00:00Z false sha-51 2026-10-15T00:00:00Z '[]')
+pr52=$(pr 52 'Revert "Fix: bump dep"' "human/revert" closed 2026-10-16T00:00:00Z false sha-52 2026-10-16T00:00:00Z '[]')
+jq -s '.' <(echo "$pr50") <(echo "$pr51") <(echo "$pr52") > "$fixtures/pulls-page-1.json"
+output=$(run_stats) || fail "expected the same-title revert case to succeed, got: $output"
+assert_contains "$output" "Reverted: 1" "same-title revert count stays at one"
+assert_contains "$output" "#51 Fix: bump dep -> https://github.com/o/r/pull/52" "same-title revert credits the PR it actually followed"
+echo "$output" | grep -qF "#50 Fix: bump dep" && fail "expected the earlier same-titled PR not to be marked reverted too, got: $output"
+echo "✓ a revert PR with a title shared by two merged PRs only reverts the one it followed"
+
 # --- --since narrows the window ---
 reset_fixtures
 pr_recent=$(pr 30 "Feat: recent" "claude/recent" closed 2026-10-28T00:00:00Z false sha-recent 2026-10-28T00:00:00Z '[]')
