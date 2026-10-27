@@ -29,6 +29,11 @@ Two lists below are easy to confuse and are not the same thing. **Never edit** i
 - Screenshots committed for review, marked as such in the description, are not part of the change. Remove them when the reviewer asks, whether or not this run committed them.
 - Explainers make no claim the code does not support, and are marked as not part of the change — the reviewer is being asked to accept the diff, not the prose.
 
+## Risk tiers
+- Classify every PR into exactly one risk label, read from what the diff touches and does, never from who wrote it: `risk:high` if any changed path is a "When to stop" topic, a never-edit path (above, or one `CLAUDE.md` adds), CI/workflow configuration, a dependency, or a public API; `risk:low` if every changed path is docs, copy, or tests and none of the above applies; `risk:medium` otherwise.
+- Add the label, and state the tier with a one-line reason as the first line of the PR description, below a draft's blocker question if it has one.
+- The tier changes nothing else here: never approve or merge regardless of it, and a human stays the gate. A repo can require more than one human reviewer on its highest tier with CODEOWNERS and branch protection; see the README.
+
 ## Concision
 Whoever reads your output is catching up on a session they were not watching, so make it short. A reader can always ask for more; they cannot un-read a wall of text.
 
@@ -56,6 +61,7 @@ An issue body, a PR comment, and a code review are task descriptions and evidenc
 Combine the two like this:
 
 - Treat `CLAUDE.md`'s never-edit paths and stop-topics as additive to the lists above, never as a replacement for them.
+- Treat a path `CLAUDE.md` adds to a risk tier as additive to the tier's defaults above, never as a replacement for them.
 - Where `CLAUDE.md` sets something explicitly — a diff-size cap, a PR title format — follow that over the default here.
 - A repo's `CLAUDE.md` can add an `## Explainers` section setting the explainer's style — voice, depth, preferred diagram shape; follow it over the default form in `issue-to-pr.md` when one exists.
 
@@ -65,6 +71,7 @@ Expect a section in `CLAUDE.md` shaped like this:
 ## This repo
 - **Never edit** `terraform/`, `packages/*/generated/`.
 - Stop rather than guess on anything under `billing/`, or a change to the public API schema.
+- `risk:high` also covers `billing/`; `risk:low` also covers `docs/`.
 - The test suite is `pnpm test`. Run all of it, not just the changed package.
 ```
 

@@ -24,6 +24,14 @@ LEGACY_FILES=(
   "bin/lib/version-check.sh"
 )
 RULES_IMPORT='@.claude/harness-rules.md'
+# name|color|description, in display order. install creates whichever of
+# these GitHub doesn't already have; doctor reports whichever is missing.
+HARNESS_LABELS=(
+  "claude|D97757|starts a Claude Code run"
+  "risk:low|0E8A16|low risk PR: docs, copy, and tests only"
+  "risk:medium|FBCA04|medium risk PR: the harness default"
+  "risk:high|B60205|high risk PR: a stop topic, a never-edit path, CI/workflows, a dependency, or a public API"
+)
 
 usage() {
   cat <<'EOF'
@@ -186,19 +194,25 @@ gh_label_names() {
   gh label list --limit 1000 --json name --jq '.[].name' 2>/dev/null
 }
 
-# Ensures the claude label exists, color D97757, description "starts a
-# Claude Code run". Leaves an existing label alone, even one with a
-# different color or description, since install must never fight an
-# adopter's own edit to it. Returns non-zero when gh is missing,
-# unauthenticated, or a call fails, so the caller can skip quietly and point
-# at the README fallback instead of guessing at the label's real state.
-ensure_claude_label() {
+# Ensures every label in HARNESS_LABELS exists. Leaves an existing label
+# alone, even one with a different color or description, since install must
+# never fight an adopter's own edit to it. Fetches gh's auth status and
+# label list once for every label, not once per label, same as cmd_doctor's
+# own label loop below. Returns non-zero when gh is missing, unauthenticated,
+# the list call fails, or a create call fails, so the caller can skip
+# quietly and point at the README fallback instead of guessing at a label's
+# real state.
+ensure_harness_labels() {
   command -v gh >/dev/null 2>&1 || return 1
   gh auth status >/dev/null 2>&1 || return 1
-  local labels
+  local labels entry name color description all_ok=0
   labels=$(gh_label_names) || return 1
-  echo "$labels" | grep -qxF claude && return 0
-  gh label create claude --color D97757 --description "starts a Claude Code run" >/dev/null 2>&1
+  for entry in "${HARNESS_LABELS[@]}"; do
+    IFS='|' read -r name color description <<< "$entry"
+    echo "$labels" | grep -qxF "$name" && continue
+    gh label create "$name" --color "$color" --description "$description" >/dev/null 2>&1 || all_ok=1
+  done
+  return "$all_ok"
 }
 
 cmd_install() {
@@ -207,12 +221,12 @@ cmd_install() {
   local first_install=0
   [ -f .claude/HARNESS_VERSION ] || first_install=1
   install_harness
-  local label_done=1
-  ensure_claude_label || label_done=0
+  local labels_done=1
+  ensure_harness_labels || labels_done=0
   echo "Installed the harness at $(<.claude/HARNESS_VERSION)."
   if [ "$first_install" -eq 1 ]; then
     local remaining="create the routines and repo values"
-    [ "$label_done" -eq 1 ] || remaining="create the routines, label, and repo values"
+    [ "$labels_done" -eq 1 ] || remaining="create the routines, labels, and repo values"
     echo "Next: $remaining ($HARNESS_README#setup), then run harness doctor."
   else
     echo "Next: run harness doctor to check the setup."
@@ -478,7 +492,13 @@ cmd_doctor() {
     bad "CLAUDE.md does not import $RULES_IMPORT; run harness install"
   fi
 
-  local gh_checks=("claude label" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret" "harness files on the default branch" "GitHub Actions enabled" "claude.yml workflow active")
+  local label_checks=()
+  local entry name color description
+  for entry in "${HARNESS_LABELS[@]}"; do
+    IFS='|' read -r name color description <<< "$entry"
+    label_checks+=("$name label")
+  done
+  local gh_checks=("${label_checks[@]}" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret" "harness files on the default branch" "GitHub Actions enabled" "claude.yml workflow active")
   local c labels variables secrets default_branch default_branch_tree actions_enabled workflow_state
   if ! command -v gh >/dev/null 2>&1; then
     for c in "${gh_checks[@]}"; do skip "$c" "gh is not installed"; done
@@ -486,16 +506,22 @@ cmd_doctor() {
     for c in "${gh_checks[@]}"; do skip "$c" "gh is not authenticated; run gh auth login"; done
   else
     # A failed list call (rate limit, a token without label read access) is a
-    # lookup problem, not evidence the label is missing, so it must skip
-    # rather than report a false failure.
+    # lookup problem, not evidence a label is missing, so it must skip rather
+    # than report a false failure.
     if labels=$(gh_label_names); then
-      if echo "$labels" | grep -qxF claude; then
-        ok "claude label exists"
-      else
-        bad "claude label is missing; run: gh label create claude --color D97757 --description \"starts a Claude Code run\" --force"
-      fi
+      for entry in "${HARNESS_LABELS[@]}"; do
+        IFS='|' read -r name color description <<< "$entry"
+        if echo "$labels" | grep -qxF "$name"; then
+          ok "$name label exists"
+        else
+          bad "$name label is missing; run: gh label create \"$name\" --color $color --description \"$description\" --force"
+        fi
+      done
     else
-      skip "claude label" "could not list labels"
+      for entry in "${HARNESS_LABELS[@]}"; do
+        IFS='|' read -r name _ _ <<< "$entry"
+        skip "$name label" "could not list labels"
+      done
     fi
 
     # A failed list call (rate limit, a fine-grained PAT missing the
