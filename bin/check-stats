@@ -34,6 +34,11 @@ page_arg() {
   done
   echo 1
 }
+# gh api defaults to POST when given -f fields, so a list call must force GET.
+if [ "$1" = api ] && [[ " $* " == *" -f "* ]] && [[ " $* " != *" --method GET "* ]]; then
+  echo "stub gh: $2 called without --method GET" >&2
+  exit 1
+fi
 case "$1 $2" in
   "auth status") exit "${STUB_GH_AUTH_EXIT:-0}" ;;
   "api repos/{owner}/{repo}")
