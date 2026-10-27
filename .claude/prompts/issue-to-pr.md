@@ -90,7 +90,7 @@ Write three parts, in this order, each one read from the default branch's code u
 2. **Where this PR lands.** Point at the part of the area above that changes, and say what behaves differently after the diff.
 3. **Where to start reading.** The 2-3 places in the diff to read first, and what this run did not test.
 
-The guaranteed form is a section in the PR description holding this, with a Mermaid diagram. When the session can publish a page, link a published explainer page at the top of the description instead, above everything else but a draft's question, and comment that link on the issue too, alongside the PR's own link.
+Publish an explainer page by default: link a published explainer page at the top of the description, above everything else but a draft's question, and comment that link on the issue too, alongside the PR's own link. Only when the session cannot publish a page, fall back to a section in the PR description holding this, with a Mermaid diagram — Mermaid does not render well in every GitHub client, so treat it as the fallback, not the first choice.
 
 Make no claim the code does not support, and mark the explainer as not part of the change: it documents the area, it is not something the reviewer is being asked to accept.
 

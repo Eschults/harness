@@ -649,10 +649,10 @@ CHECKS = [
         "issue-to-pr.md should still require the explainer's three parts: how the area works today, where this PR lands, where to start reading",
     ),
     (
-        "explainer-guaranteed-form-and-published-page",
-        "The guaranteed form is a section in the PR description holding this, with a Mermaid diagram." in ISSUE_TO_PR
-        and "link a published explainer page at the top of the description instead" in ISSUE_TO_PR,
-        "issue-to-pr.md should still guarantee a Mermaid section in the PR description, with a published page linked at the top when the session can publish one",
+        "explainer-published-page-default-mermaid-fallback",
+        "Publish an explainer page by default: link a published explainer page at the top of the description" in ISSUE_TO_PR
+        and "Only when the session cannot publish a page, fall back to a section in the PR description holding this, with a Mermaid diagram" in ISSUE_TO_PR,
+        "issue-to-pr.md should still publish an explainer page by default, falling back to a Mermaid section in the PR description only when the session can't publish one",
     ),
     (
         "explainer-names-no-specific-tool",
