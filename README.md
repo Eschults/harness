@@ -153,6 +153,7 @@ Set the trigger to **Schedule** at whatever frequency suits your team, leave **A
 - **The routine token is a long-lived bearer token.** Anyone holding it can start the routine with any text. Rotate it like any other secret.
 - **`/fire` is in research preview** behind the `experimental-cc-routine-2026-04-01` beta header. Watch that header in `claude.yml` when upgrading.
 - **If GitHub Actions can't run `claude.yml`** (no minutes left, Actions disabled), `harness issue <issue-number>` starts the routine directly from your machine, reading `CLAUDE_ROUTINE_ID`/`CLAUDE_ROUTINE_TOKEN` from your environment or the repo's `.env`.
+- **`harness stats [--since <N>d]`** (default 30 days) reports what your `claude/` branch pull requests become: opened, merged, closed unmerged, still draft, how many merged with no human pushes, and any later reverted (matching a GitHub "Revert" PR or a `git revert` commit on the default branch) — broken down by risk tier once those labels exist. It reads PR and commit history only, makes no model calls, and never prints a secret.
 
 ## Upgrading
 

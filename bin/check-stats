@@ -1,0 +1,256 @@
+#!/usr/bin/env bash
+# Functional check for `harness stats`: runs it in a scratch git repo with a
+# stubbed gh on PATH and fixture JSON for pull requests and commits, no
+# network, no model calls.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+cli="$(pwd)/bin/harness-cli"
+
+# shellcheck source=bin/lib/check-helpers.sh
+source bin/lib/check-helpers.sh
+
+repo="$(mktemp -d)"
+git init -q "$repo"
+scratch="$(mktemp -d)"
+trap 'rm -rf "$repo" "$scratch"' EXIT
+
+stub_bin="$scratch/stub_bin"
+mkdir -p "$stub_bin"
+fixtures="$scratch/fixtures"
+pulls_calls="$scratch/pulls-calls"
+
+# Stub gh: `pulls` pages are strict (a page the test didn't provide fails
+# the call), so a pagination bug that fetches one page too many, or stops
+# one page too early, surfaces as a hard failure rather than a silently
+# empty page. `commits` pages (default branch and per-PR) default to an
+# empty array when a test doesn't set one up.
+cat > "$stub_bin/gh" <<'STUB'
+#!/usr/bin/env bash
+page_arg() {
+  local prev=""
+  for a in "$@"; do
+    [ "$prev" = "-f" ] && [[ "$a" == page=* ]] && { echo "${a#page=}"; return; }
+    prev=$a
+  done
+  echo 1
+}
+case "$1 $2" in
+  "auth status") exit "${STUB_GH_AUTH_EXIT:-0}" ;;
+  "api repos/{owner}/{repo}")
+    [ "${STUB_GH_DEFAULT_BRANCH_EXIT:-0}" = 0 ] || exit "${STUB_GH_DEFAULT_BRANCH_EXIT}"
+    printf '%s\n' "${STUB_GH_DEFAULT_BRANCH-main}"
+    ;;
+  "api repos/{owner}/{repo}/pulls")
+    [ "${STUB_GH_PULLS_EXIT:-0}" = 0 ] || exit "${STUB_GH_PULLS_EXIT}"
+    page=$(page_arg "$@")
+    echo "$page" >> "$STUB_PULLS_CALLS"
+    f="$STUB_FIXTURES/pulls-page-$page.json"
+    [ -f "$f" ] || { echo "stub gh: no fixture for pulls page $page" >&2; exit 1; }
+    cat "$f"
+    ;;
+  "api repos/{owner}/{repo}/commits")
+    [ "${STUB_GH_COMMITS_EXIT:-0}" = 0 ] || exit "${STUB_GH_COMMITS_EXIT}"
+    page=$(page_arg "$@")
+    f="$STUB_FIXTURES/commits-page-$page.json"
+    [ -f "$f" ] && cat "$f" || echo '[]'
+    ;;
+  *)
+    case "$2" in
+      repos/\{owner\}/\{repo\}/pulls/*/commits)
+        number=$(echo "$2" | sed -E 's#.*/pulls/([0-9]+)/commits#\1#')
+        page=$(page_arg "$@")
+        f="$STUB_FIXTURES/pr-$number-commits-page-$page.json"
+        [ -f "$f" ] && cat "$f" || echo '[]'
+        ;;
+      *) exit 1 ;;
+    esac
+    ;;
+esac
+STUB
+chmod +x "$stub_bin/gh"
+
+# Clears every fixture from the previous test, then seeds an empty default-
+# branch commit page, so a test that only cares about pull requests doesn't
+# have to think about commits at all.
+reset_fixtures() {
+  rm -rf "$fixtures"
+  mkdir -p "$fixtures"
+  jq -n '[]' > "$fixtures/commits-page-1.json"
+}
+
+run_stats() {
+  : > "$pulls_calls"
+  (
+    cd "$repo"
+    PATH="$stub_bin:$PATH" \
+      STUB_FIXTURES="$fixtures" STUB_PULLS_CALLS="$pulls_calls" \
+      STUB_GH_AUTH_EXIT="${STUB_GH_AUTH_EXIT:-0}" \
+      STUB_GH_DEFAULT_BRANCH="${STUB_GH_DEFAULT_BRANCH-main}" \
+      STUB_GH_DEFAULT_BRANCH_EXIT="${STUB_GH_DEFAULT_BRANCH_EXIT:-0}" \
+      STUB_GH_PULLS_EXIT="${STUB_GH_PULLS_EXIT:-0}" \
+      STUB_GH_COMMITS_EXIT="${STUB_GH_COMMITS_EXIT:-0}" \
+      HARNESS_STATS_NOW="${HARNESS_STATS_NOW-2026-10-31T00:00:00Z}" \
+      "$cli" stats "$@"
+  )
+}
+
+assert_contains() {
+  local haystack=$1 needle=$2 context=$3
+  echo "$haystack" | grep -qF -- "$needle" || fail "$context: expected to find '$needle' in: $haystack"
+}
+
+pr() {
+  # pr <number> <title> <ref> <state> <merged_at> <draft> <merge_sha> <created_at> <labels_json>
+  jq -cn --arg number "$1" --arg title "$2" --arg ref "$3" --arg state "$4" \
+    --arg merged "$5" --arg draft "$6" --arg sha "$7" --arg created "$8" --argjson labels "$9" '
+    {
+      number: ($number | tonumber), title: $title, head: {ref: $ref}, state: $state,
+      merged_at: (if $merged == "" then null else $merged end),
+      draft: ($draft == "true"), merge_commit_sha: (if $sha == "" then null else $sha end),
+      created_at: $created, html_url: ("https://github.com/o/r/pull/" + $number), labels: $labels
+    }'
+}
+
+commit() {
+  jq -cn --arg email "$1" --arg message "$2" --arg url "$3" '
+    {commit: {author: {email: $email}, message: $message}, html_url: $url}'
+}
+
+# --- happy path: one page of PRs, mixed outcomes, both revert styles, risk tiers ---
+reset_fixtures
+pr10=$(pr 10 "Feat: add x" "claude/add-x" closed 2026-10-05T00:00:00Z false sha-x 2026-10-05T00:00:00Z '[{"name":"risk:low"}]')
+pr11=$(pr 11 "Feat: add y" "claude/add-y" closed 2026-10-06T00:00:00Z false sha-y 2026-10-06T00:00:00Z '[{"name":"risk:high"}]')
+pr12=$(pr 12 "Fix: z" "claude/fix-z" closed "" false "" 2026-10-07T00:00:00Z '[{"name":"risk:medium"}]')
+pr13=$(pr 13 "Feat: w" "claude/fix-w" open "" true "" 2026-10-08T00:00:00Z '[]')
+pr20=$(pr 20 'Revert "Feat: add x"' "human/revert" closed 2026-10-09T00:00:00Z false sha-revert 2026-10-09T00:00:00Z '[]')
+pr_old=$(pr 999 "Feat: too old" "claude/old" closed 2026-09-01T00:00:00Z false sha-old 2026-09-01T00:00:00Z '[]')
+jq -s '.' <(echo "$pr10") <(echo "$pr11") <(echo "$pr12") <(echo "$pr13") <(echo "$pr20") <(echo "$pr_old") > "$fixtures/pulls-page-1.json"
+jq -s '.' <(commit noreply@anthropic.com "This reverts commit sha-y." "https://github.com/o/r/commit/revert-y") > "$fixtures/commits-page-1.json"
+jq -s '.' <(commit noreply@anthropic.com "solo commit" "https://github.com/o/r/commit/x1") > "$fixtures/pr-10-commits-page-1.json"
+jq -s '.' <(commit noreply@anthropic.com "claude commit" "https://github.com/o/r/commit/y1") \
+  <(commit a.human@example.com "human follow-up" "https://github.com/o/r/commit/y2") > "$fixtures/pr-11-commits-page-1.json"
+
+output=$(run_stats) || fail "expected the happy path to succeed, got exit $?: $output"
+assert_contains "$output" "Harness stats since 2026-10-01T00:00:00Z (last 30d)" "happy path header"
+assert_contains "$output" "claude/ pull requests: 4 opened, 2 merged, 1 closed unmerged, 1 still draft" "happy path counts"
+assert_contains "$output" "Merged with no human pushes: 1/2" "happy path solo count"
+assert_contains "$output" "Reverted: 2" "happy path revert count"
+assert_contains "$output" "#10 Feat: add x -> https://github.com/o/r/pull/20" "happy path title-match revert"
+assert_contains "$output" "#11 Feat: add y -> https://github.com/o/r/commit/revert-y" "happy path commit-message revert"
+assert_contains "$output" "By risk tier:" "happy path risk tier header"
+assert_contains "$output" "risk:low: 1 opened, 1 merged" "happy path risk:low"
+assert_contains "$output" "risk:medium: 1 opened, 0 merged" "happy path risk:medium"
+assert_contains "$output" "risk:high: 1 opened, 1 merged" "happy path risk:high"
+echo "$output" | grep -qF "too old" && fail "expected a PR created before the cutoff to be excluded, got: $output"
+echo "✓ the happy path reports counts, both revert styles, no-human-pushes, and a risk tier breakdown"
+
+# --- no claude/ PRs at all: zeroed counts, no risk tier section ---
+reset_fixtures
+jq -n '[]' > "$fixtures/pulls-page-1.json"
+output=$(run_stats) || fail "expected an empty repo to succeed, got: $output"
+assert_contains "$output" "claude/ pull requests: 0 opened, 0 merged, 0 closed unmerged, 0 still draft" "empty counts"
+assert_contains "$output" "Merged with no human pushes: 0/0" "empty solo count"
+assert_contains "$output" "Reverted: 0" "empty revert count"
+echo "$output" | grep -qF "By risk tier" && fail "expected no risk tier section when no PR carries a risk label, got: $output"
+echo "✓ no claude/ PRs reports zeroed counts and no risk tier section"
+
+# --- a revert PR's title matches two same-titled merged PRs: only the one it
+# actually followed (closest preceding merge) counts as reverted, not both ---
+reset_fixtures
+pr50=$(pr 50 "Fix: bump dep" "claude/bump-dep-1" closed 2026-10-10T00:00:00Z false sha-50 2026-10-10T00:00:00Z '[]')
+pr51=$(pr 51 "Fix: bump dep" "claude/bump-dep-2" closed 2026-10-15T00:00:00Z false sha-51 2026-10-15T00:00:00Z '[]')
+pr52=$(pr 52 'Revert "Fix: bump dep"' "human/revert" closed 2026-10-16T00:00:00Z false sha-52 2026-10-16T00:00:00Z '[]')
+jq -s '.' <(echo "$pr50") <(echo "$pr51") <(echo "$pr52") > "$fixtures/pulls-page-1.json"
+output=$(run_stats) || fail "expected the same-title revert case to succeed, got: $output"
+assert_contains "$output" "Reverted: 1" "same-title revert count stays at one"
+assert_contains "$output" "#51 Fix: bump dep -> https://github.com/o/r/pull/52" "same-title revert credits the PR it actually followed"
+echo "$output" | grep -qF "#50 Fix: bump dep" && fail "expected the earlier same-titled PR not to be marked reverted too, got: $output"
+echo "✓ a revert PR with a title shared by two merged PRs only reverts the one it followed"
+
+# --- --since narrows the window ---
+reset_fixtures
+pr_recent=$(pr 30 "Feat: recent" "claude/recent" closed 2026-10-28T00:00:00Z false sha-recent 2026-10-28T00:00:00Z '[]')
+pr_outside=$(pr 31 "Feat: outside 7d window" "claude/outside" closed 2026-10-10T00:00:00Z false sha-outside 2026-10-10T00:00:00Z '[]')
+jq -s '.' <(echo "$pr_recent") <(echo "$pr_outside") > "$fixtures/pulls-page-1.json"
+output=$(run_stats --since 7d) || fail "expected --since 7d to succeed, got: $output"
+assert_contains "$output" "Harness stats since 2026-10-24T00:00:00Z (last 7d)" "narrowed window header"
+assert_contains "$output" "claude/ pull requests: 1 opened" "narrowed window excludes the older PR"
+echo "✓ --since narrows the window and the header names it"
+
+# --- pagination: a second page is fetched when the first page is full ---
+reset_fixtures
+page1_pr=$(pr 40 "Feat: page one" "claude/page-one" closed 2026-10-20T00:00:00Z false sha-p1 2026-10-20T00:00:00Z '[]')
+page2_pr=$(pr 41 "Feat: page two" "claude/page-two" closed 2026-10-21T00:00:00Z false sha-p2 2026-10-21T00:00:00Z '[]')
+{ echo "$page1_pr"; jq -cn --argjson n 99 '
+    range($n) | {number: (9000 + .), title: "filler", head: {ref: "someone/filler"}, state: "closed",
+      merged_at: null, draft: false, merge_commit_sha: null, created_at: "2026-10-19T00:00:00Z",
+      html_url: "https://x/filler", labels: []}'
+} | jq -s '.' > "$fixtures/pulls-page-1.json"
+echo "$page2_pr" | jq -s '.' > "$fixtures/pulls-page-2.json"
+output=$(run_stats) || fail "expected a full first page to fetch a second page, got: $output"
+assert_contains "$output" "claude/ pull requests: 2 opened" "pagination fetches page two"
+[ "$(sort -u "$pulls_calls" | tr '\n' ' ')" = "1 2 " ] || fail "expected pulls pages 1 and 2 to be fetched, got: $(cat "$pulls_calls")"
+echo "✓ a full 100-item page triggers a fetch of the next page, and both pages' PRs are counted"
+
+# --- pagination: stops once a page's oldest PR predates the cutoff, fetching no further page ---
+reset_fixtures
+{ echo "$page1_pr"; jq -cn --argjson n 99 '
+    range($n) | {number: (9100 + .), title: "filler", head: {ref: "someone/filler"}, state: "closed",
+      merged_at: null, draft: false, merge_commit_sha: null, created_at: "2026-09-01T00:00:00Z",
+      html_url: "https://x/filler", labels: []}'
+} | jq -s '.' > "$fixtures/pulls-page-1.json"
+output=$(run_stats) || fail "expected the cutoff to stop pagination cleanly, got: $output"
+assert_contains "$output" "claude/ pull requests: 1 opened" "early stop still counts page one's own PR"
+[ "$(cat "$pulls_calls")" = "1" ] || fail "expected only pulls page 1 to be fetched, got: $(cat "$pulls_calls")"
+echo "✓ a full page whose oldest PR predates the cutoff stops pagination without fetching another page"
+
+# --- gh missing ---
+no_gh_bin="$scratch/no_gh_bin"
+mkdir -p "$no_gh_bin"
+for cmd in bash dirname grep git jq date sed mktemp cat rm mkdir; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_gh_bin/$cmd"
+done
+output=$(cd "$repo" && PATH="$no_gh_bin" "$cli" stats 2>&1) && fail "expected a missing gh to fail"
+assert_contains "$output" "gh not found" "missing gh"
+echo "✓ a missing gh fails with the message naming it"
+
+# --- gh unauthenticated ---
+output=$(STUB_GH_AUTH_EXIT=1 run_stats 2>&1) && fail "expected an unauthenticated gh to fail"
+assert_contains "$output" "gh is not authenticated" "gh unauthenticated"
+echo "✓ an unauthenticated gh fails with the message naming it"
+
+# --- default branch lookup fails ---
+output=$(STUB_GH_DEFAULT_BRANCH_EXIT=1 run_stats 2>&1) && fail "expected a failed default branch lookup to fail"
+assert_contains "$output" "Could not look up the default branch" "default branch lookup failure"
+echo "✓ a failed default branch lookup fails with a clear message"
+
+# --- pull request list fetch fails ---
+output=$(STUB_GH_PULLS_EXIT=1 run_stats 2>&1) && fail "expected a failed pull request list to fail"
+assert_contains "$output" "Could not list pull requests" "pulls list failure"
+echo "✓ a failed pull request list fails with a clear message"
+
+# --- default branch commit list fetch fails ---
+reset_fixtures
+jq -n '[]' > "$fixtures/pulls-page-1.json"
+output=$(STUB_GH_COMMITS_EXIT=1 run_stats 2>&1) && fail "expected a failed commit list to fail"
+assert_contains "$output" "Could not list commits on main" "commits list failure"
+echo "✓ a failed default-branch commit list fails with a clear message, naming the branch"
+
+# --- unknown option ---
+output=$(run_stats --bogus 2>&1) && fail "expected an unknown option to fail"
+assert_contains "$output" "Unknown option: --bogus" "unknown option"
+echo "✓ an unknown option fails with usage"
+
+# --- --since with no value ---
+output=$(run_stats --since 2>&1) && fail "expected --since with no value to fail"
+assert_contains "$output" "Usage: harness stats" "missing --since value"
+echo "✓ --since with no value fails with usage"
+
+# --- --since with a non-numeric value ---
+output=$(run_stats --since abc 2>&1) && fail "expected a non-numeric --since value to fail"
+assert_contains "$output" "Invalid --since value" "invalid --since value"
+echo "✓ a non-numeric --since value fails with a clear message"
+
+echo
+echo "harness stats check: all passed"
