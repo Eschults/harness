@@ -422,8 +422,14 @@ stats_since_iso() {
   return 1
 }
 
-# Pages through a gh api GET endpoint (--method GET, since -f fields default
-# gh api to POST) whose response is a bare JSON array,
+# Runs gh api as a GET (-f fields otherwise make it POST): body to $1, gh's error to stderr on failure.
+gh_api_get() {
+  local out=$1 endpoint=$2 error
+  shift 2
+  error=$(gh api "$endpoint" --method GET "$@" 2>&1 >"$out") || { echo "$error" >&2; return 1; }
+}
+
+# Pages through a gh api GET endpoint whose response is a bare JSON array,
 # appending each page's items as one compact JSON object per line to $1.
 # $2 is the endpoint; any further args are extra -f fields. Stops once a
 # page returns fewer than 100 items. Fails (non-zero) if any page's call
@@ -435,7 +441,7 @@ paginate_gh_api() {
   : > "$out"
   while :; do
     tmp=$(mktemp) || return 1
-    if ! gh api "$endpoint" --method GET -f per_page="$per_page" -f page="$page" "$@" > "$tmp" 2>/dev/null; then
+    if ! gh_api_get "$tmp" "$endpoint" -f per_page="$per_page" -f page="$page" "$@"; then
       rm -f "$tmp"
       return 1
     fi
@@ -456,8 +462,8 @@ fetch_prs_since() {
   : > "$out"
   while :; do
     tmp=$(mktemp) || return 1
-    if ! gh api 'repos/{owner}/{repo}/pulls' --method GET -f state=all -f sort=created -f direction=desc \
-      -f per_page="$per_page" -f page="$page" > "$tmp" 2>/dev/null; then
+    if ! gh_api_get "$tmp" 'repos/{owner}/{repo}/pulls' -f state=all -f sort=created -f direction=desc \
+      -f per_page="$per_page" -f page="$page"; then
       rm -f "$tmp"
       return 1
     fi
@@ -600,7 +606,7 @@ cmd_stats() {
   while IFS= read -r num; do
     [ -n "$num" ] || continue
     checked=$((checked + 1))
-    stats_pr_is_claude_only "$num" && solo=$((solo + 1))
+    stats_pr_is_claude_only "$num" 2>/dev/null && solo=$((solo + 1))
   done < <(jq -r '.merged_numbers[]' <<< "$summary")
   echo "Merged with no human pushes: $solo/$checked"
 
