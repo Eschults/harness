@@ -490,15 +490,31 @@ CHECKS = [
         "issue-to-pr.md should still require building the missing part, not stopping, on a partial match",
     ),
     (
-        "review-runs-security-review-after-code-review",
-        "likewise feeding it `REVIEW.md` when the repo has one, and apply its findings under the test below." in ISSUE_TO_PR,
-        "issue-to-pr.md should still require running /security-review on the same diff after /code-review --fix",
+        "review-passes-run-without-fix",
+        "Inside that subagent, run `/code-review <PR number>` and `/security-review` on the same diff, neither with `--fix`."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require running /code-review and /security-review on the same diff, neither applying fixes itself",
     ),
     (
-        "code-review-reads-repo-review-md",
-        "When the repo has a `REVIEW.md`, read it and give its rules to the pass too, since `/code-review` doesn't read it on its own."
+        "review-delegates-to-fresh-subagent",
+        "Give that subagent only the issue, the PR diff, `CLAUDE.md`, `.claude/harness-rules.md`, and the repo's `REVIEW.md` when it has one — nothing else from this session, and none of the reasoning that produced the diff."
         in ISSUE_TO_PR,
-        "issue-to-pr.md should still tell /code-review --fix to read and apply the repo's own REVIEW.md when it has one",
+        "issue-to-pr.md should still require the review subagent to see only the issue, the PR diff, CLAUDE.md, harness-rules.md, and the repo's REVIEW.md when it has one, with none of the build session's reasoning",
+    ),
+    (
+        "review-subagent-never-edits",
+        "The subagent reports findings; it never edits a file." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the review subagent to only report findings, never edit a file",
+    ),
+    (
+        "review-main-session-applies-fixes",
+        "**Apply a fix yourself** when it is clearly correct, confined to the PR's own scope, and allowed by the rules." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the main session, not the review subagent, to apply fixes under the clearly-correct/in-scope/allowed test",
+    ),
+    (
+        "review-feeds-review-md-to-both-passes",
+        "When the repo has a `REVIEW.md`, feed its rules to both passes, since neither skill reads it on its own." in ISSUE_TO_PR,
+        "issue-to-pr.md should still tell the review subagent to feed the repo's REVIEW.md to both /code-review and /security-review when it has one",
     ),
     (
         "review-finding-blocking-definition",
@@ -516,6 +532,12 @@ CHECKS = [
         "recap-review-lists-blocking-first",
         "**What the review found**, blocking findings first, then non-blocking, one line each." in ISSUE_TO_PR,
         "issue-to-pr.md should still require the recap to list blocking findings before non-blocking ones",
+    ),
+    (
+        "recap-review-still-a-self-review",
+        "the result is still a self-review, naming what even that fresh a reader could not check: it never watched the change get built, so it can judge the diff but not whether this was the right diff to write."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the recap to say the review ran in a fresh subagent and that this is still a self-review, naming what that subagent could not check",
     ),
     (
         "recap-review-no-approve-no-request-changes",
