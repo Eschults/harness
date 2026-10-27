@@ -34,9 +34,22 @@ page_arg() {
   done
   echo 1
 }
-# gh api defaults to POST when given -f fields, so a list call must force GET.
-if [ "$1" = api ] && [[ " $* " == *" -f "* ]] && [[ " $* " != *" --method GET "* ]]; then
-  echo "stub gh: $2 called without --method GET" >&2
+# Mirrors gh api: any field or --input flag makes it POST unless GET is forced.
+method_arg() {
+  local prev="" method="" has_body=""
+  for a in "$@"; do
+    case "$prev" in -X|--method) method=$a ;; esac
+    case "$a" in
+      -X?*) method=${a#-X} ;;
+      --method=*) method=${a#--method=} ;;
+      -f|-F|--field|--raw-field|--input|-f?*|-F?*|--field=*|--raw-field=*|--input=*) has_body=1 ;;
+    esac
+    prev=$a
+  done
+  if [ -n "$method" ]; then echo "$method"; elif [ -n "$has_body" ]; then echo POST; else echo GET; fi
+}
+if [ "$1" = api ] && [ "$(method_arg "$@")" != GET ]; then
+  echo "stub gh: $2 called as $(method_arg "$@"), not GET" >&2
   exit 1
 fi
 case "$1 $2" in
@@ -46,7 +59,7 @@ case "$1 $2" in
     printf '%s\n' "${STUB_GH_DEFAULT_BRANCH-main}"
     ;;
   "api repos/{owner}/{repo}/pulls")
-    [ "${STUB_GH_PULLS_EXIT:-0}" = 0 ] || exit "${STUB_GH_PULLS_EXIT}"
+    [ "${STUB_GH_PULLS_EXIT:-0}" = 0 ] || { echo "HTTP 403: Resource not accessible" >&2; exit "${STUB_GH_PULLS_EXIT}"; }
     page=$(page_arg "$@")
     echo "$page" >> "$STUB_PULLS_CALLS"
     f="$STUB_FIXTURES/pulls-page-$page.json"
@@ -233,7 +246,8 @@ echo "✓ a failed default branch lookup fails with a clear message"
 # --- pull request list fetch fails ---
 output=$(STUB_GH_PULLS_EXIT=1 run_stats 2>&1) && fail "expected a failed pull request list to fail"
 assert_contains "$output" "Could not list pull requests" "pulls list failure"
-echo "✓ a failed pull request list fails with a clear message"
+assert_contains "$output" "HTTP 403: Resource not accessible" "pulls list failure surfaces gh's error"
+echo "✓ a failed pull request list fails with a clear message and gh's own error"
 
 # --- default branch commit list fetch fails ---
 reset_fixtures
