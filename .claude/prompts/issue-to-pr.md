@@ -81,9 +81,9 @@ Say in the description that the images are review-only and come out before merge
 
 Once the PR is open and ready for review, review your own work before you exit. Nothing runs after you: whatever you leave unexamined ships to a human unexamined.
 
-Run both passes in a subagent you spawn fresh for this, so the reviewer reasons from the diff alone rather than this session's own justification for it. Give that subagent only the issue, the PR diff, `CLAUDE.md`, and `.claude/harness-rules.md` — nothing else from this session, and none of the reasoning that produced the diff.
+Run both passes in a subagent you spawn fresh for this, so the reviewer reasons from the diff alone rather than this session's own justification for it. Give that subagent only the issue, the PR diff, `CLAUDE.md`, `.claude/harness-rules.md`, and the repo's `REVIEW.md` when it has one — nothing else from this session, and none of the reasoning that produced the diff.
 
-1. **Inside that subagent, run `/code-review <PR number>` and `/security-review` on the same diff, neither with `--fix`.** The subagent reports findings; it never edits a file. Do not hand-roll either pass in its place, and do not skip either because you feel good about the code — that feeling is exactly what the pass is checking.
+1. **Inside that subagent, run `/code-review <PR number>` and `/security-review` on the same diff, neither with `--fix`. When the repo has a `REVIEW.md`, feed its rules to both passes, since neither skill reads it on its own.** The subagent reports findings; it never edits a file. Do not hand-roll either pass in its place, and do not skip either because you feel good about the code — that feeling is exactly what the pass is checking.
 2. **Take the subagent's findings back into this session.** **Apply a fix yourself** when it is clearly correct, confined to the PR's own scope, and allowed by the rules. Report instead of fixing when a finding needs a human decision or is a design question rather than a defect. Never drop a finding silently — anything you chose not to fix goes in the recap with the reason.
 3. **Run the full test suite again.** A fix that breaks the build is worse than the finding it resolved.
 4. **Commit and push to the PR's branch.** One commit for the review pass. If you fixed nothing, push nothing.

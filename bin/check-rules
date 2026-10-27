@@ -497,9 +497,9 @@ CHECKS = [
     ),
     (
         "review-delegates-to-fresh-subagent",
-        "Give that subagent only the issue, the PR diff, `CLAUDE.md`, and `.claude/harness-rules.md` — nothing else from this session, and none of the reasoning that produced the diff."
+        "Give that subagent only the issue, the PR diff, `CLAUDE.md`, `.claude/harness-rules.md`, and the repo's `REVIEW.md` when it has one — nothing else from this session, and none of the reasoning that produced the diff."
         in ISSUE_TO_PR,
-        "issue-to-pr.md should still require the review subagent to see only the issue, the PR diff, CLAUDE.md, and harness-rules.md, with none of the build session's reasoning",
+        "issue-to-pr.md should still require the review subagent to see only the issue, the PR diff, CLAUDE.md, harness-rules.md, and the repo's REVIEW.md when it has one, with none of the build session's reasoning",
     ),
     (
         "review-subagent-never-edits",
@@ -510,6 +510,11 @@ CHECKS = [
         "review-main-session-applies-fixes",
         "**Apply a fix yourself** when it is clearly correct, confined to the PR's own scope, and allowed by the rules." in ISSUE_TO_PR,
         "issue-to-pr.md should still require the main session, not the review subagent, to apply fixes under the clearly-correct/in-scope/allowed test",
+    ),
+    (
+        "review-feeds-review-md-to-both-passes",
+        "When the repo has a `REVIEW.md`, feed its rules to both passes, since neither skill reads it on its own." in ISSUE_TO_PR,
+        "issue-to-pr.md should still tell the review subagent to feed the repo's REVIEW.md to both /code-review and /security-review when it has one",
     ),
     (
         "review-finding-blocking-definition",
