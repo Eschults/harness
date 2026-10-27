@@ -490,15 +490,31 @@ CHECKS = [
         "issue-to-pr.md should still require building the missing part, not stopping, on a partial match",
     ),
     (
-        "review-runs-security-review-after-code-review",
-        "likewise feeding it `REVIEW.md` when the repo has one, and apply its findings under the test below." in ISSUE_TO_PR,
-        "issue-to-pr.md should still require running /security-review on the same diff after /code-review --fix",
+        "review-passes-run-without-fix",
+        "Inside that subagent, run `/code-review <PR number>` and `/security-review` on the same diff, neither with `--fix`."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require running /code-review and /security-review on the same diff, neither applying fixes itself",
     ),
     (
-        "code-review-reads-repo-review-md",
-        "When the repo has a `REVIEW.md`, read it and give its rules to the pass too, since `/code-review` doesn't read it on its own."
+        "review-delegates-to-fresh-subagent",
+        "Give that subagent only the issue, the PR diff, `CLAUDE.md`, `.claude/harness-rules.md`, and the repo's `REVIEW.md` when it has one — nothing else from this session, and none of the reasoning that produced the diff."
         in ISSUE_TO_PR,
-        "issue-to-pr.md should still tell /code-review --fix to read and apply the repo's own REVIEW.md when it has one",
+        "issue-to-pr.md should still require the review subagent to see only the issue, the PR diff, CLAUDE.md, harness-rules.md, and the repo's REVIEW.md when it has one, with none of the build session's reasoning",
+    ),
+    (
+        "review-subagent-never-edits",
+        "The subagent reports findings; it never edits a file." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the review subagent to only report findings, never edit a file",
+    ),
+    (
+        "review-main-session-applies-fixes",
+        "**Apply a fix yourself** when it is clearly correct, confined to the PR's own scope, and allowed by the rules." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the main session, not the review subagent, to apply fixes under the clearly-correct/in-scope/allowed test",
+    ),
+    (
+        "review-feeds-review-md-to-both-passes",
+        "When the repo has a `REVIEW.md`, feed its rules to both passes, since neither skill reads it on its own." in ISSUE_TO_PR,
+        "issue-to-pr.md should still tell the review subagent to feed the repo's REVIEW.md to both /code-review and /security-review when it has one",
     ),
     (
         "review-finding-blocking-definition",
@@ -516,6 +532,12 @@ CHECKS = [
         "recap-review-lists-blocking-first",
         "**What the review found**, blocking findings first, then non-blocking, one line each." in ISSUE_TO_PR,
         "issue-to-pr.md should still require the recap to list blocking findings before non-blocking ones",
+    ),
+    (
+        "recap-review-still-a-self-review",
+        "the result is still a self-review, naming what even that fresh a reader could not check: it never watched the change get built, so it can judge the diff but not whether this was the right diff to write."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the recap to say the review ran in a fresh subagent and that this is still a self-review, naming what that subagent could not check",
     ),
     (
         "recap-review-no-approve-no-request-changes",
@@ -593,6 +615,69 @@ CHECKS = [
         "oversized-draft-question",
         'take the Draft outcome instead, with the question "how should this be split?"' in ISSUE_TO_PR,
         "issue-to-pr.md should still require the Draft outcome with the \"how should this be split?\" question when no slice fits",
+    ),
+    (
+        "explainer-step-skips-trivial-changes",
+        'If the change alters how a module behaves, write an explainer per "Explainers for behavior changes" below. '
+        "A copy change, a typo fix, a version bump, or a change you'd tag `risk:low` gets none." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require an explainer for behavior changes, skipping copy/typo/version-bump/risk:low changes",
+    ),
+    (
+        "explainer-skip-condition-is-self-assessed-not-a-label",
+        "a change you'd tag `risk:low`" in ISSUE_TO_PR and "a PR already tagged `risk:low`" not in ISSUE_TO_PR,
+        "issue-to-pr.md should let a run skip the explainer by its own risk judgment, not require a risk:low label "
+        "that cannot exist before the PR is opened",
+    ),
+    (
+        "explainer-link-carried-into-template-content-and-comment",
+        "the explainer section or its link" in ISSUE_TO_PR
+        and "and the explainer's own link too when you published one." in ISSUE_TO_PR,
+        "issue-to-pr.md should still carry the explainer's own link into the template's required content and the issue comment",
+    ),
+    (
+        "explainer-follows-claude-md-style-section",
+        "Check the repo's `CLAUDE.md` for an `## Explainers` section first." in ISSUE_TO_PR
+        and "it sets the explainer's style — voice, depth, preferred diagram shape — and you follow it over the default form below, per "
+        '"This repo\'s additions" in `.claude/harness-rules.md`.' in ISSUE_TO_PR,
+        "issue-to-pr.md should still follow a repo's CLAUDE.md `## Explainers` section for style when one exists",
+    ),
+    (
+        "explainer-three-parts",
+        "**How the area works today.**" in ISSUE_TO_PR
+        and "**Where this PR lands.**" in ISSUE_TO_PR
+        and "**Where to start reading.**" in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the explainer's three parts: how the area works today, where this PR lands, where to start reading",
+    ),
+    (
+        "explainer-published-page-default-mermaid-fallback",
+        "Publish an explainer page by default: link a published explainer page at the top of the description" in ISSUE_TO_PR
+        and "Only when the session cannot publish a page, fall back to a section in the PR description holding this, with a Mermaid diagram" in ISSUE_TO_PR,
+        "issue-to-pr.md should still publish an explainer page by default, falling back to a Mermaid section in the PR description only when the session can't publish one",
+    ),
+    (
+        "explainer-names-no-specific-tool",
+        "a published explainer page" in ISSUE_TO_PR and "Artifact" not in ISSUE_TO_PR,
+        "issue-to-pr.md should describe publishing 'a published explainer page' without naming a specific tool",
+    ),
+    (
+        "explainer-no-unsupported-claims-not-part-of-change",
+        "Make no claim the code does not support, and mark the explainer as not part of the change" in ISSUE_TO_PR,
+        "issue-to-pr.md should still ban unsupported claims in the explainer and mark it as not part of the change",
+    ),
+    (
+        "harness-rules-pull-requests-explainer-bullet",
+        "Explainers make no claim the code does not support, and are marked as not part of the change" in HARNESS_RULES,
+        "harness-rules.md should still require explainers to make no unsupported claim and to be marked as not part of the change",
+    ),
+    (
+        "harness-rules-documents-explainers-style-section",
+        "A repo's `CLAUDE.md` can add an `## Explainers` section setting the explainer's style" in HARNESS_RULES,
+        "harness-rules.md's 'This repo's additions' should still document that CLAUDE.md can add an `## Explainers` style section",
+    ),
+    (
+        "review-refreshes-stale-explainer",
+        "If a fix changes code an explainer describes, update the explainer in the same commit." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require refreshing an explainer in the same commit when a review fix changes the code it describes",
     ),
     (
         "next-to-build-files-with-claude-label",
@@ -696,7 +781,7 @@ CHECKS = [
     (
         "issue-to-pr-risk-tier-line-placement",
         "state the tier with a one-line reason as the description's first line: below a draft's blocker question if it has one, "
-        "above everything else otherwise, including a PR template's own first heading." in ISSUE_TO_PR,
+        "above everything else otherwise, including a published explainer's link and a PR template's own first heading." in ISSUE_TO_PR,
         "issue-to-pr.md should still require the risk tier line first in the description, below a draft question when there is one",
     ),
     (
