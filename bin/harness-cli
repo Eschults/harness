@@ -422,7 +422,8 @@ stats_since_iso() {
   return 1
 }
 
-# Pages through a gh api GET endpoint whose response is a bare JSON array,
+# Pages through a gh api GET endpoint (--method GET, since -f fields default
+# gh api to POST) whose response is a bare JSON array,
 # appending each page's items as one compact JSON object per line to $1.
 # $2 is the endpoint; any further args are extra -f fields. Stops once a
 # page returns fewer than 100 items. Fails (non-zero) if any page's call
@@ -434,7 +435,7 @@ paginate_gh_api() {
   : > "$out"
   while :; do
     tmp=$(mktemp) || return 1
-    if ! gh api "$endpoint" -f per_page="$per_page" -f page="$page" "$@" > "$tmp" 2>/dev/null; then
+    if ! gh api "$endpoint" --method GET -f per_page="$per_page" -f page="$page" "$@" > "$tmp" 2>/dev/null; then
       rm -f "$tmp"
       return 1
     fi
@@ -455,7 +456,7 @@ fetch_prs_since() {
   : > "$out"
   while :; do
     tmp=$(mktemp) || return 1
-    if ! gh api 'repos/{owner}/{repo}/pulls' -f state=all -f sort=created -f direction=desc \
+    if ! gh api 'repos/{owner}/{repo}/pulls' --method GET -f state=all -f sort=created -f direction=desc \
       -f per_page="$per_page" -f page="$page" > "$tmp" 2>/dev/null; then
       rm -f "$tmp"
       return 1
