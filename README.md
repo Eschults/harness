@@ -58,7 +58,7 @@ The harness is mostly prose, versioned in your repo where you can read and diff 
 | [`.claude/prompts/next-to-build.md`](.claude/prompts/next-to-build.md) | The procedure for choosing and filing the next issue. |
 | [`.claude/harness-rules.md`](.claude/harness-rules.md) | The rules every autonomous run follows. |
 | `.claude/HARNESS_VERSION` | The release this repo is pinned to. |
-| [`.github/ISSUE_TEMPLATE/claude-task.md`](.github/ISSUE_TEMPLATE/claude-task.md) | The shape a human fills in to file work for Claude. `install` writes it once and leaves your edits alone after that. |
+| [`.github/ISSUE_TEMPLATE/claude-task.md`](.github/ISSUE_TEMPLATE/claude-task.md) | The shape a human fills in to file work for Claude. `install` skips it if you already have one; `upgrade` still syncs it like every other file here. |
 
 Plus the `harness` CLI, which installs, checks, upgrades and removes them, and can start a run by hand.
 
