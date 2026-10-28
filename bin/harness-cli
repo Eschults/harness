@@ -12,6 +12,14 @@ HARNESS_FILES=(
   ".claude/prompts/next-to-build.md"
   ".claude/harness-rules.md"
   ".claude/HARNESS_VERSION"
+  ".github/ISSUE_TEMPLATE/claude-task.md"
+)
+# Files install writes only once, skipping one that's already there instead
+# of overwriting it: adopter templates meant to be edited after creation.
+# Every other command (upgrade, doctor, uninstall) still treats them the
+# same as the rest of HARNESS_FILES, of which they are a subset.
+INSTALL_ONCE_FILES=(
+  ".github/ISSUE_TEMPLATE/claude-task.md"
 )
 # What the pre-CLI harness vendored into bin/; install and uninstall remove it.
 LEGACY_FILES=(
@@ -147,10 +155,25 @@ require_clean_harness_files() {
   fi
 }
 
+is_install_once_file() {
+  local f=$1 t
+  for t in "${INSTALL_ONCE_FILES[@]}"; do
+    [ "$t" = "$f" ] && return 0
+  done
+  return 1
+}
+
+# $1: "install" skips an existing INSTALL_ONCE_FILES entry instead of
+# overwriting it, and reports it as skipped; anything else (upgrade)
+# fetches every file in HARNESS_FILES unconditionally, same as always.
 fetch_harness_files() {
-  local src f
+  local mode=$1 src f
   src=$(harness_src)
   for f in "${HARNESS_FILES[@]}"; do
+    if [ "$mode" = install ] && is_install_once_file "$f" && [ -f "$f" ]; then
+      echo "Skipped $f (already exists)."
+      continue
+    fi
     mkdir -p "$(dirname "$f")"
     curl -fsSL "$src/$f" -o "$f"
   done
@@ -182,7 +205,7 @@ remove_legacy_files() {
 }
 
 install_harness() {
-  fetch_harness_files
+  fetch_harness_files "$1"
   remove_legacy_files
   if ! grep -qF "$RULES_IMPORT" CLAUDE.md 2>/dev/null; then
     printf '\n%s\n' "$RULES_IMPORT" >> CLAUDE.md
@@ -221,7 +244,7 @@ cmd_install() {
   cd_repo_root
   local first_install=0
   [ -f .claude/HARNESS_VERSION ] || first_install=1
-  install_harness
+  install_harness install
   local labels_done=1
   ensure_harness_labels || labels_done=0
   echo "Installed the harness at $(<.claude/HARNESS_VERSION)."
@@ -271,7 +294,7 @@ cmd_upgrade() {
     fi
 
   fi
-  install_harness
+  install_harness upgrade
   echo "Pulled in $(<.claude/HARNESS_VERSION). Review the diff and commit."
 }
 

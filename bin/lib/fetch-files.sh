@@ -6,6 +6,7 @@ HARNESS_FILES=(
   ".claude/prompts/next-to-build.md"
   ".claude/harness-rules.md"
   ".claude/HARNESS_VERSION"
+  ".github/ISSUE_TEMPLATE/claude-task.md"
 )
 
 fetch_harness_files() {

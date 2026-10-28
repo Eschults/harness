@@ -199,6 +199,25 @@ echo "$output" | grep -q "#setup" && fail "expected a re-run install to skip the
 echo "$output" | grep -q "run harness doctor" || fail "expected a re-run install to point at harness doctor, got: $output"
 echo "✓ re-running install did not duplicate the CLAUDE.md import line"
 
+echo
+echo "--- install-once template file ---"
+
+template_file=".github/ISSUE_TEMPLATE/claude-task.md"
+cmp -s "$scratch/$template_file" "$root/$template_file" ||
+  fail "expected the first install to write $template_file matching the harness release, got a diff"
+echo "✓ a fresh install wrote $template_file matching the harness release"
+
+printf 'adopter wrote their own template\n' > "$scratch/$template_file"
+if ! output=$(run_harness install 2>&1); then
+  echo "$output" >&2
+  fail "harness install failed with an existing $template_file on disk"
+fi
+[ "$(cat "$scratch/$template_file")" = "adopter wrote their own template" ] ||
+  fail "expected install to leave an existing $template_file untouched, got: $(cat "$scratch/$template_file")"
+echo "$output" | grep -qF "Skipped $template_file (already exists)." ||
+  fail "expected install to report $template_file as skipped, got: $output"
+echo "✓ install leaves an existing $template_file alone and reports it as skipped"
+
 if ! output=$(run_harness uninstall 2>&1); then
   echo "$output" >&2
   fail "harness uninstall failed"

@@ -58,12 +58,13 @@ The harness is mostly prose, versioned in your repo where you can read and diff 
 | [`.claude/prompts/next-to-build.md`](.claude/prompts/next-to-build.md) | The procedure for choosing and filing the next issue. |
 | [`.claude/harness-rules.md`](.claude/harness-rules.md) | The rules every autonomous run follows. |
 | `.claude/HARNESS_VERSION` | The release this repo is pinned to. |
+| [`.github/ISSUE_TEMPLATE/claude-task.md`](.github/ISSUE_TEMPLATE/claude-task.md) | The shape a human fills in to file work for Claude. `install` writes it once and leaves your edits alone after that. |
 
 Plus the `harness` CLI, which installs, checks, upgrades and removes them, and can start a run by hand.
 
 ## Setup
 
-Install is the `harness` CLI, five files, two routines, four labels, and two repo values. You need `bash`, `git`, `gh`, `curl` and `jq` on `PATH`.
+Install is the `harness` CLI, six files, two routines, four labels, and two repo values. You need `bash`, `git`, `gh`, `curl` and `jq` on `PATH`.
 
 #### 1. Install the harness
 
@@ -79,7 +80,7 @@ Then, from inside your project repo:
 harness install
 ```
 
-This adds the five files and a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md`, and creates four labels — `claude` (color `D97757`), `risk:low` (`0E8A16`), `risk:medium` (`FBCA04`), `risk:high` (`B60205`) — when `gh` is on `PATH` and authenticated for your repo, leaving any that already exist alone and otherwise skipping the rest, in which case `harness doctor` tells you the commands to create them by hand. Safe to re-run. `harness help` lists every command.
+This adds the six files (leaving `.github/ISSUE_TEMPLATE/claude-task.md` alone if you already have one) and a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md`, and creates four labels — `claude` (color `D97757`), `risk:low` (`0E8A16`), `risk:medium` (`FBCA04`), `risk:high` (`B60205`) — when `gh` is on `PATH` and authenticated for your repo, leaving any that already exist alone and otherwise skipping the rest, in which case `harness doctor` tells you the commands to create them by hand. Safe to re-run. `harness help` lists every command.
 
 #### 2. Create the "Issue to PR" routine
 Give the [Claude GitHub App](https://github.com/apps/claude) access to your repo, so cloud sessions can clone it and push `claude/` branches.
