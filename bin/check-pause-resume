@@ -37,8 +37,12 @@ case "$1 $2" in
     done
     printf '%s %s\n' "$name" "$value" >> "$STUB_GH_SET_CALLS"
     ;;
-  "variable delete")
+  "variable get")
     [ "${STUB_GH_VARIABLE_PRESENT:-1}" = 1 ] || exit 1
+    printf 'true\n'
+    ;;
+  "variable delete")
+    [ "${STUB_GH_VARIABLE_DELETE_EXIT:-0}" = 0 ] || exit "${STUB_GH_VARIABLE_DELETE_EXIT}"
     printf '%s\n' "$3" >> "$STUB_GH_DELETE_CALLS"
     ;;
   *) exit 1 ;;
@@ -55,6 +59,7 @@ run_harness() {
     PATH="$stub_bin:$PATH" \
       STUB_GH_AUTH_EXIT="${STUB_GH_AUTH_EXIT:-0}" \
       STUB_GH_VARIABLE_PRESENT="${STUB_GH_VARIABLE_PRESENT:-1}" \
+      STUB_GH_VARIABLE_DELETE_EXIT="${STUB_GH_VARIABLE_DELETE_EXIT:-0}" \
       STUB_GH_SET_CALLS="$set_calls" STUB_GH_DELETE_CALLS="$delete_calls" \
       "$cli" "$cmd" 2>&1
   ) || run_exit=$?
@@ -90,7 +95,14 @@ echo "✓ harness resume deletes HARNESS_PAUSED"
 STUB_GH_VARIABLE_PRESENT=0 run_harness resume
 [ "$run_exit" -eq 0 ] || fail "expected harness resume to succeed even when HARNESS_PAUSED is already unset, got exit $run_exit: $run_output"
 assert_contains "$run_output" "Resumed" "resume already unset"
-echo "✓ harness resume is safe to re-run when HARNESS_PAUSED is already unset"
+[ -z "$run_deletes" ] || fail "expected no delete call when HARNESS_PAUSED is already unset, got: $run_deletes"
+echo "✓ harness resume is safe to re-run when HARNESS_PAUSED is already unset, without calling delete"
+
+# --- resume: a real delete failure is not swallowed as "already gone" ---
+STUB_GH_VARIABLE_PRESENT=1 STUB_GH_VARIABLE_DELETE_EXIT=1 run_harness resume
+[ "$run_exit" -ne 0 ] || fail "expected harness resume to fail when HARNESS_PAUSED exists but gh variable delete fails, got: $run_output"
+echo "$run_output" | grep -qF "Resumed" && fail "expected no 'Resumed' message when the delete call actually failed, got: $run_output"
+echo "✓ harness resume fails, rather than claiming success, when a present HARNESS_PAUSED can't be deleted"
 
 # --- missing gh ---
 no_gh_bin="$scratch/no_gh_bin"

@@ -443,7 +443,12 @@ cmd_resume() {
     echo "gh is not authenticated; run gh auth login." >&2
     exit 1
   fi
-  gh variable delete HARNESS_PAUSED >/dev/null 2>&1 || true
+  # Only deletes when the variable is actually there, so a real delete
+  # failure (permissions, network) surfaces via set -e instead of being
+  # swallowed alongside the harmless "already gone" case.
+  if gh variable get HARNESS_PAUSED >/dev/null 2>&1; then
+    gh variable delete HARNESS_PAUSED >/dev/null
+  fi
   echo "Resumed: remove and re-add the claude label on any issue you want to (re)start."
 }
 

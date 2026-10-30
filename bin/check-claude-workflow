@@ -9,6 +9,8 @@ cd "$(dirname "$0")/.."
 
 # shellcheck source=bin/lib/check-helpers.sh
 source bin/lib/check-helpers.sh
+# shellcheck source=bin/harness-cli
+source bin/harness-cli
 
 workflow=.github/workflows/claude.yml
 scratch=$(mktemp -d)
@@ -199,9 +201,12 @@ paused_output=$(
 ) || fail "expected the \"Report the harness is paused\" step to succeed, got: $paused_output"
 paused_comments=$([ -f "$paused_comment_calls" ] && cat "$paused_comment_calls" || echo "")
 echo "$paused_comments" | grep -qF "50" || fail "expected the paused step to comment on issue 50, got: $paused_comments"
-echo "$paused_comments" | grep -qF "HARNESS_PAUSED=true" || fail "expected the paused comment to name HARNESS_PAUSED=true, got: $paused_comments"
-echo "$paused_comments" | grep -qF "harness resume" || fail "expected the paused comment to point at harness resume, got: $paused_comments"
-echo "✓ the \"Report the harness is paused\" step comments the fix on the issue"
+# Exact-match against bin/harness-cli's own HARNESS_PAUSED_MESSAGE, not a
+# substring, so an edit to one copy without the other fails CI instead of
+# the two surfaces silently drifting apart.
+echo "$paused_comments" | grep -qF "$HARNESS_PAUSED_MESSAGE" ||
+  fail "expected the paused comment to say exactly bin/harness-cli's HARNESS_PAUSED_MESSAGE ('$HARNESS_PAUSED_MESSAGE'), got: $paused_comments"
+echo "✓ the \"Report the harness is paused\" step comments the exact message bin/harness-cli uses"
 
 echo
 echo "claude.yml fire step: all passed"
