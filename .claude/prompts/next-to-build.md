@@ -4,6 +4,10 @@ The task for the routine that fires on a schedule, with no issue to work from.
 
 Nobody asked for anything. Work out the one capability this project should gain next, and file it as an issue. The label you add starts an implementation run, so filing books a human's review time.
 
+## Check whether the harness is paused
+
+Before anything else, look up the repo's `HARNESS_PAUSED` variable (list or read the repository variable by that name). If its value is `true`, end the run without filing: the harness is paused, so the `claude` label a new issue needs would queue up a run that will not start.
+
 ## Check what's already open
 
 Before choosing a capability, list open issues labeled `claude` and open pull requests from `claude/` branches. If either list is non-empty, file nothing and end the run: that work already owes a human a review, and filing more only grows the queue ahead of it.
