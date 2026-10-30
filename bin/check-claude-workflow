@@ -14,12 +14,12 @@ workflow=.github/workflows/claude.yml
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 
-# Pulls the "Fire the routine" step's run: block out of claude.yml, dedented
-# to plain shell. Exits on the next step (a line back at the step-list
-# indentation) so only that one step's script is captured.
-extract_fire_step() {
-  awk '
-    /^      - name: Fire the routine$/ { instep=1; next }
+# Pulls step $1's run: block out of claude.yml, dedented to plain shell.
+# Exits on the next step (a line back at the step-list indentation) so only
+# that one step's script is captured.
+extract_step() {
+  awk -v step_name="      - name: $1" '
+    $0 == step_name { instep=1; next }
     instep && !inrun && /^        run: \|/ { inrun=1; next }
     instep && !inrun && /^      - name:/ { exit }
     inrun {
@@ -37,7 +37,7 @@ extract_fire_step() {
 }
 
 fire_script="$scratch/fire.sh"
-extract_fire_step > "$fire_script"
+extract_step "Fire the routine" > "$fire_script"
 [ -s "$fire_script" ] || fail "extracted an empty run: block for the \"Fire the routine\" step; check its name or indentation in $workflow"
 grep -q 'session-url=' "$fire_script" || fail "extracted script doesn't look like the fire step (no session-url write); check the extractor against $workflow"
 
@@ -160,6 +160,48 @@ run_fire_step "id" "token" 200 "$happy_body"
 assert_curl_called_once "happy path"
 assert_request_well_formed "id" "token" "happy path"
 echo "✓ 200 with a session URL succeeds and writes session-url=<url>, after calling curl exactly once"
+
+# --- the workflow gate ---
+# Mirrors `harness pause`/`harness resume` (bin/harness-cli): a paused repo
+# must skip the POST entirely, not just fail it, and the step after fire
+# must never claim success when fire itself was skipped.
+grep -qxF "        if: vars.HARNESS_PAUSED != 'true'" "$workflow" ||
+  fail "expected the \"Fire the routine\" step to skip while HARNESS_PAUSED is true; check its if: in $workflow"
+grep -qxF "        if: steps.fire.outcome == 'success'" "$workflow" ||
+  fail "expected \"Link the session on the issue\" to require steps.fire.outcome == 'success', not plain success(); check its if: in $workflow"
+echo "✓ the fire step is gated on HARNESS_PAUSED, and the link step on fire's own outcome"
+
+# --- the "Report the harness is paused" step ---
+paused_script="$scratch/paused.sh"
+extract_step "Report the harness is paused" > "$paused_script"
+[ -s "$paused_script" ] || fail "extracted an empty run: block for the \"Report the harness is paused\" step; check its name or indentation in $workflow"
+
+paused_comment_calls="$scratch/paused-comment-calls"
+paused_stub_bin="$scratch/paused_stub_bin"
+mkdir -p "$paused_stub_bin"
+cat > "$paused_stub_bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "issue comment")
+    issue=$3
+    shift 3
+    printf '%s %s\n' "$issue" "$*" >> "$STUB_GH_COMMENT_CALLS"
+    ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$paused_stub_bin/gh"
+
+paused_output=$(
+  PATH="$paused_stub_bin:$PATH" STUB_GH_COMMENT_CALLS="$paused_comment_calls" \
+    ISSUE_NUMBER=50 GITHUB_REPOSITORY="Eschults/harness" \
+    bash "$paused_script" 2>&1
+) || fail "expected the \"Report the harness is paused\" step to succeed, got: $paused_output"
+paused_comments=$([ -f "$paused_comment_calls" ] && cat "$paused_comment_calls" || echo "")
+echo "$paused_comments" | grep -qF "50" || fail "expected the paused step to comment on issue 50, got: $paused_comments"
+echo "$paused_comments" | grep -qF "HARNESS_PAUSED=true" || fail "expected the paused comment to name HARNESS_PAUSED=true, got: $paused_comments"
+echo "$paused_comments" | grep -qF "harness resume" || fail "expected the paused comment to point at harness resume, got: $paused_comments"
+echo "✓ the \"Report the harness is paused\" step comments the fix on the issue"
 
 echo
 echo "claude.yml fire step: all passed"

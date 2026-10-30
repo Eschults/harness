@@ -28,6 +28,7 @@ cat > "$stub_bin/gh" <<'STUB'
 case "$1 $2" in
   "repo view") printf '%s\n' "${STUB_GH_REPO:-Eschults/harness}" ;;
   "issue view") printf '%s\n' "${STUB_GH_ISSUE_URL:-https://github.com/Eschults/harness/issues/99}" ;;
+  "variable get") printf '%s\n' "${STUB_GH_PAUSED_VALUE:-}" ;;
   "issue comment")
     issue=$3
     shift 3
@@ -66,6 +67,7 @@ run_fire_issue() {
       STUB_CURL_CALLS="$calls_file" STUB_CURL_REQUEST="$request_file" \
       STUB_CURL_STATUS="${STUB_CURL_STATUS:-200}" STUB_CURL_BODY="${STUB_CURL_BODY:-}" \
       STUB_GH_REPO="${STUB_GH_REPO:-Eschults/harness}" STUB_GH_ISSUE_URL="${STUB_GH_ISSUE_URL:-https://github.com/Eschults/harness/issues/99}" \
+      STUB_GH_PAUSED_VALUE="${STUB_GH_PAUSED_VALUE:-}" \
       STUB_GH_COMMENT_CALLS="$comment_calls" \
       CLAUDE_ROUTINE_ID="${CLAUDE_ROUTINE_ID-id}" CLAUDE_ROUTINE_TOKEN="${CLAUDE_ROUTINE_TOKEN-token}" \
       "$cli" issue "$@" 2>&1
@@ -79,6 +81,8 @@ assert_contains() {
   local haystack=$1 needle=$2 context=$3
   echo "$haystack" | grep -qF -- "$needle" || fail "$context: expected to find '$needle' in: $haystack"
 }
+
+happy_body='{"claude_code_session_url":"https://claude.ai/code/session_test123"}'
 
 # --- no issue number ---
 run_fire_issue
@@ -121,6 +125,20 @@ run_output=$(cd "$repo" && PATH="$no_gh_bin" CLAUDE_ROUTINE_ID=id CLAUDE_ROUTINE
 assert_contains "$run_output" "gh not found" "missing gh"
 echo "✓ a missing gh fails with the message naming it"
 
+# --- harness paused ---
+STUB_GH_PAUSED_VALUE=true run_fire_issue 74
+[ "$run_exit" -ne 0 ] || fail "expected harness issue to refuse while the harness is paused"
+assert_contains "$run_output" "The harness is paused (HARNESS_PAUSED=true); run harness resume" "harness paused"
+[ "$run_calls" -eq 0 ] || fail "harness paused: expected no curl call, got $run_calls"
+[ -z "$run_comments" ] || fail "harness paused: expected no issue comment to be posted, got: $run_comments"
+echo "✓ harness issue refuses while the harness is paused, without calling curl or commenting"
+
+# --- HARNESS_PAUSED set but not "true" ---
+STUB_GH_PAUSED_VALUE=false STUB_CURL_STATUS=200 STUB_CURL_BODY="$happy_body" run_fire_issue 74
+[ "$run_exit" -eq 0 ] || fail "expected harness issue to proceed when HARNESS_PAUSED is set to something other than true, got exit $run_exit: $run_output"
+[ "$run_calls" -eq 1 ] || fail "HARNESS_PAUSED=false: expected curl to be called exactly once, got $run_calls"
+echo "✓ harness issue proceeds when HARNESS_PAUSED is set to anything but true"
+
 # --- HTTP >= 300 ---
 STUB_CURL_STATUS=401 run_fire_issue 74
 [ "$run_exit" -ne 0 ] || fail "expected an HTTP 401 response to fail"
@@ -137,7 +155,6 @@ assert_contains "$run_output" "no session URL" "200 with no session URL"
 echo "✓ 200 with no session URL fails and posts no issue comment"
 
 # --- happy path ---
-happy_body='{"claude_code_session_url":"https://claude.ai/code/session_test123"}'
 STUB_CURL_STATUS=200 STUB_CURL_BODY="$happy_body" STUB_GH_REPO="Eschults/harness" STUB_GH_ISSUE_URL="https://github.com/Eschults/harness/issues/74" run_fire_issue 74
 [ "$run_exit" -eq 0 ] || fail "expected a 200 response with a session URL to succeed, got exit $run_exit: $run_output"
 assert_contains "$run_output" "Fired: https://claude.ai/code/session_test123" "happy path"

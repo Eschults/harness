@@ -37,6 +37,10 @@ case "$1 $2" in
     [ "${STUB_GH_VARIABLE_LIST_EXIT:-0}" = 0 ] || exit "${STUB_GH_VARIABLE_LIST_EXIT}"
     printf '%s\n' "${STUB_GH_VARIABLES:-}"
     ;;
+  "variable get")
+    [ "${STUB_GH_PAUSED_GET_EXIT:-0}" = 0 ] || exit "${STUB_GH_PAUSED_GET_EXIT}"
+    printf '%s\n' "${STUB_GH_PAUSED_VALUE:-}"
+    ;;
   "secret list")
     [ "${STUB_GH_SECRET_LIST_EXIT:-0}" = 0 ] || exit "${STUB_GH_SECRET_LIST_EXIT}"
     printf '%s\n' "${STUB_GH_SECRETS:-}"
@@ -108,6 +112,8 @@ run_doctor() {
     STUB_GH_LABEL_LIST_EXIT="${STUB_GH_LABEL_LIST_EXIT:-0}" \
     STUB_GH_VARIABLES="${STUB_GH_VARIABLES-CLAUDE_ROUTINE_ID}" \
     STUB_GH_VARIABLE_LIST_EXIT="${STUB_GH_VARIABLE_LIST_EXIT:-0}" \
+    STUB_GH_PAUSED_VALUE="${STUB_GH_PAUSED_VALUE:-}" \
+    STUB_GH_PAUSED_GET_EXIT="${STUB_GH_PAUSED_GET_EXIT:-0}" \
     STUB_GH_SECRETS="${STUB_GH_SECRETS-CLAUDE_ROUTINE_TOKEN}" \
     STUB_GH_SECRET_LIST_EXIT="${STUB_GH_SECRET_LIST_EXIT:-0}" \
     STUB_GH_DEFAULT_BRANCH="${STUB_GH_DEFAULT_BRANCH-main}" \
@@ -339,6 +345,48 @@ assert_contains "$output" '✗ CLAUDE_ROUTINE_TOKEN secret is not set' "missing 
 echo "✓ a missing CLAUDE_ROUTINE_TOKEN secret fails the check that names it"
 echo "$output" | grep -q 'sk-ant' && fail "expected no secret value to ever appear in doctor output"
 
+# --- not paused (HARNESS_PAUSED unset) ---
+repo="$scratch/not-paused"
+build_healthy_repo "$repo"
+if ! output=$(run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected harness doctor to exit 0 when HARNESS_PAUSED is unset"
+fi
+assert_contains "$output" '✓ harness is not paused' "not paused"
+echo "✓ an unset HARNESS_PAUSED passes the paused check"
+
+# --- paused ---
+repo="$scratch/paused"
+build_healthy_repo "$repo"
+if ! output=$(STUB_GH_VARIABLES="$(printf 'CLAUDE_ROUTINE_ID\nHARNESS_PAUSED\n')" STUB_GH_PAUSED_VALUE=true run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected harness doctor to exit 0 when the harness is paused; a pause is a warning, not a failure"
+fi
+assert_contains "$output" '⚠ harness is paused (HARNESS_PAUSED=true); run harness resume to let new claude labels start runs' "paused"
+echo "$output" | grep -q '✗' && fail "expected a paused harness to warn, never fail the run, got: $output"
+echo "✓ a paused harness warns instead of failing, naming harness resume"
+
+# --- HARNESS_PAUSED set but not "true" ---
+repo="$scratch/paused-other-value"
+build_healthy_repo "$repo"
+if ! output=$(STUB_GH_VARIABLES="$(printf 'CLAUDE_ROUTINE_ID\nHARNESS_PAUSED\n')" STUB_GH_PAUSED_VALUE=false run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected harness doctor to exit 0 when HARNESS_PAUSED is set to something other than true"
+fi
+assert_contains "$output" '✓ harness is not paused' "paused other value"
+echo "✓ HARNESS_PAUSED set to anything but true passes the paused check"
+
+# --- HARNESS_PAUSED value lookup fails ---
+repo="$scratch/paused-get-fails"
+build_healthy_repo "$repo"
+if ! output=$(STUB_GH_VARIABLES="$(printf 'CLAUDE_ROUTINE_ID\nHARNESS_PAUSED\n')" STUB_GH_PAUSED_GET_EXIT=1 run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected harness doctor to exit 0 when the HARNESS_PAUSED value can't be read but every other check passes"
+fi
+assert_contains "$output" '- harness paused state (skipped: could not read the HARNESS_PAUSED variable)' "paused get failure"
+echo "$output" | grep -q '✗' && fail "expected a failed HARNESS_PAUSED lookup to be a skip, never a false failure, got: $output"
+echo "✓ a failed HARNESS_PAUSED value lookup is skipped rather than reported as paused or not"
+
 # --- harness file missing on the default branch ---
 repo="$scratch/missing-on-default-branch"
 build_healthy_repo "$repo"
@@ -374,6 +422,7 @@ fi
 assert_contains "$output" '- claude label (skipped: could not list labels)' "label list failure"
 assert_contains "$output" '- risk:high label (skipped: could not list labels)' "label list failure"
 assert_contains "$output" '- CLAUDE_ROUTINE_ID variable (skipped: could not list variables)' "variable list failure"
+assert_contains "$output" '- harness paused state (skipped: could not list variables)' "variable list failure"
 assert_contains "$output" '- CLAUDE_ROUTINE_TOKEN secret (skipped: could not list secrets)' "secret list failure"
 echo "$output" | grep -q '✗' && fail "expected a failed label/variable/secret list to be a skip, never a false failure, got: $output"
 echo "✓ a failed gh label/variable/secret list is skipped rather than reported as missing/not set"
@@ -441,6 +490,7 @@ assert_contains "$output" '- claude label (skipped: gh is not installed)' "gh mi
 assert_contains "$output" '- risk:low label (skipped: gh is not installed)' "gh missing"
 assert_contains "$output" '- risk:medium label (skipped: gh is not installed)' "gh missing"
 assert_contains "$output" '- risk:high label (skipped: gh is not installed)' "gh missing"
+assert_contains "$output" '- harness paused state (skipped: gh is not installed)' "gh missing"
 assert_contains "$output" '- harness files on the default branch (skipped: gh is not installed)' "gh missing"
 assert_contains "$output" '- GitHub Actions enabled (skipped: gh is not installed)' "gh missing"
 assert_contains "$output" '- claude.yml workflow active (skipped: gh is not installed)' "gh missing"
@@ -454,6 +504,7 @@ if ! output=$(STUB_GH_AUTH_EXIT=1 run_doctor "$repo"); then
   fail "expected harness doctor to exit 0 when gh is unauthenticated and every local check passes"
 fi
 assert_contains "$output" '- CLAUDE_ROUTINE_ID variable (skipped: gh is not authenticated' "gh unauthenticated"
+assert_contains "$output" '- harness paused state (skipped: gh is not authenticated' "gh unauthenticated"
 assert_contains "$output" '- harness files on the default branch (skipped: gh is not authenticated' "gh unauthenticated"
 assert_contains "$output" '- GitHub Actions enabled (skipped: gh is not authenticated' "gh unauthenticated"
 assert_contains "$output" '- claude.yml workflow active (skipped: gh is not authenticated' "gh unauthenticated"

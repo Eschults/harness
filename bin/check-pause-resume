@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Functional check for `harness pause` and `harness resume`: runs them in a
+# scratch repo with a stubbed gh on PATH, covering the happy path and the
+# failure branches (missing gh, unauthenticated, re-running each command).
+# No model calls, no real gh/network calls.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+cli="$(pwd)/bin/harness-cli"
+
+# shellcheck source=bin/lib/check-helpers.sh
+source bin/lib/check-helpers.sh
+
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+
+repo="$scratch/repo"
+git init -q "$repo"
+
+# Stub gh: records every "variable set"/"variable delete" call (name plus
+# value, for set) so a test can assert what was pushed, without reaching a
+# real repo.
+stub_bin="$scratch/stub_bin"
+mkdir -p "$stub_bin"
+set_calls="$scratch/gh-set-calls"
+delete_calls="$scratch/gh-delete-calls"
+cat > "$stub_bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "auth status") exit "${STUB_GH_AUTH_EXIT:-0}" ;;
+  "variable set")
+    name=$3
+    shift 3
+    value=""
+    args=("$@")
+    for ((i = 0; i < ${#args[@]}; i++)); do
+      [ "${args[i]}" = "--body" ] && value="${args[i + 1]}"
+    done
+    printf '%s %s\n' "$name" "$value" >> "$STUB_GH_SET_CALLS"
+    ;;
+  "variable delete")
+    [ "${STUB_GH_VARIABLE_PRESENT:-1}" = 1 ] || exit 1
+    printf '%s\n' "$3" >> "$STUB_GH_DELETE_CALLS"
+    ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$stub_bin/gh"
+
+run_harness() {
+  local cmd=$1
+  rm -f "$set_calls" "$delete_calls"
+  run_exit=0
+  run_output=$(
+    cd "$repo"
+    PATH="$stub_bin:$PATH" \
+      STUB_GH_AUTH_EXIT="${STUB_GH_AUTH_EXIT:-0}" \
+      STUB_GH_VARIABLE_PRESENT="${STUB_GH_VARIABLE_PRESENT:-1}" \
+      STUB_GH_SET_CALLS="$set_calls" STUB_GH_DELETE_CALLS="$delete_calls" \
+      "$cli" "$cmd" 2>&1
+  ) || run_exit=$?
+  run_sets=$([ -f "$set_calls" ] && cat "$set_calls" || echo "")
+  run_deletes=$([ -f "$delete_calls" ] && cat "$delete_calls" || echo "")
+}
+
+assert_contains() {
+  local haystack=$1 needle=$2 context=$3
+  echo "$haystack" | grep -qF -- "$needle" || fail "$context: expected to find '$needle' in: $haystack"
+}
+
+# --- pause: happy path ---
+run_harness pause
+[ "$run_exit" -eq 0 ] || fail "expected harness pause to succeed, got exit $run_exit: $run_output"
+assert_contains "$run_output" "Paused" "pause happy path"
+[ "$run_sets" = "HARNESS_PAUSED true" ] || fail "expected harness pause to set HARNESS_PAUSED to true, got: $run_sets"
+echo "✓ harness pause sets HARNESS_PAUSED to true"
+
+# --- pause: safe to re-run ---
+run_harness pause
+[ "$run_exit" -eq 0 ] || fail "expected a second harness pause to succeed, got exit $run_exit: $run_output"
+echo "✓ harness pause is safe to re-run"
+
+# --- resume: happy path ---
+run_harness resume
+[ "$run_exit" -eq 0 ] || fail "expected harness resume to succeed, got exit $run_exit: $run_output"
+assert_contains "$run_output" "Resumed" "resume happy path"
+[ "$run_deletes" = "HARNESS_PAUSED" ] || fail "expected harness resume to delete HARNESS_PAUSED, got: $run_deletes"
+echo "✓ harness resume deletes HARNESS_PAUSED"
+
+# --- resume: safe to re-run when HARNESS_PAUSED is already gone ---
+STUB_GH_VARIABLE_PRESENT=0 run_harness resume
+[ "$run_exit" -eq 0 ] || fail "expected harness resume to succeed even when HARNESS_PAUSED is already unset, got exit $run_exit: $run_output"
+assert_contains "$run_output" "Resumed" "resume already unset"
+echo "✓ harness resume is safe to re-run when HARNESS_PAUSED is already unset"
+
+# --- missing gh ---
+no_gh_bin="$scratch/no_gh_bin"
+mkdir -p "$no_gh_bin"
+for cmd in bash git; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_gh_bin/$cmd"
+done
+for subcmd in pause resume; do
+  run_exit=0
+  run_output=$(cd "$repo" && PATH="$no_gh_bin" "$cli" "$subcmd" 2>&1) || run_exit=$?
+  [ "$run_exit" -ne 0 ] || fail "expected harness $subcmd to fail when gh is missing"
+  assert_contains "$run_output" "gh not found" "missing gh ($subcmd)"
+done
+echo "✓ harness pause and harness resume fail with the message naming gh when it's missing"
+
+# --- gh unauthenticated ---
+for subcmd in pause resume; do
+  STUB_GH_AUTH_EXIT=1 run_harness "$subcmd"
+  [ "$run_exit" -ne 0 ] || fail "expected harness $subcmd to fail when gh is unauthenticated"
+  assert_contains "$run_output" "gh is not authenticated; run gh auth login." "gh unauthenticated ($subcmd)"
+done
+echo "✓ harness pause and harness resume fail with a clear message when gh is unauthenticated"
+
+echo
+echo "harness pause/resume check: all passed"

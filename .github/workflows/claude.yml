@@ -30,6 +30,7 @@ jobs:
       # no attacker-controlled text lands inside the prompt.
       - name: Fire the routine
         id: fire
+        if: vars.HARNESS_PAUSED != 'true'
         env:
           ROUTINE_ID: ${{ vars.CLAUDE_ROUTINE_ID }}
           ROUTINE_TOKEN: ${{ secrets.CLAUDE_ROUTINE_TOKEN }}
@@ -73,11 +74,23 @@ jobs:
 
           echo "session-url=$session_url" >> "$GITHUB_OUTPUT"
 
+      # Mirrors `harness pause`'s HARNESS_PAUSED check and cmd_issue's
+      # refusal in bin/harness-cli, so a paused harness reads the same
+      # wherever it's hit.
+      - name: Report the harness is paused
+        if: vars.HARNESS_PAUSED == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          body="The harness is paused (HARNESS_PAUSED=true); run harness resume, then remove and re-add the claude label to start a run."
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$body"
+
       # The session outlives this job, so the issue is the only place a human
       # reliably finds it. A stalled `claude` label that nobody knows about is
       # the worst failure mode this harness has, so report both outcomes.
       - name: Link the session on the issue
-        if: success()
+        if: steps.fire.outcome == 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}

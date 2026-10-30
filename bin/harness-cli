@@ -24,6 +24,9 @@ LEGACY_FILES=(
   "bin/lib/version-check.sh"
 )
 RULES_IMPORT='@.claude/harness-rules.md'
+# Shared verbatim between cmd_issue's refusal and claude.yml's issue comment,
+# so both name the same fix for a paused harness.
+HARNESS_PAUSED_MESSAGE="The harness is paused (HARNESS_PAUSED=true); run harness resume, then remove and re-add the claude label to start a run."
 # name|color|description, in display order. install creates whichever of
 # these GitHub doesn't already have; doctor reports whichever is missing.
 HARNESS_LABELS=(
@@ -42,6 +45,8 @@ Commands:
   upgrade          Pull in the latest harness release
   doctor [--fire]  Check the install end to end; --fire also fires the routine once
   issue <number>   Fire the "Issue to PR" routine for one issue, bypassing GitHub Actions
+  pause            Set HARNESS_PAUSED so new claude labels stop starting runs
+  resume           Clear HARNESS_PAUSED so claude labels start runs again
   stats [--since <N>d]  Report what claude/ pull requests become (default 30d)
   uninstall        Remove the harness files and the CLAUDE.md import
   -v, --version    Print the harness version this repo runs
@@ -365,6 +370,13 @@ routine_credentials_set() {
   [ -n "${CLAUDE_ROUTINE_ID:-}" ] && [ -n "${CLAUDE_ROUTINE_TOKEN:-}" ]
 }
 
+# True when the repo's HARNESS_PAUSED variable is exactly "true". A missing
+# variable, any other value, or a failed lookup (gh missing, unauthenticated,
+# network) all read as false: a lookup problem must never block a real run.
+harness_paused() {
+  [ "$(gh variable get HARNESS_PAUSED --json value --jq .value 2>/dev/null)" = "true" ]
+}
+
 cmd_issue() {
   local issue=${1:-}
   if [ -z "$issue" ] || ! [[ "$issue" =~ ^[0-9]+$ ]]; then
@@ -374,6 +386,11 @@ cmd_issue() {
 
   require_tools curl jq gh
   cd_repo_root
+
+  if harness_paused; then
+    echo "$HARNESS_PAUSED_MESSAGE" >&2
+    exit 1
+  fi
 
   load_routine_credentials
   if ! routine_credentials_set; then
@@ -406,6 +423,28 @@ cmd_issue() {
 
   gh issue comment "$issue" --body "Claude is looking into it :point_right: $session_url incoming PR :hourglass_flowing_sand:"
   echo "Fired: $session_url"
+}
+
+cmd_pause() {
+  require_tools gh
+  cd_repo_root
+  if ! gh auth status >/dev/null 2>&1; then
+    echo "gh is not authenticated; run gh auth login." >&2
+    exit 1
+  fi
+  gh variable set HARNESS_PAUSED --body true >/dev/null
+  echo "Paused: new claude labels will no longer start runs. Run harness resume to let them start again."
+}
+
+cmd_resume() {
+  require_tools gh
+  cd_repo_root
+  if ! gh auth status >/dev/null 2>&1; then
+    echo "gh is not authenticated; run gh auth login." >&2
+    exit 1
+  fi
+  gh variable delete HARNESS_PAUSED >/dev/null 2>&1 || true
+  echo "Resumed: remove and re-add the claude label on any issue you want to (re)start."
 }
 
 # Prints an ISO-8601 UTC timestamp $1 days before now, or before
@@ -715,8 +754,8 @@ cmd_doctor() {
     IFS='|' read -r name color description <<< "$entry"
     label_checks+=("$name label")
   done
-  local gh_checks=("${label_checks[@]}" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret" "harness files on the default branch" "GitHub Actions enabled" "claude.yml workflow active")
-  local c labels variables secrets default_branch default_branch_tree actions_enabled workflow_state
+  local gh_checks=("${label_checks[@]}" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret" "harness paused state" "harness files on the default branch" "GitHub Actions enabled" "claude.yml workflow active")
+  local c labels variables secrets default_branch default_branch_tree actions_enabled workflow_state paused_value
   if ! command -v gh >/dev/null 2>&1; then
     for c in "${gh_checks[@]}"; do skip "$c" "gh is not installed"; done
   elif ! gh auth status >/dev/null 2>&1; then
@@ -750,8 +789,21 @@ cmd_doctor() {
       else
         bad "CLAUDE_ROUTINE_ID variable is not set; see $HARNESS_README#3-set-two-repo-values"
       fi
+
+      if ! echo "$variables" | grep -qxF HARNESS_PAUSED; then
+        ok "harness is not paused"
+      elif paused_value=$(gh variable get HARNESS_PAUSED --json value --jq .value 2>/dev/null); then
+        if [ "$paused_value" = "true" ]; then
+          warn "harness is paused (HARNESS_PAUSED=true); run harness resume to let new claude labels start runs"
+        else
+          ok "harness is not paused"
+        fi
+      else
+        skip "harness paused state" "could not read the HARNESS_PAUSED variable"
+      fi
     else
       skip "CLAUDE_ROUTINE_ID variable" "could not list variables"
+      skip "harness paused state" "could not list variables"
     fi
 
     if secrets=$(gh secret list --json name --jq '.[].name' 2>/dev/null); then
@@ -870,6 +922,8 @@ main() {
     upgrade) cmd_upgrade ;;
     doctor) cmd_doctor "$@" ;;
     issue) cmd_issue "$@" ;;
+    pause) cmd_pause ;;
+    resume) cmd_resume ;;
     stats) cmd_stats "$@" ;;
     uninstall) cmd_uninstall ;;
     help | -h | --help) usage ;;

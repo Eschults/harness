@@ -126,7 +126,7 @@ Commit the harness files and merge them to your default branch, since the routin
 harness doctor
 ```
 
-It checks the files, the `CLAUDE.md` import, the label, the repo values, the default branch, that GitHub Actions and `claude.yml` are enabled, that your pinned release is current, and whether any harness file has drifted from it since install (a warning, since `harness upgrade` would overwrite it). It never prints a secret.
+It checks the files, the `CLAUDE.md` import, the label, the repo values, whether the harness is paused, the default branch, that GitHub Actions and `claude.yml` are enabled, that your pinned release is current, and whether any harness file has drifted from it since install (a warning, since `harness upgrade` would overwrite it). It never prints a secret.
 
 #### 5. (Optional) Create the "Next to build" routine
 
@@ -146,6 +146,7 @@ Set the trigger to **Schedule** at whatever frequency suits your team, leave **A
 ## Worth knowing
 
 - **A green workflow run means "session started"**, not "PR opened". The workflow comments the session URL on the issue, or the reason it could not start one.
+- **`harness pause` stops new runs without uninstalling.** It sets the `HARNESS_PAUSED` repo variable; `claude.yml` then skips firing and comments on the issue instead, and `harness issue` refuses with the same message. Useful during an incident, a release freeze, or a week your subscription usage is spent. `harness resume` clears it; re-add the `claude` label on anything that needs to (re)start. Both commands need `gh` installed and authenticated. `harness doctor` reports a paused harness as a warning, not a failure.
 - **Add a `REVIEW.md` at your repo root to steer the self-review.** `/code-review` and `/security-review` don't read it on their own, so the Review step reads it when present and feeds it to both passes — for example `Treat any change under migrations/ as Important` or `Skip nits in generated code under src/gen/`.
 - **Other tools can file work too.** Have your APM file a `claude`-labeled issue on high-severity errors, or your roadmap tool push cards to GitHub when they're ready to build.
 - **But not another GitHub Actions workflow.** Labels added with the default `GITHUB_TOKEN` don't trigger workflows, so the run never starts. That's why "Next to build" is a routine, not a cron workflow.
