@@ -20,7 +20,7 @@ mkdir -p "$fixtures"
 jq -n '[
   {number: 41, title: "SECRET-TITLE add billing", head: {ref: "claude/secret-branch"}, state: "closed",
    merged_at: "2026-10-05T00:00:00Z", draft: false, merge_commit_sha: "sha-a", created_at: "2026-10-05T00:00:00Z",
-   html_url: "https://github.com/acme/secret-repo/pull/41", labels: [{name: "risk:high"}]},
+   html_url: "https://github.com/acme/secret-repo/pull/41", labels: [{name: "risk:high"}, {name: "risk:project-falcon"}]},
   {number: 42, title: "Revert \"SECRET-TITLE add billing\"", head: {ref: "human/revert"}, state: "closed",
    merged_at: "2026-10-06T00:00:00Z", draft: false, merge_commit_sha: "sha-b", created_at: "2026-10-06T00:00:00Z",
    html_url: "https://github.com/acme/secret-repo/pull/42", labels: []}
@@ -38,16 +38,28 @@ case "$1 $2" in
     [ "${STUB_GH_OPTED_IN:-1}" = 1 ] || exit 1
     printf 'true\n'
     ;;
+  "variable list")
+    [ "${STUB_GH_LIST_EXIT:-0}" = 0 ] || { echo "HTTP 403" >&2; exit "$STUB_GH_LIST_EXIT"; }
+    echo OTHER_VARIABLE
+    [ "${STUB_GH_OPTED_IN:-1}" = 1 ] && echo HARNESS_FEEDBACK
+    exit 0
+    ;;
   "variable set"|"variable delete") printf '%s\n' "$*" >> "$STUB_GH_CALLS" ;;
   "issue create")
     printf '%s\n' "$@" >> "$STUB_GH_CALLS"
     echo "https://github.com/Eschults/harness/issues/1"
     ;;
-  "api user") echo some-login ;;
+  "api --hostname")
+    [ "$3 $4" = "github.com user" ] || { echo "stub gh: unexpected call: $*" >&2; exit 1; }
+    echo some-login
+    ;;
   "api repos/{owner}/{repo}") echo main ;;
   "api repos/{owner}/{repo}/pulls") cat "$STUB_FIXTURES/pulls.json" ;;
   "api repos/{owner}/{repo}/commits") echo '[]' ;;
-  "api repos/{owner}/{repo}/pulls/"*) cat "$STUB_FIXTURES/pr-commits.json" ;;
+  "api repos/{owner}/{repo}/pulls/"*)
+    [ "${STUB_GH_PR_COMMITS_EXIT:-0}" = 0 ] || exit "$STUB_GH_PR_COMMITS_EXIT"
+    cat "$STUB_FIXTURES/pr-commits.json"
+    ;;
   *) echo "stub gh: unexpected call: $*" >&2; exit 1 ;;
 esac
 STUB
@@ -64,7 +76,32 @@ run_harness() {
   ) || run_exit=$?
 }
 
-# Same, with a person at a terminal answering $1.
+# Runs the real CLI on a real pty, typing $1. With PTY_STDOUT_FILE set, stdout goes to that file instead of the pty.
+pty_runner="$scratch/run-on-pty.py"
+cat > "$pty_runner" <<'PY'
+import os
+import pty
+import sys
+
+answer, command = sys.argv[1], sys.argv[2:]
+pid, master = pty.fork()
+if pid == 0:
+    stdout_file = os.environ.get("PTY_STDOUT_FILE")
+    if stdout_file:
+        os.dup2(os.open(stdout_file, os.O_WRONLY | os.O_CREAT), 1)
+    os.execv(command[0], command)
+os.write(master, (answer + "\n").encode())
+while True:
+    try:
+        chunk = os.read(master, 4096)
+    except OSError:
+        break
+    if not chunk:
+        break
+    sys.stdout.buffer.write(chunk)
+sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
+PY
+
 run_at_terminal() {
   local answer=$1
   shift
@@ -72,8 +109,8 @@ run_at_terminal() {
   run_exit=0
   run_output=$(
     cd "$repo"
-    printf '%s\n' "$answer" | PATH="$stub_bin:$PATH" STUB_FIXTURES="$fixtures" STUB_GH_CALLS="$calls" \
-      HARNESS_STATS_NOW=2026-10-31T00:00:00Z bash -c 'source "$1"; feedback_can_confirm() { true; }; shift; main feedback "$@"' _ "$cli" "$@" 2>&1
+    PATH="$stub_bin:$PATH" STUB_FIXTURES="$fixtures" STUB_GH_CALLS="$calls" \
+      HARNESS_STATS_NOW=2026-10-31T00:00:00Z python3 "$pty_runner" "$answer" "$cli" feedback "$@" 2>&1
   ) || run_exit=$?
 }
 
@@ -98,13 +135,36 @@ run_harness disable
 [ ! -s "$calls" ] || fail "expected no delete when already opted out, got: $(cat "$calls")"
 echo "✓ enable sets HARNESS_FEEDBACK, disable clears it, and disable is safe to re-run"
 
+# --- disable: a failed lookup is not reported as an opt-out ---
+STUB_GH_LIST_EXIT=1 run_harness disable
+[ "$run_exit" -ne 0 ] || fail "expected disable to fail when the lookup fails: $run_output"
+if echo "$run_output" | grep -qF "Opted out"; then fail "expected no opt-out claim when the lookup failed: $run_output"; fi
+assert_contains "$run_output" "it may still be" "disable lookup failure"
+echo "✓ disable fails, rather than claiming an opt-out, when it can't check the variable"
+
+# --- enable and disable reject stray arguments before changing anything ---
+for subcmd in enable disable; do
+  STUB_GH_OPTED_IN=1 run_harness "$subcmd" --dry-run
+  [ "$run_exit" -ne 0 ] || fail "expected $subcmd --dry-run to be refused: $run_output"
+  assert_contains "$run_output" "Unexpected argument: --dry-run" "$subcmd stray argument"
+  [ ! -s "$calls" ] || fail "expected $subcmd --dry-run to change nothing, got: $(cat "$calls")"
+done
+echo "✓ enable and disable reject stray arguments and change nothing"
+
 # --- not opted in: refused, even at a terminal answering yes ---
 run_at_terminal y --note "a lesson"
 [ "$run_exit" -ne 0 ] || fail "expected a repo that has not opted in to be refused: $run_output"
 assert_contains "$run_output" "has not opted in" "not opted in"
 assert_nothing_filed "not opted in"
-export STUB_GH_OPTED_IN=1
 echo "✓ a repo that has not opted in cannot file, even at a terminal answering yes"
+
+# --- dry run before opting in: the owner can read the report first ---
+run_harness --note "a lesson" --dry-run
+[ "$run_exit" -eq 0 ] || fail "expected a dry run to work before opting in: $run_output"
+assert_contains "$run_output" "nothing was sent" "dry run before opting in"
+assert_nothing_filed "dry run before opting in"
+export STUB_GH_OPTED_IN=1
+echo "✓ a dry run works before opting in, and sends nothing"
 
 # --- dry run: the report holds the note and counts, and nothing that identifies the repo ---
 run_harness --note "Rules were unclear on X" --dry-run
@@ -117,7 +177,7 @@ assert_contains "$run_output" "Reverted: 1" "dry run reverts"
 assert_contains "$run_output" "risk:high: 1 opened, 1 merged" "dry run tier"
 assert_contains "$run_output" "nothing was sent" "dry run says so"
 assert_nothing_filed "dry run"
-for private in SECRET-TITLE secret-repo secret-branch acme "#41" "pull/4"; do
+for private in SECRET-TITLE secret-repo secret-branch acme "#41" "pull/4" project-falcon; do
   if echo "$run_output" | grep -qF -- "$private"; then fail "report leaked '$private': $run_output"; fi
 done
 echo "✓ a dry run prints the note and counts, leaks no repo name, title, number or link, and sends nothing"
@@ -128,13 +188,26 @@ run_stdin="$scratch/yes" run_harness --note "a lesson"
 [ "$run_exit" -ne 0 ] || fail "expected filing without a terminal to be refused: $run_output"
 assert_contains "$run_output" "person at a terminal" "no terminal"
 assert_nothing_filed "no terminal"
-echo "✓ filing without a terminal is refused, even with a yes piped in"
+export PTY_STDOUT_FILE="$scratch/redirected-preview"
+run_at_terminal y --note "a lesson"
+unset PTY_STDOUT_FILE
+[ "$run_exit" -ne 0 ] || fail "expected filing with redirected output to be refused: $run_output"
+assert_contains "$run_output" "person at a terminal" "redirected output"
+assert_nothing_filed "redirected output"
+echo "✓ filing without a terminal is refused, even with a yes piped in or only the output redirected"
+
+# --- a failed commit lookup never reaches a report ---
+STUB_GH_PR_COMMITS_EXIT=1 run_at_terminal y --note "a lesson"
+[ "$run_exit" -ne 0 ] || fail "expected a failed commit lookup to stop the filing: $run_output"
+assert_contains "$run_output" "the counts would be wrong" "failed commit lookup"
+assert_nothing_filed "failed commit lookup"
+echo "✓ a failed commit lookup stops the filing instead of publishing wrong counts"
 
 # --- at a terminal: only a yes files, to the harness repo, with no label that could start a run ---
 run_at_terminal y --note "Rules were unclear on X"
 [ "$run_exit" -eq 0 ] || fail "expected a confirmed filing to succeed: $run_output"
 assert_contains "$run_output" "posts publicly on Eschults/harness as some-login" "confirmation warning"
-assert_contains "$(cat "$calls")" "Eschults/harness" "filed repo"
+assert_contains "$(cat "$calls")" "github.com/Eschults/harness" "filed repo"
 assert_contains "$(cat "$calls")" "Rules were unclear on X" "filed body"
 if grep -qF -- "--label" "$calls"; then fail "expected no label on the filed issue, got: $(cat "$calls")"; fi
 for answer in n ""; do

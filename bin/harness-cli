@@ -527,14 +527,14 @@ fetch_prs_since() {
 
 # True when every commit on PR $1's branch was authored by the run itself
 # (git author email noreply@anthropic.com, the identity every routine
-# commit carries) rather than a human push. Fails (non-zero, treated as "not
-# solo" by the caller) if the commits can't be listed.
+# commit carries) rather than a human push. Returns 1 when a human pushed,
+# and 2 when the commits can't be listed.
 stats_pr_is_claude_only() {
   local number=$1 tmp non_claude
   tmp=$(mktemp) || return 1
   if ! paginate_gh_api "$tmp" "repos/{owner}/{repo}/pulls/$number/commits"; then
     rm -f "$tmp"
-    return 1
+    return 2
   fi
   non_claude=$(jq -s '[.[] | select((.commit.author.email // "") != "noreply@anthropic.com")] | length' "$tmp")
   rm -f "$tmp"
@@ -603,7 +603,7 @@ $prs as $all
 JQ
 }
 
-# Sets stats_window_start, stats_summary, stats_solo, and stats_checked for the last $1 days.
+# Sets stats_window_start, stats_summary, stats_solo, stats_checked, and stats_lookup_failures for the last $1 days.
 collect_stats() {
   local since_days=$1 default_branch
   stats_window_start=$(stats_since_iso "$since_days") || { echo "Could not compute the --since cutoff date." >&2; exit 1; }
@@ -624,13 +624,18 @@ collect_stats() {
 
   stats_solo=0
   stats_checked=0
-  local num
+  stats_lookup_failures=0
+  local num solo_status
   while IFS= read -r num; do
     [ -n "$num" ] || continue
     stats_checked=$((stats_checked + 1))
-    if stats_pr_is_claude_only "$num" 2>/dev/null; then
-      stats_solo=$((stats_solo + 1))
-    fi
+    solo_status=0
+    stats_pr_is_claude_only "$num" 2>/dev/null || solo_status=$?
+    case "$solo_status" in
+      0) stats_solo=$((stats_solo + 1)) ;;
+      1) ;;
+      *) stats_lookup_failures=$((stats_lookup_failures + 1)) ;;
+    esac
   done < <(jq -r '.merged_numbers[]' <<< "$stats_summary")
 }
 
@@ -693,9 +698,9 @@ feedback_opted_in() {
   [ "$(gh variable get HARNESS_FEEDBACK --json value --jq .value 2>/dev/null)" = "true" ]
 }
 
-# Filing needs a person at a terminal, so an autonomous run can never post publicly.
+# Stdout counts too: whoever answers must have seen the preview. Stops accidents, not a process faking a terminal.
 feedback_can_confirm() {
-  [ -t 0 ]
+  [ -t 0 ] && [ -t 1 ]
 }
 
 # Repo-identifying data stays out on purpose: counts only, never titles, numbers, or links.
@@ -707,7 +712,8 @@ feedback_report() {
   jq -r '"- claude/ pull requests: \(.opened) opened, \(.merged) merged, \(.closed_unmerged) closed unmerged, \(.still_draft) still draft"' <<< "$summary"
   printf -- '- Merged with no human pushes: %s/%s\n' "$stats_solo" "$stats_checked"
   jq -r '"- Reverted: \(.reverts | length)"' <<< "$summary"
-  jq -r '(.by_tier // [])[] | "- \(.tier): \(.opened) opened, \(.merged) merged"' <<< "$summary"
+  # Only the harness's own tiers: a repo's custom risk: label could name a private project.
+  jq -r '(.by_tier // [])[] | select(.tier == "risk:low" or .tier == "risk:medium" or .tier == "risk:high") | "- \(.tier): \(.opened) opened, \(.merged) merged"' <<< "$summary"
 }
 
 cmd_feedback_enable() {
@@ -722,8 +728,11 @@ cmd_feedback_disable() {
   require_tools gh
   cd_repo_root
   require_gh_authenticated
-  # Only deletes when present, so a real delete failure surfaces via set -e.
-  if gh variable get HARNESS_FEEDBACK >/dev/null 2>&1; then
+  # Lists rather than gets, so a failed lookup is never mistaken for an already-absent variable.
+  local variable_names
+  variable_names=$(gh variable list --json name --jq '.[].name') ||
+    { echo "Could not check whether this repo is opted in; it may still be." >&2; exit 1; }
+  if grep -qx HARNESS_FEEDBACK <<< "$variable_names"; then
     gh variable delete HARNESS_FEEDBACK >/dev/null
   fi
   echo "Opted out: harness feedback will refuse to file issues from this repo."
@@ -732,8 +741,11 @@ cmd_feedback_disable() {
 cmd_feedback() {
   local usage_line="Usage: harness feedback enable|disable, or harness feedback [--note <text>] [--since <N>d] [--dry-run]"
   case "${1:-}" in
-    enable) cmd_feedback_enable; return ;;
-    disable) cmd_feedback_disable; return ;;
+    enable | disable)
+      [ $# -eq 1 ] || { echo "Unexpected argument: $2. $usage_line" >&2; exit 1; }
+      "cmd_feedback_$1"
+      return
+      ;;
   esac
 
   local note="" since_days=30 dry_run=0
@@ -765,12 +777,12 @@ cmd_feedback() {
   cd_repo_root
   require_gh_authenticated
 
-  if ! feedback_opted_in; then
+  if [ "$dry_run" -eq 0 ] && ! feedback_opted_in; then
     echo "This repo has not opted in to sharing feedback; run harness feedback enable first." >&2
     exit 1
   fi
   if [ "$dry_run" -eq 0 ] && ! feedback_can_confirm; then
-    echo "Filing needs a person at a terminal to confirm the preview; use --dry-run to only print it." >&2
+    echo "Filing needs a person at a terminal to read the preview and confirm, with neither input nor output redirected; use --dry-run to only print it." >&2
     exit 1
   fi
   if [ -z "$note" ] && feedback_can_confirm; then
@@ -782,6 +794,10 @@ cmd_feedback() {
   fi
 
   collect_stats "$since_days"
+  if [ "$stats_lookup_failures" -gt 0 ]; then
+    echo "Could not read the commits of $stats_lookup_failures merged pull request(s), so the counts would be wrong. Nothing was sent; try again later." >&2
+    exit 1
+  fi
 
   local version title body login confirm
   version=$(cat .claude/HARNESS_VERSION 2>/dev/null || echo unknown)
@@ -797,14 +813,14 @@ cmd_feedback() {
     return
   fi
 
-  login=$(gh api user --jq .login 2>/dev/null || echo "your GitHub account")
+  login=$(gh api --hostname github.com user --jq .login 2>/dev/null || echo "your GitHub account")
   echo "This posts publicly on $HARNESS_FEEDBACK_REPO as $login, exactly as shown above. Check your note for anything private."
   read -rp "File this issue? [y/N] " confirm
   if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
     echo "Not filed."
     return
   fi
-  gh issue create --repo "$HARNESS_FEEDBACK_REPO" --title "$title" --body "$body"
+  gh issue create --repo "github.com/$HARNESS_FEEDBACK_REPO" --title "$title" --body "$body"
 }
 
 doctor_failed=0
