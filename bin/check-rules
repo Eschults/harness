@@ -685,6 +685,11 @@ CHECKS = [
         "next-to-build.md should still file the new issue with the claude label",
     ),
     (
+        "next-to-build-pause-lookup-failure-carries-on",
+        "If you cannot read the variable, whatever the reason, carry on as not paused" in NEXT_TO_BUILD,
+        "next-to-build.md should still carry on when HARNESS_PAUSED can't be read, since routine environments may not be able to read repo variables",
+    ),
+    (
         "next-to-build-skip-when-work-open",
         "If either list is non-empty, file nothing and end the run" in NEXT_TO_BUILD,
         "next-to-build.md should still skip filing when a claude-labeled issue or claude/ branch PR is already open",

@@ -6,7 +6,7 @@ Nobody asked for anything. Work out the one capability this project should gain 
 
 ## Check whether the harness is paused
 
-Before anything else, look up the repo's `HARNESS_PAUSED` variable (list or read the repository variable by that name). If its value is `true`, end the run without filing: the harness is paused, so the `claude` label a new issue needs would queue up a run that will not start.
+Before anything else, look up the repo's `HARNESS_PAUSED` variable (list or read the repository variable by that name). If its value is `true`, end the run without filing: the harness is paused, so the `claude` label a new issue needs would queue up a run that will not start. If you cannot read the variable, whatever the reason, carry on as not paused and say so when ending the run: this check only spares a needless issue, since the workflow that starts a run checks the variable itself and refuses on a paused harness.
 
 ## Check what's already open
 
