@@ -599,6 +599,37 @@ $prs as $all
 JQ
 }
 
+# Sets stats_window_start, stats_summary, stats_solo, and stats_checked for the last $1 days.
+collect_stats() {
+  local since_days=$1 default_branch
+  stats_window_start=$(stats_since_iso "$since_days") || { echo "Could not compute the --since cutoff date." >&2; exit 1; }
+  default_branch=$(gh api 'repos/{owner}/{repo}' --jq .default_branch 2>/dev/null) ||
+    { echo "Could not look up the default branch." >&2; exit 1; }
+
+  # Global, not local: the EXIT trap runs after this function's scope is gone.
+  stats_scratch=$(mktemp -d)
+  trap 'rm -rf "$stats_scratch"' EXIT
+
+  local prs_file="$stats_scratch/prs.jsonl" commits_file="$stats_scratch/commits.jsonl"
+  fetch_prs_since "$prs_file" "$stats_window_start" || { echo "Could not list pull requests." >&2; exit 1; }
+  paginate_gh_api "$commits_file" 'repos/{owner}/{repo}/commits' -f sha="$default_branch" -f since="$stats_window_start" ||
+    { echo "Could not list commits on $default_branch." >&2; exit 1; }
+
+  stats_summary=$(jq -n --slurpfile prs "$prs_file" --slurpfile commits "$commits_file" "$(stats_jq_filter)") ||
+    { echo "Could not summarize pull request data." >&2; exit 1; }
+
+  stats_solo=0
+  stats_checked=0
+  local num
+  while IFS= read -r num; do
+    [ -n "$num" ] || continue
+    stats_checked=$((stats_checked + 1))
+    if stats_pr_is_claude_only "$num" 2>/dev/null; then
+      stats_solo=$((stats_solo + 1))
+    fi
+  done < <(jq -r '.merged_numbers[]' <<< "$stats_summary")
+}
+
 cmd_stats() {
   local since_days=30
   while [ $# -gt 0 ]; do
@@ -624,35 +655,13 @@ cmd_stats() {
     exit 1
   fi
 
-  local since_iso default_branch
-  since_iso=$(stats_since_iso "$since_days") || { echo "Could not compute the --since cutoff date." >&2; exit 1; }
-  default_branch=$(gh api 'repos/{owner}/{repo}' --jq .default_branch 2>/dev/null) ||
-    { echo "Could not look up the default branch." >&2; exit 1; }
+  collect_stats "$since_days"
+  local summary=$stats_summary
 
-  # Global, not local: the EXIT trap runs after this function's scope is gone.
-  stats_scratch=$(mktemp -d)
-  trap 'rm -rf "$stats_scratch"' EXIT
-
-  local prs_file="$stats_scratch/prs.jsonl" commits_file="$stats_scratch/commits.jsonl"
-  fetch_prs_since "$prs_file" "$since_iso" || { echo "Could not list pull requests." >&2; exit 1; }
-  paginate_gh_api "$commits_file" 'repos/{owner}/{repo}/commits' -f sha="$default_branch" -f since="$since_iso" ||
-    { echo "Could not list commits on $default_branch." >&2; exit 1; }
-
-  local summary
-  summary=$(jq -n --slurpfile prs "$prs_file" --slurpfile commits "$commits_file" "$(stats_jq_filter)") ||
-    { echo "Could not summarize pull request data." >&2; exit 1; }
-
-  echo "Harness stats since $since_iso (last ${since_days}d)"
+  echo "Harness stats since $stats_window_start (last ${since_days}d)"
   echo
   echo "claude/ pull requests: $(jq -r .opened <<< "$summary") opened, $(jq -r .merged <<< "$summary") merged, $(jq -r .closed_unmerged <<< "$summary") closed unmerged, $(jq -r .still_draft <<< "$summary") still draft"
-
-  local solo=0 checked=0 num
-  while IFS= read -r num; do
-    [ -n "$num" ] || continue
-    checked=$((checked + 1))
-    stats_pr_is_claude_only "$num" 2>/dev/null && solo=$((solo + 1))
-  done < <(jq -r '.merged_numbers[]' <<< "$summary")
-  echo "Merged with no human pushes: $solo/$checked"
+  echo "Merged with no human pushes: $stats_solo/$stats_checked"
 
   local revert_count
   revert_count=$(jq '.reverts | length' <<< "$summary")
