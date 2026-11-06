@@ -1,0 +1,251 @@
+#!/usr/bin/env bash
+# Functional check for `harness feedback`: runs it in a scratch repo with a stubbed gh on PATH. No model or network calls.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+cli="$(pwd)/bin/harness-cli"
+
+# shellcheck source=bin/lib/check-helpers.sh
+source bin/lib/check-helpers.sh
+
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+
+repo="$scratch/repo"
+git init -q "$repo"
+mkdir -p "$repo/.claude"
+echo v1.2.3 > "$repo/.claude/HARNESS_VERSION"
+
+fixtures="$scratch/fixtures"
+mkdir -p "$fixtures"
+jq -n '[
+  {number: 41, title: "SECRET-TITLE add billing", head: {ref: "claude/secret-branch"}, state: "closed",
+   merged_at: "2026-10-05T00:00:00Z", draft: false, merge_commit_sha: "sha-a", created_at: "2026-10-05T00:00:00Z",
+   html_url: "https://github.com/acme/secret-repo/pull/41", labels: [{name: "risk:high"}, {name: "risk:project-falcon"}]},
+  {number: 42, title: "Revert \"SECRET-TITLE add billing\"", head: {ref: "human/revert"}, state: "closed",
+   merged_at: "2026-10-06T00:00:00Z", draft: false, merge_commit_sha: "sha-b", created_at: "2026-10-06T00:00:00Z",
+   html_url: "https://github.com/acme/secret-repo/pull/42", labels: []}
+]' > "$fixtures/pulls.json"
+jq -n '[{commit: {author: {email: "noreply@anthropic.com"}, message: "solo"}, html_url: "https://github.com/acme/secret-repo/commit/a"}]' > "$fixtures/pr-commits.json"
+
+stub_bin="$scratch/stub_bin"
+mkdir -p "$stub_bin"
+calls="$scratch/gh-calls"
+cat > "$stub_bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "auth status") exit "${STUB_GH_AUTH_EXIT:-0}" ;;
+  "variable get")
+    [ "${STUB_GH_OPTED_IN:-1}" = 1 ] || exit 1
+    printf 'true\n'
+    ;;
+  "variable list")
+    [ "${STUB_GH_LIST_EXIT:-0}" = 0 ] || { echo "HTTP 403" >&2; exit "$STUB_GH_LIST_EXIT"; }
+    echo OTHER_VARIABLE
+    [ "${STUB_GH_OPTED_IN:-1}" = 1 ] && echo HARNESS_FEEDBACK
+    exit 0
+    ;;
+  "variable set"|"variable delete") printf '%s\n' "$*" >> "$STUB_GH_CALLS" ;;
+  "issue create")
+    printf '%s\n' "$@" >> "$STUB_GH_CALLS"
+    echo "https://github.com/Eschults/harness/issues/1"
+    ;;
+  "api --hostname")
+    [ "$3 $4" = "github.com user" ] || { echo "stub gh: unexpected call: $*" >&2; exit 1; }
+    echo some-login
+    ;;
+  "api repos/{owner}/{repo}") echo main ;;
+  "api repos/{owner}/{repo}/pulls") cat "$STUB_FIXTURES/pulls.json" ;;
+  "api repos/{owner}/{repo}/commits") echo '[]' ;;
+  "api repos/{owner}/{repo}/pulls/"*)
+    [ "${STUB_GH_PR_COMMITS_EXIT:-0}" = 0 ] || exit "$STUB_GH_PR_COMMITS_EXIT"
+    cat "$STUB_FIXTURES/pr-commits.json"
+    ;;
+  *) echo "stub gh: unexpected call: $*" >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$stub_bin/gh"
+
+# Runs the real CLI, where stdin is not a terminal.
+run_harness() {
+  : > "$calls"
+  run_exit=0
+  run_output=$(
+    cd "$repo"
+    PATH="$stub_bin:$PATH" STUB_FIXTURES="$fixtures" STUB_GH_CALLS="$calls" \
+      HARNESS_STATS_NOW=2026-10-31T00:00:00Z "$cli" feedback "$@" 2>&1 < "${run_stdin:-/dev/null}"
+  ) || run_exit=$?
+}
+
+# Runs the real CLI on a real pty, typing $1. With PTY_STDOUT_FILE set, stdout goes to that file instead of the pty.
+pty_runner="$scratch/run-on-pty.py"
+cat > "$pty_runner" <<'PY'
+import os
+import pty
+import sys
+
+answer, command = sys.argv[1], sys.argv[2:]
+pid, master = pty.fork()
+if pid == 0:
+    stdout_file = os.environ.get("PTY_STDOUT_FILE")
+    if stdout_file:
+        os.dup2(os.open(stdout_file, os.O_WRONLY | os.O_CREAT), 1)
+    os.execv(command[0], command)
+os.write(master, (answer + "\n").encode())
+while True:
+    try:
+        chunk = os.read(master, 4096)
+    except OSError:
+        break
+    if not chunk:
+        break
+    sys.stdout.buffer.write(chunk)
+sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
+PY
+
+run_at_terminal() {
+  local answer=$1
+  shift
+  : > "$calls"
+  run_exit=0
+  run_output=$(
+    cd "$repo"
+    PATH="$stub_bin:$PATH" STUB_FIXTURES="$fixtures" STUB_GH_CALLS="$calls" \
+      HARNESS_STATS_NOW=2026-10-31T00:00:00Z python3 "$pty_runner" "$answer" "$cli" feedback "$@" 2>&1
+  ) || run_exit=$?
+}
+
+assert_contains() {
+  echo "$1" | grep -qF -- "$2" || fail "$3: expected to find '$2' in: $1"
+}
+
+assert_nothing_filed() {
+  if grep -qF "Eschults/harness" "$calls"; then fail "$1: expected no issue to be filed, got: $(cat "$calls")"; fi
+}
+
+# --- enable and disable ---
+run_harness enable
+[ "$run_exit" -eq 0 ] || fail "expected enable to succeed: $run_output"
+assert_contains "$(cat "$calls")" "variable set HARNESS_FEEDBACK --body true" "enable"
+run_harness disable
+[ "$run_exit" -eq 0 ] || fail "expected disable to succeed: $run_output"
+assert_contains "$(cat "$calls")" "variable delete HARNESS_FEEDBACK" "disable"
+export STUB_GH_OPTED_IN=0
+run_harness disable
+[ "$run_exit" -eq 0 ] || fail "expected disable to be safe to re-run: $run_output"
+[ ! -s "$calls" ] || fail "expected no delete when already opted out, got: $(cat "$calls")"
+echo "✓ enable sets HARNESS_FEEDBACK, disable clears it, and disable is safe to re-run"
+
+# --- disable: a failed lookup is not reported as an opt-out ---
+STUB_GH_LIST_EXIT=1 run_harness disable
+[ "$run_exit" -ne 0 ] || fail "expected disable to fail when the lookup fails: $run_output"
+if echo "$run_output" | grep -qF "Opted out"; then fail "expected no opt-out claim when the lookup failed: $run_output"; fi
+assert_contains "$run_output" "it may still be" "disable lookup failure"
+echo "✓ disable fails, rather than claiming an opt-out, when it can't check the variable"
+
+# --- enable and disable reject stray arguments before changing anything ---
+for subcmd in enable disable; do
+  STUB_GH_OPTED_IN=1 run_harness "$subcmd" --dry-run
+  [ "$run_exit" -ne 0 ] || fail "expected $subcmd --dry-run to be refused: $run_output"
+  assert_contains "$run_output" "Unexpected argument: --dry-run" "$subcmd stray argument"
+  [ ! -s "$calls" ] || fail "expected $subcmd --dry-run to change nothing, got: $(cat "$calls")"
+done
+echo "✓ enable and disable reject stray arguments and change nothing"
+
+# --- not opted in: refused, even at a terminal answering yes ---
+run_at_terminal y --note "a lesson"
+[ "$run_exit" -ne 0 ] || fail "expected a repo that has not opted in to be refused: $run_output"
+assert_contains "$run_output" "has not opted in" "not opted in"
+assert_nothing_filed "not opted in"
+echo "✓ a repo that has not opted in cannot file, even at a terminal answering yes"
+
+# --- dry run before opting in: the owner can read the report first ---
+run_harness --note "a lesson" --dry-run
+[ "$run_exit" -eq 0 ] || fail "expected a dry run to work before opting in: $run_output"
+assert_contains "$run_output" "nothing was sent" "dry run before opting in"
+assert_nothing_filed "dry run before opting in"
+export STUB_GH_OPTED_IN=1
+echo "✓ a dry run works before opting in, and sends nothing"
+
+# --- dry run: the report holds the note and counts, and nothing that identifies the repo ---
+run_harness --note "Rules were unclear on X" --dry-run
+[ "$run_exit" -eq 0 ] || fail "expected a dry run to succeed: $run_output"
+assert_contains "$run_output" "Title: Harness feedback: Rules were unclear on X" "dry run title"
+assert_contains "$run_output" "Harness version: v1.2.3" "dry run version"
+assert_contains "$run_output" "claude/ pull requests: 1 opened, 1 merged, 0 closed unmerged, 0 still draft" "dry run counts"
+assert_contains "$run_output" "Merged with no human pushes: 1/1" "dry run solo count"
+assert_contains "$run_output" "Reverted: 1" "dry run reverts"
+assert_contains "$run_output" "risk:high: 1 opened, 1 merged" "dry run tier"
+assert_contains "$run_output" "nothing was sent" "dry run says so"
+assert_nothing_filed "dry run"
+for private in SECRET-TITLE secret-repo secret-branch acme "#41" "pull/4" project-falcon; do
+  if echo "$run_output" | grep -qF -- "$private"; then fail "report leaked '$private': $run_output"; fi
+done
+echo "✓ a dry run prints the note and counts, leaks no repo name, title, number or link, and sends nothing"
+
+# --- no terminal: refused, even with a yes piped in ---
+echo y > "$scratch/yes"
+run_stdin="$scratch/yes" run_harness --note "a lesson"
+[ "$run_exit" -ne 0 ] || fail "expected filing without a terminal to be refused: $run_output"
+assert_contains "$run_output" "person at a terminal" "no terminal"
+assert_nothing_filed "no terminal"
+export PTY_STDOUT_FILE="$scratch/redirected-preview"
+run_at_terminal y --note "a lesson"
+unset PTY_STDOUT_FILE
+[ "$run_exit" -ne 0 ] || fail "expected filing with redirected output to be refused: $run_output"
+assert_contains "$run_output" "person at a terminal" "redirected output"
+assert_nothing_filed "redirected output"
+echo "✓ filing without a terminal is refused, even with a yes piped in or only the output redirected"
+
+# --- a failed commit lookup never reaches a report ---
+STUB_GH_PR_COMMITS_EXIT=1 run_at_terminal y --note "a lesson"
+[ "$run_exit" -ne 0 ] || fail "expected a failed commit lookup to stop the filing: $run_output"
+assert_contains "$run_output" "the counts would be wrong" "failed commit lookup"
+assert_nothing_filed "failed commit lookup"
+echo "✓ a failed commit lookup stops the filing instead of publishing wrong counts"
+
+# --- at a terminal: only a yes files, to the harness repo, with no label that could start a run ---
+run_at_terminal y --note "Rules were unclear on X"
+[ "$run_exit" -eq 0 ] || fail "expected a confirmed filing to succeed: $run_output"
+assert_contains "$run_output" "posts publicly on Eschults/harness as some-login" "confirmation warning"
+assert_contains "$(cat "$calls")" "github.com/Eschults/harness" "filed repo"
+assert_contains "$(cat "$calls")" "Rules were unclear on X" "filed body"
+if grep -qF -- "--label" "$calls"; then fail "expected no label on the filed issue, got: $(cat "$calls")"; fi
+for answer in n ""; do
+  run_at_terminal "$answer" --note "Rules were unclear on X"
+  [ "$run_exit" -eq 0 ] || fail "expected declining to exit cleanly: $run_output"
+  assert_contains "$run_output" "Not filed." "declined"
+  assert_nothing_filed "declined"
+done
+echo "✓ only a typed yes files the issue, on Eschults/harness, with no label"
+
+# --- bad input ---
+run_harness --dry-run
+[ "$run_exit" -ne 0 ] || fail "expected a missing note to be refused: $run_output"
+assert_contains "$run_output" "A note is required" "missing note"
+run_harness --note "   " --dry-run
+[ "$run_exit" -ne 0 ] || fail "expected a blank note to be refused: $run_output"
+run_harness --bogus
+[ "$run_exit" -ne 0 ] || fail "expected an unknown option to be refused: $run_output"
+assert_contains "$run_output" "Unknown option: --bogus" "unknown option"
+run_harness --note x --since soon --dry-run
+[ "$run_exit" -ne 0 ] || fail "expected a bad --since to be refused: $run_output"
+assert_contains "$run_output" "Invalid --since value" "bad since"
+echo "✓ a missing or blank note, an unknown option, and a bad --since are refused"
+
+# --- gh problems ---
+STUB_GH_AUTH_EXIT=1 run_harness --note x --dry-run
+[ "$run_exit" -ne 0 ] || fail "expected unauthenticated gh to be refused: $run_output"
+assert_contains "$run_output" "gh is not authenticated" "unauthenticated"
+no_gh_bin="$scratch/no_gh_bin"
+mkdir -p "$no_gh_bin"
+for cmd in bash git; do
+  ln -sf "$(command -v "$cmd")" "$no_gh_bin/$cmd"
+done
+run_exit=0
+run_output=$(cd "$repo" && PATH="$no_gh_bin" "$cli" feedback --note x --dry-run 2>&1) || run_exit=$?
+[ "$run_exit" -ne 0 ] || fail "expected a missing gh to be refused: $run_output"
+assert_contains "$run_output" "gh not found" "missing gh"
+echo "✓ a missing or unauthenticated gh is reported"
+
+echo
+echo "harness feedback check: all passed"

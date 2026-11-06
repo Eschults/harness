@@ -6,6 +6,7 @@ set -euo pipefail
 
 HARNESS_DEFAULT_SRC=https://raw.githubusercontent.com/Eschults/harness/v1
 HARNESS_README=https://github.com/Eschults/harness
+HARNESS_FEEDBACK_REPO=Eschults/harness
 HARNESS_FILES=(
   ".github/workflows/claude.yml"
   ".claude/prompts/issue-to-pr.md"
@@ -48,6 +49,8 @@ Commands:
   pause            Set HARNESS_PAUSED so new claude labels stop starting runs
   resume           Clear HARNESS_PAUSED so claude labels start runs again
   stats [--since <N>d]  Report what claude/ pull requests become (default 30d)
+  feedback enable|disable  Opt this repo in or out of sharing feedback with the harness project
+  feedback [--note <text>] [--since <N>d] [--dry-run]  Preview a public feedback issue, then file it if you confirm
   uninstall        Remove the harness files and the CLAUDE.md import
   -v, --version    Print the harness version this repo runs
 
@@ -310,6 +313,7 @@ Removed the local harness files. Finish the cleanup on GitHub:
   - Delete the label:     gh label delete claude --yes
   - Remove the variable:  gh variable delete CLAUDE_ROUTINE_ID
   - Remove the secret:    gh secret delete CLAUDE_ROUTINE_TOKEN
+  - If you opted in:      gh variable delete HARNESS_FEEDBACK
 The harness command itself stays installed for your other repos.
 EOF
 }
@@ -523,14 +527,14 @@ fetch_prs_since() {
 
 # True when every commit on PR $1's branch was authored by the run itself
 # (git author email noreply@anthropic.com, the identity every routine
-# commit carries) rather than a human push. Fails (non-zero, treated as "not
-# solo" by the caller) if the commits can't be listed.
+# commit carries) rather than a human push. Returns 1 when a human pushed,
+# and 2 when the commits can't be listed.
 stats_pr_is_claude_only() {
   local number=$1 tmp non_claude
   tmp=$(mktemp) || return 1
   if ! paginate_gh_api "$tmp" "repos/{owner}/{repo}/pulls/$number/commits"; then
     rm -f "$tmp"
-    return 1
+    return 2
   fi
   non_claude=$(jq -s '[.[] | select((.commit.author.email // "") != "noreply@anthropic.com")] | length' "$tmp")
   rm -f "$tmp"
@@ -599,6 +603,42 @@ $prs as $all
 JQ
 }
 
+# Sets stats_window_start, stats_summary, stats_solo, stats_checked, and stats_lookup_failures for the last $1 days.
+collect_stats() {
+  local since_days=$1 default_branch
+  stats_window_start=$(stats_since_iso "$since_days") || { echo "Could not compute the --since cutoff date." >&2; exit 1; }
+  default_branch=$(gh api 'repos/{owner}/{repo}' --jq .default_branch 2>/dev/null) ||
+    { echo "Could not look up the default branch." >&2; exit 1; }
+
+  # Global, not local: the EXIT trap runs after this function's scope is gone.
+  stats_scratch=$(mktemp -d)
+  trap 'rm -rf "$stats_scratch"' EXIT
+
+  local prs_file="$stats_scratch/prs.jsonl" commits_file="$stats_scratch/commits.jsonl"
+  fetch_prs_since "$prs_file" "$stats_window_start" || { echo "Could not list pull requests." >&2; exit 1; }
+  paginate_gh_api "$commits_file" 'repos/{owner}/{repo}/commits' -f sha="$default_branch" -f since="$stats_window_start" ||
+    { echo "Could not list commits on $default_branch." >&2; exit 1; }
+
+  stats_summary=$(jq -n --slurpfile prs "$prs_file" --slurpfile commits "$commits_file" "$(stats_jq_filter)") ||
+    { echo "Could not summarize pull request data." >&2; exit 1; }
+
+  stats_solo=0
+  stats_checked=0
+  stats_lookup_failures=0
+  local num solo_status
+  while IFS= read -r num; do
+    [ -n "$num" ] || continue
+    stats_checked=$((stats_checked + 1))
+    solo_status=0
+    stats_pr_is_claude_only "$num" 2>/dev/null || solo_status=$?
+    case "$solo_status" in
+      0) stats_solo=$((stats_solo + 1)) ;;
+      1) ;;
+      *) stats_lookup_failures=$((stats_lookup_failures + 1)) ;;
+    esac
+  done < <(jq -r '.merged_numbers[]' <<< "$stats_summary")
+}
+
 cmd_stats() {
   local since_days=30
   while [ $# -gt 0 ]; do
@@ -624,35 +664,13 @@ cmd_stats() {
     exit 1
   fi
 
-  local since_iso default_branch
-  since_iso=$(stats_since_iso "$since_days") || { echo "Could not compute the --since cutoff date." >&2; exit 1; }
-  default_branch=$(gh api 'repos/{owner}/{repo}' --jq .default_branch 2>/dev/null) ||
-    { echo "Could not look up the default branch." >&2; exit 1; }
+  collect_stats "$since_days"
+  local summary=$stats_summary
 
-  # Global, not local: the EXIT trap runs after this function's scope is gone.
-  stats_scratch=$(mktemp -d)
-  trap 'rm -rf "$stats_scratch"' EXIT
-
-  local prs_file="$stats_scratch/prs.jsonl" commits_file="$stats_scratch/commits.jsonl"
-  fetch_prs_since "$prs_file" "$since_iso" || { echo "Could not list pull requests." >&2; exit 1; }
-  paginate_gh_api "$commits_file" 'repos/{owner}/{repo}/commits' -f sha="$default_branch" -f since="$since_iso" ||
-    { echo "Could not list commits on $default_branch." >&2; exit 1; }
-
-  local summary
-  summary=$(jq -n --slurpfile prs "$prs_file" --slurpfile commits "$commits_file" "$(stats_jq_filter)") ||
-    { echo "Could not summarize pull request data." >&2; exit 1; }
-
-  echo "Harness stats since $since_iso (last ${since_days}d)"
+  echo "Harness stats since $stats_window_start (last ${since_days}d)"
   echo
   echo "claude/ pull requests: $(jq -r .opened <<< "$summary") opened, $(jq -r .merged <<< "$summary") merged, $(jq -r .closed_unmerged <<< "$summary") closed unmerged, $(jq -r .still_draft <<< "$summary") still draft"
-
-  local solo=0 checked=0 num
-  while IFS= read -r num; do
-    [ -n "$num" ] || continue
-    checked=$((checked + 1))
-    stats_pr_is_claude_only "$num" 2>/dev/null && solo=$((solo + 1))
-  done < <(jq -r '.merged_numbers[]' <<< "$summary")
-  echo "Merged with no human pushes: $solo/$checked"
+  echo "Merged with no human pushes: $stats_solo/$stats_checked"
 
   local revert_count
   revert_count=$(jq '.reverts | length' <<< "$summary")
@@ -666,6 +684,143 @@ cmd_stats() {
     echo "By risk tier:"
     jq -r '.by_tier[] | "  \(.tier): \(.opened) opened, \(.merged) merged"' <<< "$summary"
   fi
+}
+
+require_gh_authenticated() {
+  if ! gh auth status >/dev/null 2>&1; then
+    echo "gh is not authenticated; run gh auth login." >&2
+    exit 1
+  fi
+}
+
+# Fails closed: a missing variable, any other value, or a failed lookup all read as not opted in.
+feedback_opted_in() {
+  [ "$(gh variable get HARNESS_FEEDBACK --json value --jq .value 2>/dev/null)" = "true" ]
+}
+
+# Stdout counts too: whoever answers must have seen the preview. Stops accidents, not a process faking a terminal.
+feedback_can_confirm() {
+  [ -t 0 ] && [ -t 1 ]
+}
+
+# Repo-identifying data stays out on purpose: counts only, never titles, numbers, or links.
+feedback_report() {
+  local version=$1 since_days=$2 note=$3 summary=$stats_summary
+  printf '%s\n\n' "$note"
+  printf '## Numbers from the last %sd\n\n' "$since_days"
+  printf -- '- Harness version: %s\n' "$version"
+  jq -r '"- claude/ pull requests: \(.opened) opened, \(.merged) merged, \(.closed_unmerged) closed unmerged, \(.still_draft) still draft"' <<< "$summary"
+  printf -- '- Merged with no human pushes: %s/%s\n' "$stats_solo" "$stats_checked"
+  jq -r '"- Reverted: \(.reverts | length)"' <<< "$summary"
+  # Only the harness's own tiers: a repo's custom risk: label could name a private project.
+  jq -r '(.by_tier // [])[] | select(.tier == "risk:low" or .tier == "risk:medium" or .tier == "risk:high") | "- \(.tier): \(.opened) opened, \(.merged) merged"' <<< "$summary"
+}
+
+cmd_feedback_enable() {
+  require_tools gh
+  cd_repo_root
+  require_gh_authenticated
+  gh variable set HARNESS_FEEDBACK --body true >/dev/null
+  echo "Opted in: harness feedback can now file issues on $HARNESS_FEEDBACK_REPO. Nothing is sent until you confirm a preview."
+}
+
+cmd_feedback_disable() {
+  require_tools gh
+  cd_repo_root
+  require_gh_authenticated
+  # Lists rather than gets, so a failed lookup is never mistaken for an already-absent variable.
+  local variable_names
+  variable_names=$(gh variable list --json name --jq '.[].name') ||
+    { echo "Could not check whether this repo is opted in; it may still be." >&2; exit 1; }
+  if grep -qx HARNESS_FEEDBACK <<< "$variable_names"; then
+    gh variable delete HARNESS_FEEDBACK >/dev/null
+  fi
+  echo "Opted out: harness feedback will refuse to file issues from this repo."
+}
+
+cmd_feedback() {
+  local usage_line="Usage: harness feedback enable|disable, or harness feedback [--note <text>] [--since <N>d] [--dry-run]"
+  case "${1:-}" in
+    enable | disable)
+      [ $# -eq 1 ] || { echo "Unexpected argument: $2. $usage_line" >&2; exit 1; }
+      "cmd_feedback_$1"
+      return
+      ;;
+  esac
+
+  local note="" since_days=30 dry_run=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --note)
+        [ $# -ge 2 ] || { echo "$usage_line" >&2; exit 1; }
+        note=$2
+        shift 2
+        ;;
+      --since)
+        [ $# -ge 2 ] || { echo "$usage_line" >&2; exit 1; }
+        since_days=${2%d}
+        shift 2
+        ;;
+      --dry-run)
+        dry_run=1
+        shift
+        ;;
+      *)
+        echo "Unknown option: $1. $usage_line" >&2
+        exit 1
+        ;;
+    esac
+  done
+  [[ "$since_days" =~ ^[0-9]+$ ]] || { echo "Invalid --since value: expected <N>d (e.g. 30d)" >&2; exit 1; }
+
+  require_tools gh jq
+  cd_repo_root
+  require_gh_authenticated
+
+  if [ "$dry_run" -eq 0 ] && ! feedback_opted_in; then
+    echo "This repo has not opted in to sharing feedback; run harness feedback enable first." >&2
+    exit 1
+  fi
+  if [ "$dry_run" -eq 0 ] && ! feedback_can_confirm; then
+    echo "Filing needs a person at a terminal to read the preview and confirm, with neither input nor output redirected; use --dry-run to only print it." >&2
+    exit 1
+  fi
+  if [ -z "$note" ] && feedback_can_confirm; then
+    read -rp "What should the harness do differently? " note
+  fi
+  if [ -z "${note//[[:space:]]/}" ]; then
+    echo "A note is required: the numbers alone don't say what to change. Pass --note <text>." >&2
+    exit 1
+  fi
+
+  collect_stats "$since_days"
+  if [ "$stats_lookup_failures" -gt 0 ]; then
+    echo "Could not read the commits of $stats_lookup_failures merged pull request(s), so the counts would be wrong. Nothing was sent; try again later." >&2
+    exit 1
+  fi
+
+  local version title body login confirm
+  version=$(cat .claude/HARNESS_VERSION 2>/dev/null || echo unknown)
+  title="Harness feedback: $(head -n 1 <<< "$note" | cut -c1-60)"
+  body=$(feedback_report "$version" "$since_days" "$note")
+
+  echo "Title: $title"
+  echo
+  echo "$body"
+  echo
+  if [ "$dry_run" -eq 1 ]; then
+    echo "Dry run: nothing was sent."
+    return
+  fi
+
+  login=$(gh api --hostname github.com user --jq .login 2>/dev/null || echo "your GitHub account")
+  echo "This posts publicly on $HARNESS_FEEDBACK_REPO as $login, exactly as shown above. Check your note for anything private."
+  read -rp "File this issue? [y/N] " confirm
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    echo "Not filed."
+    return
+  fi
+  gh issue create --repo "github.com/$HARNESS_FEEDBACK_REPO" --title "$title" --body "$body"
 }
 
 doctor_failed=0
@@ -930,6 +1085,7 @@ main() {
     pause) cmd_pause ;;
     resume) cmd_resume ;;
     stats) cmd_stats "$@" ;;
+    feedback) cmd_feedback "$@" ;;
     uninstall) cmd_uninstall ;;
     help | -h | --help) usage ;;
     -v | --version) cmd_version ;;
