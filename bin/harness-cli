@@ -722,24 +722,40 @@ age_from_iso() {
   fi
 }
 
-# Same HARNESS_PAUSED reading as cmd_doctor's: a missing variable or any
-# value but "true" reads as not paused, and a failed lookup says so rather
-# than guessing. Echoes one line for direct use in cmd_status's output.
-status_paused_line() {
+# Shared by cmd_doctor and status_paused_line, so both read HARNESS_PAUSED
+# exactly the same way: a missing variable or any value but "true" reads as
+# not paused, and a failed lookup never guesses. Echoes "paused" or
+# "not-paused" and returns 0, or echoes why and returns 1 when the gh
+# variable list/get lookup itself failed.
+harness_paused_reading() {
   local variables paused_value
   if ! variables=$(gh variable list --json name --jq '.[].name' 2>/dev/null); then
-    echo "Could not tell whether the harness is paused (could not list variables)."
-    return
+    echo "could not list variables"
+    return 1
   fi
   if ! echo "$variables" | grep -qxF HARNESS_PAUSED; then
-    echo "Not paused."
-    return
+    echo "not-paused"
+    return 0
   fi
   if ! paused_value=$(gh variable get HARNESS_PAUSED --json value --jq .value 2>/dev/null); then
-    echo "Could not tell whether the harness is paused (could not read the HARNESS_PAUSED variable)."
-    return
+    echo "could not read the HARNESS_PAUSED variable"
+    return 1
   fi
   if [ "$paused_value" = "true" ]; then
+    echo "paused"
+  else
+    echo "not-paused"
+  fi
+}
+
+# Echoes one line for direct use in cmd_status's output.
+status_paused_line() {
+  local reading
+  if ! reading=$(harness_paused_reading); then
+    echo "Could not tell whether the harness is paused ($reading)."
+    return
+  fi
+  if [ "$reading" = "paused" ]; then
     echo "Paused (HARNESS_PAUSED=true); run harness resume to let new claude labels start runs."
   else
     echo "Not paused."
@@ -1019,7 +1035,7 @@ cmd_doctor() {
     label_checks+=("$name label")
   done
   local gh_checks=("${label_checks[@]}" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret" "harness paused state" "harness files on the default branch" "GitHub Actions enabled" "claude.yml workflow active")
-  local c labels variables secrets default_branch default_branch_tree actions_enabled workflow_state paused_value
+  local c labels variables secrets default_branch default_branch_tree actions_enabled workflow_state
   if ! command -v gh >/dev/null 2>&1; then
     for c in "${gh_checks[@]}"; do skip "$c" "gh is not installed"; done
   elif ! gh auth status >/dev/null 2>&1; then
@@ -1053,21 +1069,19 @@ cmd_doctor() {
       else
         bad "CLAUDE_ROUTINE_ID variable is not set; see $HARNESS_README#3-set-two-repo-values"
       fi
-
-      if ! echo "$variables" | grep -qxF HARNESS_PAUSED; then
-        ok "harness is not paused"
-      elif paused_value=$(gh variable get HARNESS_PAUSED --json value --jq .value 2>/dev/null); then
-        if [ "$paused_value" = "true" ]; then
-          warn "harness is paused (HARNESS_PAUSED=true); run harness resume to let new claude labels start runs"
-        else
-          ok "harness is not paused"
-        fi
-      else
-        skip "harness paused state" "could not read the HARNESS_PAUSED variable"
-      fi
     else
       skip "CLAUDE_ROUTINE_ID variable" "could not list variables"
-      skip "harness paused state" "could not list variables"
+    fi
+
+    local paused_reading
+    if paused_reading=$(harness_paused_reading); then
+      if [ "$paused_reading" = "paused" ]; then
+        warn "harness is paused (HARNESS_PAUSED=true); run harness resume to let new claude labels start runs"
+      else
+        ok "harness is not paused"
+      fi
+    else
+      skip "harness paused state" "$paused_reading"
     fi
 
     if secrets=$(gh secret list --json name --jq '.[].name' 2>/dev/null); then

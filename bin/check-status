@@ -31,6 +31,24 @@ page_arg() {
   done
   echo 1
 }
+# Mirrors gh api: any field or --input flag makes it POST unless GET is forced.
+method_arg() {
+  local prev="" method="" has_body=""
+  for a in "$@"; do
+    case "$prev" in -X|--method) method=$a ;; esac
+    case "$a" in
+      -X?*) method=${a#-X} ;;
+      --method=*) method=${a#--method=} ;;
+      -f|-F|--field|--raw-field|--input|-f?*|-F?*|--field=*|--raw-field=*|--input=*) has_body=1 ;;
+    esac
+    prev=$a
+  done
+  if [ -n "$method" ]; then echo "$method"; elif [ -n "$has_body" ]; then echo POST; else echo GET; fi
+}
+if [ "$1" = api ] && [ "$(method_arg "$@")" != GET ]; then
+  echo "stub gh: $2 called as $(method_arg "$@"), not GET" >&2
+  exit 1
+fi
 case "$1 $2" in
   "auth status") exit "${STUB_GH_AUTH_EXIT:-0}" ;;
   "variable list")
@@ -129,6 +147,19 @@ assert_contains "$output" "#21 Fix: bug (ready for review, risk:low, 12h old)" "
 echo "$output" | grep -qF "Human work" && fail "expected a PR not on a claude/ branch to be excluded, got: $output"
 assert_contains "$output" "Next to Build will skip its next scheduled run while either list above is non-empty." "skip-next-run line"
 echo "✓ open issues and claude/ PRs are listed with number, title, age, draft state, and risk tier; other branches excluded"
+
+# --- a title with a literal tab must not shift later TSV fields: jq's @tsv
+# escapes embedded tabs within a field, so the title renders with a literal
+# backslash-t instead of corrupting the age/draft/tier fields after it ---
+reset_fixtures
+issue_tab=$(issue 8 "$(printf 'Add\twidget')" 2026-10-30T00:00:00Z)
+jq -s '.' <(echo "$issue_tab") > "$fixtures/issues-page-1.json"
+pr_tab=$(pr 23 "$(printf 'Fix\tbug')" "claude/fix-tab" false 2026-10-30T00:00:00Z '[]')
+jq -s '.' <(echo "$pr_tab") > "$fixtures/pulls-page-1.json"
+output=$(run_status) || fail "expected a tab-containing title to succeed, got: $output"
+assert_contains "$output" '#8 Add\twidget (1d old)' "issue age survives a tab in the title"
+assert_contains "$output" '#23 Fix\tbug (ready for review, 1d old)' "PR age survives a tab in the title"
+echo "✓ a literal tab in a title never shifts the age/draft/tier fields after it"
 
 # --- paused ---
 reset_fixtures
