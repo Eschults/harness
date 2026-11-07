@@ -21,6 +21,34 @@ trap 'rm -rf "$scratch"' EXIT
 # reaching the real GitHub API.
 poison_network
 
+# Point every doctor run at local fixtures so no test reaches curl's network
+# path: a missing tags file (the version lookup skips quietly) and a release
+# source with every version a test pins. A test overrides either to exercise
+# a lookup result, drift or an unreachable release.
+export HARNESS_TAGS_URL="file://$scratch/no-such-tags.json"
+default_release_src="$scratch/default-release-src"
+for version in "$(<.claude/HARNESS_VERSION)" v1.2.3; do
+  for f in "${HARNESS_FILES[@]}"; do
+    [ "$f" = ".claude/HARNESS_VERSION" ] && continue
+    mkdir -p "$default_release_src/$version/$(dirname "$f")"
+    cp "$f" "$default_release_src/$version/$f"
+  done
+done
+export HARNESS_RELEASE_SRC="file://$default_release_src"
+
+# Fills $1 with symlinks to every command harness doctor calls, except the
+# ones named after it, for tests that need a tool truly absent from PATH.
+make_bin_without() {
+  local dir=$1 cmd cmd_path
+  shift
+  mkdir -p "$dir"
+  for cmd in bash dirname grep git curl jq mktemp rm cmp sort tail; do
+    [[ " $* " == *" $cmd "* ]] && continue
+    cmd_path=$(command -v "$cmd") || continue
+    ln -sf "$cmd_path" "$dir/$cmd"
+  done
+}
+
 # Stub gh: routes on the first two args, answers from env vars the caller
 # sets, and never touches the network or a real repo.
 stub_bin="$scratch/stub_bin"
@@ -230,7 +258,7 @@ echo "✓ an edited harness file warns instead of failing, and names harness upg
 repo="$scratch/release-unreachable"
 build_healthy_repo "$repo"
 echo "v9.9.9" > "$repo/.claude/HARNESS_VERSION"
-if ! output=$(HARNESS_RELEASE_SRC="file://$scratch/no-such-release-src" run_doctor "$repo"); then
+if ! output=$(HARNESS_RELEASE_SRC="file://$scratch/no-such-release-src" run_doctor "$repo" 2>/dev/null); then
   echo "$output" >&2
   fail "expected harness doctor to exit 0 when the pinned release can't be fetched"
 fi
@@ -245,26 +273,19 @@ echo "✓ an unreachable pinned release skips the comparison instead of failing"
 repo="$scratch/missing-curl"
 build_healthy_repo "$repo"
 no_curl_bin="$scratch/no_curl_bin"
-mkdir -p "$no_curl_bin"
-for cmd in bash dirname grep git jq mktemp rm cmp; do
-  cmd_path=$(command -v "$cmd") || continue
-  ln -sf "$cmd_path" "$no_curl_bin/$cmd"
-done
+make_bin_without "$no_curl_bin" curl
 if output=$(cd "$repo" && PATH="$no_curl_bin" "$cli" doctor); then
   fail "expected harness doctor to fail when curl is missing"
 fi
 assert_contains "$output" '✗ curl is missing' "missing curl"
+assert_contains "$output" '- harness files match the pinned release (skipped: curl is not installed)' "missing curl"
 echo "✓ a missing curl fails the check that names it"
 
 # --- missing jq ---
 repo="$scratch/missing-jq"
 build_healthy_repo "$repo"
 no_jq_bin="$scratch/no_jq_bin"
-mkdir -p "$no_jq_bin"
-for cmd in bash dirname grep git curl mktemp rm cmp; do
-  cmd_path=$(command -v "$cmd") || continue
-  ln -sf "$cmd_path" "$no_jq_bin/$cmd"
-done
+make_bin_without "$no_jq_bin" jq
 if output=$(cd "$repo" && PATH="$no_jq_bin" "$cli" doctor); then
   fail "expected harness doctor to fail when jq is missing"
 fi
@@ -474,11 +495,7 @@ echo "✓ a failed claude.yml workflow lookup is skipped rather than reported as
 # (env can't find bash). Symlink in only what harness doctor itself
 # calls, gh deliberately left out, so it holds on a laptop and a runner alike.
 no_gh_bin="$scratch/no_gh_bin"
-mkdir -p "$no_gh_bin"
-for cmd in bash dirname grep git curl jq mktemp rm cmp; do
-  cmd_path=$(command -v "$cmd") || continue
-  ln -sf "$cmd_path" "$no_gh_bin/$cmd"
-done
+make_bin_without "$no_gh_bin"
 
 repo="$scratch/no-gh"
 build_healthy_repo "$repo"
@@ -617,11 +634,7 @@ echo "✓ --fire on a 401 response fails and names a bad token, without printing
 # response (with a session URL in the body) as "no session URL in the
 # response": jq is what's missing, not the field.
 no_jq_fire_bin="$scratch/no_jq_fire_bin"
-mkdir -p "$no_jq_fire_bin"
-for cmd in bash dirname grep git mktemp rm cmp; do
-  cmd_path=$(command -v "$cmd") || continue
-  ln -sf "$cmd_path" "$no_jq_fire_bin/$cmd"
-done
+make_bin_without "$no_jq_fire_bin" jq curl
 cp "$stub_bin/curl" "$no_jq_fire_bin/curl"
 chmod +x "$no_jq_fire_bin/curl"
 
