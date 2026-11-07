@@ -246,7 +246,7 @@ repo="$scratch/missing-curl"
 build_healthy_repo "$repo"
 no_curl_bin="$scratch/no_curl_bin"
 mkdir -p "$no_curl_bin"
-for cmd in bash dirname grep git jq; do
+for cmd in bash dirname grep git jq mktemp rm cmp; do
   cmd_path=$(command -v "$cmd") || continue
   ln -sf "$cmd_path" "$no_curl_bin/$cmd"
 done
@@ -261,7 +261,7 @@ repo="$scratch/missing-jq"
 build_healthy_repo "$repo"
 no_jq_bin="$scratch/no_jq_bin"
 mkdir -p "$no_jq_bin"
-for cmd in bash dirname grep git curl; do
+for cmd in bash dirname grep git curl mktemp rm cmp; do
   cmd_path=$(command -v "$cmd") || continue
   ln -sf "$cmd_path" "$no_jq_bin/$cmd"
 done
@@ -475,7 +475,7 @@ echo "✓ a failed claude.yml workflow lookup is skipped rather than reported as
 # calls, gh deliberately left out, so it holds on a laptop and a runner alike.
 no_gh_bin="$scratch/no_gh_bin"
 mkdir -p "$no_gh_bin"
-for cmd in bash dirname grep git curl jq; do
+for cmd in bash dirname grep git curl jq mktemp rm cmp; do
   cmd_path=$(command -v "$cmd") || continue
   ln -sf "$cmd_path" "$no_gh_bin/$cmd"
 done
@@ -618,7 +618,7 @@ echo "✓ --fire on a 401 response fails and names a bad token, without printing
 # response": jq is what's missing, not the field.
 no_jq_fire_bin="$scratch/no_jq_fire_bin"
 mkdir -p "$no_jq_fire_bin"
-for cmd in bash dirname grep git mktemp rm; do
+for cmd in bash dirname grep git mktemp rm cmp; do
   cmd_path=$(command -v "$cmd") || continue
   ln -sf "$cmd_path" "$no_jq_fire_bin/$cmd"
 done
@@ -627,7 +627,7 @@ chmod +x "$no_jq_fire_bin/curl"
 
 repo="$scratch/fire-missing-jq"
 build_healthy_repo "$repo"
-if output=$(cd "$repo" && PATH="$no_jq_fire_bin" CLAUDE_ROUTINE_ID=trig_test CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test \
+if output=$(cd "$repo" && PATH="$no_jq_fire_bin" REAL_CURL="$real_curl" CLAUDE_ROUTINE_ID=trig_test CLAUDE_ROUTINE_TOKEN=sk-ant-oat01-test \
   STUB_CURL_STATUS=200 STUB_CURL_BODY='{"claude_code_session_url":"https://claude.ai/code/cse_test"}' \
   "$cli" doctor --fire); then
   fail "expected harness doctor to fail overall when jq is missing (the earlier jq check fails it)"
