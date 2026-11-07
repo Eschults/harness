@@ -48,6 +48,7 @@ Commands:
   issue <number>   Fire the "Issue to PR" routine for one issue, bypassing GitHub Actions
   pause            Set HARNESS_PAUSED so new claude labels stop starting runs
   resume           Clear HARNESS_PAUSED so claude labels start runs again
+  status           List what is waiting on a human right now: paused state, open claude issues, open claude/ PRs
   stats [--since <N>d]  Report what claude/ pull requests become (default 30d)
   feedback enable|disable  Opt this repo in or out of sharing feedback with the harness project
   feedback [--note <text>] [--since <N>d] [--dry-run]  Preview a public feedback issue, then file it if you confirm
@@ -693,6 +694,125 @@ require_gh_authenticated() {
   fi
 }
 
+# Converts an ISO-8601 UTC timestamp to epoch seconds. Tries GNU date first,
+# then BSD/macOS date, since the CLI runs on both.
+iso_to_epoch() {
+  date -u -d "$1" +%s 2>/dev/null && return
+  date -ju -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null
+}
+
+# Renders how long ago ISO-8601 timestamp $1 was, as "<N>d" (one day or
+# more) or "<N>h", against now, or $HARNESS_STATUS_NOW when set (so tests
+# get a deterministic age).
+age_from_iso() {
+  local then_epoch now_epoch seconds days
+  then_epoch=$(iso_to_epoch "$1") || { echo "?"; return; }
+  if [ -n "${HARNESS_STATUS_NOW:-}" ]; then
+    now_epoch=$(iso_to_epoch "$HARNESS_STATUS_NOW") || { echo "?"; return; }
+  else
+    now_epoch=$(date -u +%s)
+  fi
+  seconds=$((now_epoch - then_epoch))
+  [ "$seconds" -lt 0 ] && seconds=0
+  days=$((seconds / 86400))
+  if [ "$days" -ge 1 ]; then
+    echo "${days}d"
+  else
+    echo "$((seconds / 3600))h"
+  fi
+}
+
+# Shared by cmd_doctor and status_paused_line, so both read HARNESS_PAUSED
+# exactly the same way: a missing variable or any value but "true" reads as
+# not paused, and a failed lookup never guesses. Echoes "paused" or
+# "not-paused" and returns 0, or echoes why and returns 1 when the gh
+# variable list/get lookup itself failed.
+harness_paused_reading() {
+  local variables paused_value
+  if ! variables=$(gh variable list --json name --jq '.[].name' 2>/dev/null); then
+    echo "could not list variables"
+    return 1
+  fi
+  if ! echo "$variables" | grep -qxF HARNESS_PAUSED; then
+    echo "not-paused"
+    return 0
+  fi
+  if ! paused_value=$(gh variable get HARNESS_PAUSED --json value --jq .value 2>/dev/null); then
+    echo "could not read the HARNESS_PAUSED variable"
+    return 1
+  fi
+  if [ "$paused_value" = "true" ]; then
+    echo "paused"
+  else
+    echo "not-paused"
+  fi
+}
+
+# Echoes one line for direct use in cmd_status's output.
+status_paused_line() {
+  local reading
+  if ! reading=$(harness_paused_reading); then
+    echo "Could not tell whether the harness is paused ($reading)."
+    return
+  fi
+  if [ "$reading" = "paused" ]; then
+    echo "Paused (HARNESS_PAUSED=true); run harness resume to let new claude labels start runs."
+  else
+    echo "Not paused."
+  fi
+}
+
+cmd_status() {
+  require_tools gh jq
+  cd_repo_root
+  require_gh_authenticated
+
+  echo "Harness status"
+  echo
+  status_paused_line
+  echo
+
+  # Global, not local: the EXIT trap runs after this function's scope is gone.
+  status_scratch=$(mktemp -d)
+  trap 'rm -rf "$status_scratch"' EXIT
+  local issues_file="$status_scratch/issues.jsonl" prs_file="$status_scratch/prs.jsonl"
+
+  paginate_gh_api "$issues_file" 'repos/{owner}/{repo}/issues' -f state=open -f labels=claude ||
+    { echo "Could not list open issues labeled claude." >&2; exit 1; }
+  paginate_gh_api "$prs_file" 'repos/{owner}/{repo}/pulls' -f state=open ||
+    { echo "Could not list open pull requests." >&2; exit 1; }
+
+  local issues claude_prs issue_count pr_count
+  issues=$(jq -s '[.[] | select(.pull_request == null)]' "$issues_file")
+  claude_prs=$(jq -s '[.[] | select(.head.ref | startswith("claude/"))]' "$prs_file")
+  issue_count=$(jq 'length' <<< "$issues")
+  pr_count=$(jq 'length' <<< "$claude_prs")
+
+  echo "Open issues labeled claude: $issue_count"
+  local number title created_at
+  while IFS=$'\t' read -r number title created_at; do
+    echo "  #$number $title ($(age_from_iso "$created_at") old)"
+  done < <(jq -r '.[] | [.number, .title, .created_at] | @tsv' <<< "$issues")
+  echo
+
+  echo "Open claude/ pull requests: $pr_count"
+  local draft tier state_label
+  while IFS=$'\t' read -r number title draft created_at tier; do
+    state_label="ready for review"
+    [ "$draft" = "true" ] && state_label="draft"
+    [ -n "$tier" ] && state_label="$state_label, $tier"
+    echo "  #$number $title ($state_label, $(age_from_iso "$created_at") old)"
+  done < <(jq -r '.[] | [.number, .title, .draft, .created_at,
+    (([(.labels // [])[] | select(.name | startswith("risk:")) | .name])[0] // "")] | @tsv' <<< "$claude_prs")
+  echo
+
+  if [ "$issue_count" -eq 0 ] && [ "$pr_count" -eq 0 ]; then
+    echo "Nothing waiting on a human right now."
+  else
+    echo "Next to Build will skip its next scheduled run while either list above is non-empty."
+  fi
+}
+
 # Fails closed: a missing variable, any other value, or a failed lookup all read as not opted in.
 feedback_opted_in() {
   [ "$(gh variable get HARNESS_FEEDBACK --json value --jq .value 2>/dev/null)" = "true" ]
@@ -915,7 +1035,7 @@ cmd_doctor() {
     label_checks+=("$name label")
   done
   local gh_checks=("${label_checks[@]}" "CLAUDE_ROUTINE_ID variable" "CLAUDE_ROUTINE_TOKEN secret" "harness paused state" "harness files on the default branch" "GitHub Actions enabled" "claude.yml workflow active")
-  local c labels variables secrets default_branch default_branch_tree actions_enabled workflow_state paused_value
+  local c labels variables secrets default_branch default_branch_tree actions_enabled workflow_state
   if ! command -v gh >/dev/null 2>&1; then
     for c in "${gh_checks[@]}"; do skip "$c" "gh is not installed"; done
   elif ! gh auth status >/dev/null 2>&1; then
@@ -949,21 +1069,19 @@ cmd_doctor() {
       else
         bad "CLAUDE_ROUTINE_ID variable is not set; see $HARNESS_README#3-set-two-repo-values"
       fi
-
-      if ! echo "$variables" | grep -qxF HARNESS_PAUSED; then
-        ok "harness is not paused"
-      elif paused_value=$(gh variable get HARNESS_PAUSED --json value --jq .value 2>/dev/null); then
-        if [ "$paused_value" = "true" ]; then
-          warn "harness is paused (HARNESS_PAUSED=true); run harness resume to let new claude labels start runs"
-        else
-          ok "harness is not paused"
-        fi
-      else
-        skip "harness paused state" "could not read the HARNESS_PAUSED variable"
-      fi
     else
       skip "CLAUDE_ROUTINE_ID variable" "could not list variables"
-      skip "harness paused state" "could not list variables"
+    fi
+
+    local paused_reading
+    if paused_reading=$(harness_paused_reading); then
+      if [ "$paused_reading" = "paused" ]; then
+        warn "harness is paused (HARNESS_PAUSED=true); run harness resume to let new claude labels start runs"
+      else
+        ok "harness is not paused"
+      fi
+    else
+      skip "harness paused state" "$paused_reading"
     fi
 
     if secrets=$(gh secret list --json name --jq '.[].name' 2>/dev/null); then
@@ -1084,6 +1202,7 @@ main() {
     issue) cmd_issue "$@" ;;
     pause) cmd_pause ;;
     resume) cmd_resume ;;
+    status) cmd_status ;;
     stats) cmd_stats "$@" ;;
     feedback) cmd_feedback "$@" ;;
     uninstall) cmd_uninstall ;;
