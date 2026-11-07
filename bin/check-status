@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# Functional check for `harness status`: runs it in a scratch git repo with a
+# stubbed gh on PATH and fixture JSON for open issues and pull requests, no
+# network, no model calls.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+cli="$(pwd)/bin/harness-cli"
+
+# shellcheck source=bin/lib/check-helpers.sh
+source bin/lib/check-helpers.sh
+
+repo="$(mktemp -d)"
+git init -q "$repo"
+scratch="$(mktemp -d)"
+trap 'rm -rf "$repo" "$scratch"' EXIT
+
+stub_bin="$scratch/stub_bin"
+mkdir -p "$stub_bin"
+fixtures="$scratch/fixtures"
+
+# Stub gh: `issues`/`pulls` pages are strict (a page the test didn't provide
+# fails the call), so a pagination bug surfaces as a hard failure rather than
+# a silently empty page.
+cat > "$stub_bin/gh" <<'STUB'
+#!/usr/bin/env bash
+page_arg() {
+  local prev=""
+  for a in "$@"; do
+    [ "$prev" = "-f" ] && [[ "$a" == page=* ]] && { echo "${a#page=}"; return; }
+    prev=$a
+  done
+  echo 1
+}
+case "$1 $2" in
+  "auth status") exit "${STUB_GH_AUTH_EXIT:-0}" ;;
+  "variable list")
+    [ "${STUB_GH_VARIABLE_LIST_EXIT:-0}" = 0 ] || exit "${STUB_GH_VARIABLE_LIST_EXIT}"
+    printf '%s\n' "${STUB_GH_VARIABLES:-}"
+    ;;
+  "variable get")
+    [ "${STUB_GH_PAUSED_GET_EXIT:-0}" = 0 ] || exit "${STUB_GH_PAUSED_GET_EXIT}"
+    printf '%s\n' "${STUB_GH_PAUSED_VALUE:-}"
+    ;;
+  "api repos/{owner}/{repo}/issues")
+    [ "${STUB_GH_ISSUES_EXIT:-0}" = 0 ] || exit "${STUB_GH_ISSUES_EXIT}"
+    page=$(page_arg "$@")
+    f="$STUB_FIXTURES/issues-page-$page.json"
+    [ -f "$f" ] || { echo "stub gh: no fixture for issues page $page" >&2; exit 1; }
+    cat "$f"
+    ;;
+  "api repos/{owner}/{repo}/pulls")
+    [ "${STUB_GH_PULLS_EXIT:-0}" = 0 ] || exit "${STUB_GH_PULLS_EXIT}"
+    page=$(page_arg "$@")
+    f="$STUB_FIXTURES/pulls-page-$page.json"
+    [ -f "$f" ] || { echo "stub gh: no fixture for pulls page $page" >&2; exit 1; }
+    cat "$f"
+    ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$stub_bin/gh"
+
+reset_fixtures() {
+  rm -rf "$fixtures"
+  mkdir -p "$fixtures"
+  jq -n '[]' > "$fixtures/issues-page-1.json"
+  jq -n '[]' > "$fixtures/pulls-page-1.json"
+}
+
+run_status() {
+  (
+    cd "$repo"
+    PATH="$stub_bin:$PATH" \
+      STUB_FIXTURES="$fixtures" \
+      STUB_GH_AUTH_EXIT="${STUB_GH_AUTH_EXIT:-0}" \
+      STUB_GH_VARIABLES="${STUB_GH_VARIABLES-}" \
+      STUB_GH_VARIABLE_LIST_EXIT="${STUB_GH_VARIABLE_LIST_EXIT:-0}" \
+      STUB_GH_PAUSED_VALUE="${STUB_GH_PAUSED_VALUE:-}" \
+      STUB_GH_PAUSED_GET_EXIT="${STUB_GH_PAUSED_GET_EXIT:-0}" \
+      STUB_GH_ISSUES_EXIT="${STUB_GH_ISSUES_EXIT:-0}" \
+      STUB_GH_PULLS_EXIT="${STUB_GH_PULLS_EXIT:-0}" \
+      HARNESS_STATUS_NOW="${HARNESS_STATUS_NOW-2026-10-31T00:00:00Z}" \
+      "$cli" status
+  )
+}
+
+assert_contains() {
+  local haystack=$1 needle=$2 context=$3
+  echo "$haystack" | grep -qF -- "$needle" || fail "$context: expected to find '$needle' in: $haystack"
+}
+
+issue() {
+  # issue <number> <title> <created_at>
+  jq -cn --arg number "$1" --arg title "$2" --arg created "$3" '
+    {number: ($number | tonumber), title: $title, created_at: $created, pull_request: null}'
+}
+
+pr() {
+  # pr <number> <title> <ref> <draft> <created_at> <labels_json>
+  jq -cn --arg number "$1" --arg title "$2" --arg ref "$3" --arg draft "$4" --arg created "$5" --argjson labels "$6" '
+    {number: ($number | tonumber), title: $title, head: {ref: $ref}, draft: ($draft == "true"),
+     created_at: $created, labels: $labels}'
+}
+
+# --- nothing waiting: both lists empty ---
+reset_fixtures
+output=$(run_status) || fail "expected an empty repo to succeed, got: $output"
+assert_contains "$output" "Not paused." "empty paused line"
+assert_contains "$output" "Open issues labeled claude: 0" "empty issue count"
+assert_contains "$output" "Open claude/ pull requests: 0" "empty PR count"
+assert_contains "$output" "Nothing waiting on a human right now." "empty nothing-waiting line"
+echo "$output" | grep -qF "skip its next scheduled run" && fail "expected no skip-next-run line when nothing is waiting, got: $output"
+echo "✓ nothing open reports zeroed lists and the nothing-waiting line"
+
+# --- non-empty: an open claude issue and a draft and a ready claude/ PR ---
+reset_fixtures
+issue1=$(issue 7 "Add widget" 2026-10-28T00:00:00Z)
+jq -s '.' <(echo "$issue1") > "$fixtures/issues-page-1.json"
+pr1=$(pr 20 "Feat: widget" "claude/widget" true 2026-10-29T00:00:00Z '[]')
+pr2=$(pr 21 "Fix: bug" "claude/fix-bug" false 2026-10-30T12:00:00Z '[{"name":"risk:low"}]')
+pr_human=$(pr 22 "Human work" "someone/branch" false 2026-10-30T00:00:00Z '[]')
+jq -s '.' <(echo "$pr1") <(echo "$pr2") <(echo "$pr_human") > "$fixtures/pulls-page-1.json"
+output=$(run_status) || fail "expected the non-empty case to succeed, got: $output"
+assert_contains "$output" "Open issues labeled claude: 1" "non-empty issue count"
+assert_contains "$output" "#7 Add widget (3d old)" "issue age and title"
+assert_contains "$output" "Open claude/ pull requests: 2" "non-empty PR count excludes non-claude branch"
+assert_contains "$output" "#20 Feat: widget (draft, 2d old)" "draft PR line"
+assert_contains "$output" "#21 Fix: bug (ready for review, risk:low, 12h old)" "ready PR line with risk tier"
+echo "$output" | grep -qF "Human work" && fail "expected a PR not on a claude/ branch to be excluded, got: $output"
+assert_contains "$output" "Next to Build will skip its next scheduled run while either list above is non-empty." "skip-next-run line"
+echo "✓ open issues and claude/ PRs are listed with number, title, age, draft state, and risk tier; other branches excluded"
+
+# --- paused ---
+reset_fixtures
+output=$(STUB_GH_VARIABLES="HARNESS_PAUSED" STUB_GH_PAUSED_VALUE=true run_status) ||
+  fail "expected a paused harness to still succeed, got: $output"
+assert_contains "$output" "Paused (HARNESS_PAUSED=true); run harness resume to let new claude labels start runs." "paused line"
+echo "✓ a paused harness reports the paused line"
+
+# --- HARNESS_PAUSED set but not "true" ---
+reset_fixtures
+output=$(STUB_GH_VARIABLES="HARNESS_PAUSED" STUB_GH_PAUSED_VALUE=false run_status) ||
+  fail "expected HARNESS_PAUSED=false to succeed, got: $output"
+assert_contains "$output" "Not paused." "paused other value"
+echo "✓ HARNESS_PAUSED set to anything but true reports not paused"
+
+# --- HARNESS_PAUSED value lookup fails ---
+reset_fixtures
+output=$(STUB_GH_VARIABLES="HARNESS_PAUSED" STUB_GH_PAUSED_GET_EXIT=1 run_status) ||
+  fail "expected a failed HARNESS_PAUSED read to still succeed, got: $output"
+assert_contains "$output" "Could not tell whether the harness is paused (could not read the HARNESS_PAUSED variable)." "paused get failure"
+echo "✓ a failed HARNESS_PAUSED value lookup reports that it could not tell, not a guess"
+
+# --- gh variable list fails ---
+reset_fixtures
+output=$(STUB_GH_VARIABLE_LIST_EXIT=1 run_status) || fail "expected a failed variable list to still succeed, got: $output"
+assert_contains "$output" "Could not tell whether the harness is paused (could not list variables)." "variable list failure"
+echo "✓ a failed variable list reports that it could not tell, not a guess"
+
+# --- gh missing ---
+no_gh_bin="$scratch/no_gh_bin"
+mkdir -p "$no_gh_bin"
+for cmd in bash dirname grep git jq date sed mktemp cat rm mkdir; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_gh_bin/$cmd"
+done
+output=$(cd "$repo" && PATH="$no_gh_bin" "$cli" status 2>&1) && fail "expected a missing gh to fail"
+assert_contains "$output" "gh not found" "missing gh"
+echo "✓ a missing gh fails with the message naming it"
+
+# --- gh unauthenticated ---
+reset_fixtures
+output=$(STUB_GH_AUTH_EXIT=1 run_status 2>&1) && fail "expected an unauthenticated gh to fail"
+assert_contains "$output" "gh is not authenticated" "gh unauthenticated"
+echo "✓ an unauthenticated gh fails with the message naming it"
+
+# --- issues list fetch fails ---
+reset_fixtures
+output=$(STUB_GH_ISSUES_EXIT=1 run_status 2>&1) && fail "expected a failed issues list to fail"
+assert_contains "$output" "Could not list open issues labeled claude." "issues list failure"
+echo "✓ a failed issues list fails with a clear message"
+
+# --- pull request list fetch fails ---
+reset_fixtures
+output=$(STUB_GH_PULLS_EXIT=1 run_status 2>&1) && fail "expected a failed pull request list to fail"
+assert_contains "$output" "Could not list open pull requests." "pulls list failure"
+echo "✓ a failed pull request list fails with a clear message"
+
+echo
+echo "harness status check: all passed"
