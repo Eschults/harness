@@ -1005,7 +1005,7 @@ cmd_doctor() {
 
   if [ -n "${pinned:-}" ]; then
     local drifted
-    if drifted=$(drifted_harness_files "$pinned"); then
+    if drifted=$(drifted_harness_files "$pinned" 2>/dev/null); then
       if [ -n "$drifted" ]; then
         while IFS= read -r f; do
           warn "$f differs from the pinned release ($pinned); harness upgrade will overwrite it"
