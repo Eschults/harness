@@ -166,6 +166,8 @@ harness upgrade
 
 It shows the latest release's notes and, if you confirm, pulls in the updated files. Review the diff and commit it. It refuses to run, and changes nothing, while a harness file has uncommitted edits.
 
+`harness upgrade --dry-run` previews that same upgrade without writing anything: the version change, which files would be added or changed, and which locally edited files a real upgrade would refuse to overwrite. It exits 0 whether or not there's an upgrade to show.
+
 Each repo pins its release in `.claude/HARNESS_VERSION` and `harness` runs the CLI from that release, so repos upgrade independently; `harness --version` (or `-v`) prints the one it runs. Installed before the CLI existed? Run your old `bin/harness-upgrade` once to update the files, then once more for how to install the CLI.
 
 ## Uninstalling

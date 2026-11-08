@@ -39,8 +39,12 @@ printf '\n<!-- check-harness-upgrade fixture marker: v1.9.9 -->\n' >> "$new_src/
 extra_file=".claude/new-fixture-file.txt"
 mkdir -p "$new_src/$(dirname "$extra_file")"
 echo "added in v1.9.9" > "$new_src/$extra_file"
+# Matches only the array element line (trimmed, exact), not the
+# literal's other uses (e.g. drifted_harness_files' skip check), which
+# `index()` would also catch and wrongly duplicate elsewhere in the file.
 awk -v extra="$extra_file" '
-  index($0, "\".claude/HARNESS_VERSION\"") { print "  \"" extra "\"" }
+  { line = $0; gsub(/^[ \t]+|[ \t]+$/, "", line) }
+  line == "\".claude/HARNESS_VERSION\"" { print "  \"" extra "\"" }
   { print }
 ' bin/harness-cli > "$new_src/bin/harness-cli"
 
@@ -208,6 +212,81 @@ echo "$output" | grep -q "Uncommitted changes" || fail "expected the uncommitted
 after=$(dirty_snapshot)
 [ "$before" = "$after" ] || fail "expected the blocked no-op upgrade to leave every file untouched"
 echo "✓ the dirty check still blocks an already-up-to-date repo with uncommitted harness files"
+
+# --dry-run must preview the same transition and file list a real upgrade
+# would apply, without writing anything.
+dry_run_repo="$scratch/dry-run-repo"
+git init -q "$dry_run_repo"
+if ! output=$(cd "$dry_run_repo" && HARNESS_SRC="file://$old_src" "$old_src/bin/harness-cli" install 2>&1); then
+  echo "$output" >&2
+  fail "harness install failed priming the dry-run scratch repo"
+fi
+
+dry_run_snapshot() {
+  find "$dry_run_repo" -path "$dry_run_repo/.git" -prune -o -type f -print0 | sort -z | xargs -0 sha256sum
+}
+
+run_dry_run() {
+  local dir=$1 src=$2 tags=$3
+  (
+    cd "$dir" || exit 1
+    HARNESS_SRC="$src" HARNESS_TAGS_URL="$tags" "$new_src/bin/harness-cli" upgrade --dry-run </dev/null
+  )
+}
+
+before=$(dry_run_snapshot)
+if ! output=$(run_dry_run "$dry_run_repo" "file://$new_src" "file://$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness upgrade --dry-run failed previewing the fake newer release"
+fi
+after=$(dry_run_snapshot)
+[ "$before" = "$after" ] || fail "expected a dry run to leave every file untouched"
+echo "✓ a dry run touched nothing"
+
+echo "$output" | grep -qF "Dry run: v1.0.1 -> v1.9.9: https://github.com/Eschults/harness/releases/tag/v1.9.9" ||
+  fail "expected the dry run to report the version transition, got: $output"
+echo "$output" | grep -qF "add    $extra_file" || fail "expected the dry run to list $extra_file as added, got: $output"
+echo "$output" | grep -qF "change .claude/harness-rules.md" || fail "expected the dry run to list harness-rules.md as changed, got: $output"
+echo "$output" | grep -qF "Nothing written" || fail "expected the dry run to say it wrote nothing, got: $output"
+[ ! -e "$dry_run_repo/$extra_file" ] || fail "expected the dry run to not create $extra_file"
+echo "✓ a dry run reports the version change and which files would be added or changed"
+
+if ! output=$(run_upgrade "$dry_run_repo" "file://$new_src" "file://$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness upgrade failed applying the release a prior dry run had previewed"
+fi
+[ "$(cat "$dry_run_repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected the real upgrade to still apply after a preceding dry run"
+echo "✓ the real upgrade still applies after a dry run previewed it"
+
+before=$(dry_run_snapshot)
+if ! output=$(run_dry_run "$dry_run_repo" "file://$new_src" "file://$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness upgrade --dry-run failed on a repo already on the latest release"
+fi
+echo "$output" | grep -q "Already up to date: v1.9.9" || fail "expected the dry run to say already up to date, got: $output"
+after=$(dry_run_snapshot)
+[ "$before" = "$after" ] || fail "expected a dry run on an up-to-date repo to leave every file untouched"
+echo "✓ a dry run on an up-to-date repo says so and touches nothing"
+
+# dirty_repo is left, from the block above, at v1.9.9 with every harness
+# file uncommitted; a dry run there must flag them, never block.
+before=$(dirty_snapshot)
+if ! output=$(run_dry_run "$dirty_repo" "file://$new_src" "file://$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness upgrade --dry-run failed on a repo with locally edited harness files"
+fi
+echo "$output" | grep -qF "Locally edited" || fail "expected the dry run to flag locally edited files, got: $output"
+echo "$output" | grep -qF ".claude/harness-rules.md" || fail "expected the dry run to name the locally edited file, got: $output"
+after=$(dirty_snapshot)
+[ "$before" = "$after" ] || fail "expected a dry run to leave a dirty repo's files untouched"
+echo "✓ a dry run flags locally edited files instead of refusing to run"
+
+if output=$(cd "$repo" && HARNESS_SRC="file://$new_src" "$new_src/bin/harness-cli" upgrade --bogus </dev/null 2>&1); then
+  fail "expected an unknown upgrade option to fail, got: $output"
+fi
+echo "$output" | grep -qF "Unknown option: --bogus" || fail "expected a clear unknown-option message, got: $output"
+echo "$output" | grep -qF "Usage: harness upgrade" || fail "expected a usage line for the unknown option, got: $output"
+echo "✓ an unknown upgrade option prints a usage line and exits non-zero"
 
 echo
 echo "harness-upgrade round trip: all passed"
