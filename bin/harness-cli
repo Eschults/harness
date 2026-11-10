@@ -43,7 +43,7 @@ Usage: harness <command>
 
 Commands:
   install          Fetch the harness files into this repo and import the rules into CLAUDE.md
-  upgrade          Pull in the latest harness release
+  upgrade [--dry-run]  Pull in the latest harness release; --dry-run only previews it
   doctor [--fire]  Check the install end to end; --fire also fires the routine once
   issue <number>   Fire the "Issue to PR" routine for one issue, bypassing GitHub Actions
   pause            Set HARNESS_PAUSED so new claude labels stop starting runs
@@ -243,15 +243,89 @@ cmd_install() {
   fi
 }
 
+# Prints which harness files a real upgrade would add or change, without
+# writing anything. Fetches from harness_src(), same as fetch_harness_files,
+# since that is what install_harness actually pulls from. Exits 1 on a fetch
+# failure, same as drifted_harness_files.
+preview_upgrade_files() {
+  local base f tmp status=0
+  base=$(harness_src)
+  tmp=$(mktemp) || return 1
+  for f in "${HARNESS_FILES[@]}"; do
+    [ "$f" = ".claude/HARNESS_VERSION" ] && continue
+    if [ ! -f "$f" ]; then
+      echo "  add    $f"
+      continue
+    fi
+    if ! curl -fsSL "$base/$f" > "$tmp"; then
+      status=1
+      break
+    fi
+    cmp -s "$tmp" "$f" || echo "  change $f"
+  done
+  rm -f "$tmp"
+  return "$status"
+}
+
+# `harness upgrade --dry-run`: reports the version change and which files
+# would be added or changed, and flags any locally edited file the real
+# upgrade would refuse to overwrite (require_clean_harness_files), but
+# writes nothing: no file, no HARNESS_VERSION bump, no launcher, no label.
+cmd_upgrade_dry_run() {
+  local current=$1 latest dirty
+
+  dirty=$(dirty_harness_files)
+  if [ -n "$dirty" ]; then
+    echo "Locally edited; a real upgrade would refuse to overwrite these until they are committed or stashed:"
+    while IFS= read -r f; do
+      echo "  $f"
+    done <<< "$dirty"
+  fi
+
+  latest=$(latest_harness_version)
+  if [ -z "$latest" ]; then
+    echo "No $(harness_major).Y.Z release tag found at $(harness_tags_url)" >&2
+    exit 1
+  fi
+
+  if [ "$current" = "$latest" ]; then
+    echo "Already up to date: $current"
+    exit 0
+  fi
+
+  echo "Dry run: $current -> $latest: https://github.com/Eschults/harness/releases/tag/$latest"
+  if ! preview_upgrade_files; then
+    echo "Could not fetch $latest's files to preview; see $HARNESS_README" >&2
+    exit 1
+  fi
+  echo "Nothing written: this was a dry run."
+}
+
 cmd_upgrade() {
   require_tools curl jq
   cd_repo_root
+
+  local dry_run=0 arg
+  for arg in "$@"; do
+    case "$arg" in
+      --dry-run) dry_run=1 ;;
+      *)
+        echo "Unknown option: $arg. Usage: harness upgrade [--dry-run]" >&2
+        exit 1
+        ;;
+    esac
+  done
 
   local current latest release_notes confirm
   current=$(cat .claude/HARNESS_VERSION 2>/dev/null || true)
   if [ -z "$current" ]; then
     echo "No .claude/HARNESS_VERSION found; run harness install first." >&2
     exit 1
+  fi
+
+  if [ "$dry_run" -eq 1 ]; then
+    cmd_upgrade_dry_run "$current"
+    return
   fi
 
   require_clean_harness_files
@@ -1199,7 +1273,7 @@ main() {
   [ $# -gt 0 ] && shift
   case "$harness_command" in
     install) cmd_install ;;
-    upgrade) cmd_upgrade ;;
+    upgrade) cmd_upgrade "$@" ;;
     doctor) cmd_doctor "$@" ;;
     issue) cmd_issue "$@" ;;
     pause) cmd_pause ;;
