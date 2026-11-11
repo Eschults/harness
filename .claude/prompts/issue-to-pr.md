@@ -43,7 +43,7 @@ A `claude` label does not mean the request is still open: two issues can describ
 
 Before building, pull out the issue's acceptance criteria: every checklist item under a `## Done looks like` heading, or another acceptance checklist, in the issue body or in any comment. Merge items from the body and comments into one list, in the order they appear. When the issue carries no such checklist, say so in one line in the PR description instead of inventing criteria to check.
 
-Before opening the PR, check the build against every criterion on that list. For each one, decide whether the diff meets it and name the evidence that shows it: a test name, a command's output, or a file. A criterion you cannot name evidence for is not met.
+Before opening the PR, check the build against every criterion on that list. For each one, decide whether the diff meets it and name the evidence that shows it: a test name, a command and its result, or a file. A criterion you cannot name evidence for is not met.
 
 The PR description carries one line per criterion, in the issue's own order: met, with its evidence, or not met, with the reason. A criterion left unmet without a reason this file already allows — a slice left for a follow-up per "Splitting oversized work", or the question a Draft is asking — does not reach a ready-for-review PR: meet it, fold it into the shipped slice or the remainder comment, or take the Draft outcome with it as the blocker.
 
