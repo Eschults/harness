@@ -795,6 +795,53 @@ CHECKS = [
         "issue-to-pr.md should still place the risk tier line right after a draft's blocker question when mirroring a PR template",
     ),
     (
+        "issue-to-pr-pulls-acceptance-criteria-before-building",
+        "Before building, pull out the issue's acceptance criteria: every checklist item under a `## Done looks like` heading, "
+        "or another acceptance checklist, in the issue body or in any comment." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require pulling out the issue's acceptance criteria, from the body or any comment, before building",
+    ),
+    (
+        "issue-to-pr-no-criteria-says-so-not-invented",
+        "When the issue carries no such checklist, say so in one line in the PR description instead of inventing criteria to check."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require saying so in one line, not inventing criteria, when the issue has none",
+    ),
+    (
+        "issue-to-pr-checks-criteria-before-opening-pr",
+        "Before opening the PR, check the build against every criterion on that list." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require checking the build against every acceptance criterion before opening the PR",
+    ),
+    (
+        "issue-to-pr-criteria-lines-met-or-not-met-with-evidence",
+        "The PR description carries one line per criterion, in the issue's own order: met, with its evidence, or not met, with the reason."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require one PR description line per criterion, met with evidence or not met with a reason",
+    ),
+    (
+        "issue-to-pr-unmet-criterion-blocks-ready-for-review",
+        "does not reach a ready-for-review PR: meet it, fold it into the shipped slice or the remainder comment, or take the Draft "
+        "outcome with it as the blocker." in ISSUE_TO_PR,
+        "issue-to-pr.md should still ban an unmet criterion on a ready-for-review PR unless it is met, split, or made the Draft question",
+    ),
+    (
+        "issue-to-pr-criteria-fit-pr-template",
+        'This section\'s lines sit with a repo\'s PR template per "Fitting the repo\'s PR template" below: fill a template section '
+        'that already asks for acceptance criteria or a "Done looks like" checklist, or append the list under the template\'s last '
+        "section when none does." in ISSUE_TO_PR,
+        "issue-to-pr.md should still fit the acceptance-criteria lines into a repo's PR template, or append them under its last section",
+    ),
+    (
+        "issue-to-pr-template-required-content-includes-criteria",
+        "the acceptance-criteria lines" in ISSUE_TO_PR,
+        "issue-to-pr.md should still list the acceptance-criteria lines among the required PR content a template can't drop",
+    ),
+    (
+        "issue-to-pr-review-subagent-flags-unmet-criteria",
+        "Also tell it to check the PR description's acceptance-criteria lines against the diff, and flag any criterion marked met "
+        "that the diff does not actually meet." in ISSUE_TO_PR,
+        "issue-to-pr.md should still tell the fresh review subagent to flag any acceptance criterion marked met that the diff does not meet",
+    ),
+    (
         "readme-explains-codeowners-for-risk-high",
         "CODEOWNERS" in README and "risk:high" in README and "Required number of approvals" in README,
         "README.md should still explain requiring two approvals on risk:high via CODEOWNERS and branch protection",
