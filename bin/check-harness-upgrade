@@ -318,6 +318,8 @@ run_dry_run_to() {
 
 to_repo="$scratch/to-repo"
 git init -q "$to_repo"
+git -C "$to_repo" config user.email "check-harness-upgrade@example.com"
+git -C "$to_repo" config user.name "check-harness-upgrade"
 if ! output=$(cd "$to_repo" && HARNESS_SRC="file://$new_src" "$new_src/bin/harness-cli" install 2>&1); then
   echo "$output" >&2
   fail "harness install failed priming the --to scratch repo at the newer fixture release"
