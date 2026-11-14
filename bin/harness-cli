@@ -243,22 +243,56 @@ cmd_install() {
   fi
 }
 
+# Fetches $1 into $2, classifying the outcome instead of trusting curl's own
+# exit code: -f/--fail exits 22 for ANY HTTP error (403, 429, 500 included,
+# not just 404), so a transient failure must never be read as "this release
+# doesn't have the file" and silently drop it. Dropping -f means curl itself
+# exits 0 for a 404 too, so this reads the real HTTP status instead: 0
+# success ($2 holds the fetched content), 1 genuinely missing at this
+# release (HTTP 404), 2 anything else (including a connection failure).
+# %{http_code} is always "000" for a scheme with no real HTTP status — the
+# file:// fixtures this test suite uses, and a request that never reached a
+# server at all — so that case falls back to curl's own exit code: 0 is
+# success, 37 ("couldn't open file") is file:// for a genuinely missing
+# file, anything else is a hard failure. $2 is only ever written on a 0
+# return, so a 1 or 2 never corrupts or deletes a file that fetched fine
+# moments ago; the caller decides what a 1 or 2 means for the file already
+# on disk.
+fetch_one_release_file() {
+  local url=$1 dest=$2 tmp code rc=0
+  tmp=$(mktemp) || return 2
+  code=$(curl -sS -o "$tmp" -w '%{http_code}' "$url" 2>/dev/null) || rc=$?
+  if [ "$code" = "000" ]; then
+    if [ "$rc" -eq 0 ]; then
+      mv "$tmp" "$dest"
+      return 0
+    fi
+    rm -f "$tmp"
+    [ "$rc" -eq 37 ] && return 1
+    return 2
+  fi
+  case "$code" in
+    2??) mv "$tmp" "$dest"; return 0 ;;
+    404) rm -f "$tmp"; return 1 ;;
+    *) rm -f "$tmp"; return 2 ;;
+  esac
+}
+
 # Prints which harness files a real upgrade would add, change, or (only
 # when $2 is 1) remove, without writing anything. $1 is the release base to
 # diff against (harness_src() for the latest, or a --to target's exact tag
 # via harness_release_src). Exits 1 on an unexpected fetch failure, same as
 # drifted_harness_files. $2=1 is for a --to target that may be older than a
-# file's introduction: curl exits 22 for an HTTP 404 and 37 for a missing
-# local file (file:// in tests), and either then means "removed", not a
-# fetch failure.
+# file's introduction, where fetch_one_release_file's status 1 (genuinely
+# missing, not just any failure) means "removed" rather than a fetch error.
 preview_upgrade_files() {
-  local base=$1 allow_removal=${2:-0} f tmp rc status=0
+  local base=$1 allow_removal=${2:-0} f tmp fetch_status status=0
   tmp=$(mktemp) || return 1
   for f in "${HARNESS_FILES[@]}"; do
     [ "$f" = ".claude/HARNESS_VERSION" ] && continue
-    rc=0
-    curl -fsSL "$base/$f" > "$tmp" 2>/dev/null || rc=$?
-    if [ "$rc" -eq 0 ]; then
+    fetch_one_release_file "$base/$f" "$tmp"
+    fetch_status=$?
+    if [ "$fetch_status" -eq 0 ]; then
       if [ ! -f "$f" ]; then
         echo "  add    $f"
       else
@@ -266,7 +300,7 @@ preview_upgrade_files() {
       fi
       continue
     fi
-    if [ "$allow_removal" -eq 1 ] && [ -f "$f" ] && { [ "$rc" -eq 22 ] || [ "$rc" -eq 37 ]; }; then
+    if [ "$allow_removal" -eq 1 ] && [ -f "$f" ] && [ "$fetch_status" -eq 1 ]; then
       echo "  remove $f"
       continue
     fi
@@ -297,27 +331,25 @@ require_known_release() {
 }
 
 # Fetches every harness file from release $1 (an exact tag's raw content,
-# from harness_release_src), tolerating a file that release predates: curl
-# exits 22 for an HTTP 404 and 37 for a missing local file (file:// in
-# tests), and either means a --to target older than the file's introduction,
-# so the local copy is removed instead of left stale. Any other failure
-# aborts, naming the file; the caller already required a clean tree, so
-# `git checkout` recovers whatever this call wrote before failing.
+# from harness_release_src), tolerating a file that release predates (a
+# genuine fetch_one_release_file status of 1: a 404, or file:// "couldn't
+# open" in tests) by removing the local copy instead of leaving it stale.
+# Any other failure (status 2: a non-404 HTTP error, or a connection
+# problem) aborts, naming the file, and leaves that file exactly as it was —
+# never deleted or left holding an error page — and the caller already
+# required a clean tree, so `git checkout` recovers whatever an earlier file
+# in this loop wrote before the failure.
 fetch_release_files() {
-  local base=$1 f rc
+  local base=$1 f fetch_status
   for f in "${HARNESS_FILES[@]}"; do
     mkdir -p "$(dirname "$f")"
-    rc=0
-    curl -fsSL "$base/$f" -o "$f" 2>/dev/null || rc=$?
-    if [ "$rc" -eq 0 ]; then
-      continue
-    fi
-    if [ "$rc" -eq 22 ] || [ "$rc" -eq 37 ]; then
-      rm -f "$f"
-      continue
-    fi
-    echo "Could not fetch $f from $base" >&2
-    return 1
+    fetch_one_release_file "$base/$f" "$f"
+    fetch_status=$?
+    case "$fetch_status" in
+      0) continue ;;
+      1) rm -f "$f" ;;
+      *) echo "Could not fetch $f from $base" >&2; return 1 ;;
+    esac
   done
 }
 
@@ -418,7 +450,13 @@ cmd_upgrade() {
           exit 1
         fi
         ;;
-      --to=*) to_version=${1#--to=} ;;
+      --to=*)
+        to_version=${1#--to=}
+        if [ -z "$to_version" ]; then
+          echo "Usage: harness upgrade [--to <tag>] [--dry-run]" >&2
+          exit 1
+        fi
+        ;;
       *)
         echo "Unknown option: $1. Usage: harness upgrade [--to <tag>] [--dry-run]" >&2
         exit 1

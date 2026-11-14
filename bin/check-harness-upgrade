@@ -434,5 +434,52 @@ after=$(to_snapshot)
 [ "$before" = "$after" ] || fail "expected --to --dry-run on the pinned release to leave every file untouched"
 echo "✓ harness upgrade --to --dry-run on the already-pinned release says so and touches nothing"
 
+before=$(to_snapshot)
+if output=$(cd "$to_repo" && HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" upgrade --to= </dev/null 2>&1); then
+  fail "expected harness upgrade --to= with no value to fail, got: $output"
+fi
+echo "$output" | grep -qF "Usage: harness upgrade" || fail "expected a usage message for an empty --to=, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected an empty --to= to leave every file untouched, instead of silently upgrading to latest"
+echo "✓ harness upgrade --to= with no value fails with usage instead of silently upgrading to latest"
+
+# A non-404 HTTP failure (a transient 500, a 403, a rate limit) must never
+# be read as "this release doesn't have the file": that would silently
+# delete a file that genuinely exists at the target release. Stubs curl
+# for exactly fetch_one_release_file's own shape (-o <file> -w
+# '%{http_code}', no -f) so this is the only call intercepted; every other
+# curl invocation in this same run (install's own fetch, the tags lookup)
+# falls through to the real curl untouched.
+real_curl=$(command -v curl)
+http_error_stub="$scratch/http_error_stub"
+mkdir -p "$http_error_stub"
+cat > "$http_error_stub/curl" <<'STUB'
+#!/usr/bin/env bash
+out="" has_w=0
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  [ "${args[i]}" = "-o" ] && out="${args[i + 1]}"
+  [ "${args[i]}" = "-w" ] && has_w=1
+done
+if [ -z "$out" ] || [ "$has_w" -eq 0 ]; then
+  exec "$REAL_CURL" "$@"
+fi
+printf '%s' "500: Internal Server Error" > "$out"
+printf '%s' "500"
+STUB
+chmod +x "$http_error_stub/curl"
+
+before=$(to_snapshot)
+if output=$(
+  cd "$to_repo" || exit 1
+  printf 'y\n' | PATH="$http_error_stub:$PATH" REAL_CURL="$real_curl" HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" upgrade --to v1.0.1 2>&1
+); then
+  fail "expected harness upgrade --to to fail on a non-404 HTTP error, got: $output"
+fi
+echo "$output" | grep -qF "Could not fetch" || fail "expected a non-404 HTTP error to be reported as a fetch failure, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected a non-404 HTTP error to leave every file untouched, instead of deleting a file that exists at the target release"
+echo "✓ harness upgrade --to treats a non-404 HTTP error as a fetch failure, never as a removed file"
+
 echo
 echo "harness-upgrade round trip: all passed"
