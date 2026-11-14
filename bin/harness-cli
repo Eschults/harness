@@ -43,7 +43,7 @@ Usage: harness <command>
 
 Commands:
   install          Fetch the harness files into this repo and import the rules into CLAUDE.md
-  upgrade [--dry-run]  Pull in the latest harness release; --dry-run only previews it
+  upgrade [--to <tag>] [--dry-run]  Pull in the latest (or a named) harness release; --dry-run only previews it
   doctor [--fire]  Check the install end to end; --fire also fires the routine once
   issue <number>   Fire the "Issue to PR" routine for one issue, bypassing GitHub Actions
   pause            Set HARNESS_PAUSED so new claude labels stop starting runs
@@ -243,36 +243,123 @@ cmd_install() {
   fi
 }
 
-# Prints which harness files a real upgrade would add or change, without
-# writing anything. Fetches from harness_src(), same as fetch_harness_files,
-# since that is what install_harness actually pulls from. Exits 1 on a fetch
-# failure, same as drifted_harness_files.
+# Fetches $1 into $2, classifying the outcome instead of trusting curl's own
+# exit code: -f/--fail exits 22 for ANY HTTP error (403, 429, 500 included,
+# not just 404), so a transient failure must never be read as "this release
+# doesn't have the file" and silently drop it. Dropping -f means curl itself
+# exits 0 for a 404 too, so this reads the real HTTP status instead: 0
+# success ($2 holds the fetched content), 1 genuinely missing at this
+# release (HTTP 404), 2 anything else (including a connection failure).
+# %{http_code} is always "000" for a scheme with no real HTTP status — the
+# file:// fixtures this test suite uses, and a request that never reached a
+# server at all — so that case falls back to curl's own exit code: 0 is
+# success, 37 ("couldn't open file") is file:// for a genuinely missing
+# file, anything else is a hard failure. $2 is only ever written on a 0
+# return, so a 1 or 2 never corrupts or deletes a file that fetched fine
+# moments ago; the caller decides what a 1 or 2 means for the file already
+# on disk.
+fetch_one_release_file() {
+  local url=$1 dest=$2 tmp code rc=0
+  tmp=$(mktemp) || return 2
+  code=$(curl -sS -o "$tmp" -w '%{http_code}' "$url" 2>/dev/null) || rc=$?
+  if [ "$code" = "000" ]; then
+    if [ "$rc" -eq 0 ]; then
+      mv "$tmp" "$dest"
+      return 0
+    fi
+    rm -f "$tmp"
+    [ "$rc" -eq 37 ] && return 1
+    return 2
+  fi
+  case "$code" in
+    2??) mv "$tmp" "$dest"; return 0 ;;
+    404) rm -f "$tmp"; return 1 ;;
+    *) rm -f "$tmp"; return 2 ;;
+  esac
+}
+
+# Prints which harness files a real upgrade would add, change, or (only
+# when $2 is 1) remove, without writing anything. $1 is the release base to
+# diff against (harness_src() for the latest, or a --to target's exact tag
+# via harness_release_src). Exits 1 on an unexpected fetch failure, same as
+# drifted_harness_files. $2=1 is for a --to target that may be older than a
+# file's introduction, where fetch_one_release_file's status 1 (genuinely
+# missing, not just any failure) means "removed" rather than a fetch error.
 preview_upgrade_files() {
-  local base f tmp status=0
-  base=$(harness_src)
+  local base=$1 allow_removal=${2:-0} f tmp fetch_status status=0
   tmp=$(mktemp) || return 1
   for f in "${HARNESS_FILES[@]}"; do
     [ "$f" = ".claude/HARNESS_VERSION" ] && continue
-    if [ ! -f "$f" ]; then
-      echo "  add    $f"
+    fetch_one_release_file "$base/$f" "$tmp"
+    fetch_status=$?
+    if [ "$fetch_status" -eq 0 ]; then
+      if [ ! -f "$f" ]; then
+        echo "  add    $f"
+      else
+        cmp -s "$tmp" "$f" || echo "  change $f"
+      fi
       continue
     fi
-    if ! curl -fsSL "$base/$f" > "$tmp"; then
-      status=1
-      break
+    if [ "$allow_removal" -eq 1 ] && [ -f "$f" ] && [ "$fetch_status" -eq 1 ]; then
+      echo "  remove $f"
+      continue
     fi
-    cmp -s "$tmp" "$f" || echo "  change $f"
+    status=1
+    break
   done
   rm -f "$tmp"
   return "$status"
 }
 
-# `harness upgrade --dry-run`: reports the version change and which files
-# would be added or changed, and flags any locally edited file the real
-# upgrade would refuse to overwrite (require_clean_harness_files), but
-# writes nothing: no file, no HARNESS_VERSION bump, no launcher, no label.
+# Validates a --to target: must be a $(harness_major).Y.Z tag that actually
+# exists at harness_tags_url. Exits 1, naming the tag, either way; every
+# caller treats this as fatal.
+require_known_release() {
+  local tag=$1 tags
+  if ! [[ "$tag" =~ ^$(harness_major)\.[0-9]+\.[0-9]+$ ]]; then
+    echo "$tag is not a $(harness_major).Y.Z release tag" >&2
+    exit 1
+  fi
+  if ! tags=$(curl -fsSL "$(harness_tags_url)" | jq -r '.[].name'); then
+    echo "Could not list releases at $(harness_tags_url)" >&2
+    exit 1
+  fi
+  if ! echo "$tags" | grep -qxF "$tag"; then
+    echo "No such release: $tag" >&2
+    exit 1
+  fi
+}
+
+# Fetches every harness file from release $1 (an exact tag's raw content,
+# from harness_release_src), tolerating a file that release predates (a
+# genuine fetch_one_release_file status of 1: a 404, or file:// "couldn't
+# open" in tests) by removing the local copy instead of leaving it stale.
+# Any other failure (status 2: a non-404 HTTP error, or a connection
+# problem) aborts, naming the file, and leaves that file exactly as it was —
+# never deleted or left holding an error page — and the caller already
+# required a clean tree, so `git checkout` recovers whatever an earlier file
+# in this loop wrote before the failure.
+fetch_release_files() {
+  local base=$1 f fetch_status
+  for f in "${HARNESS_FILES[@]}"; do
+    mkdir -p "$(dirname "$f")"
+    fetch_one_release_file "$base/$f" "$f"
+    fetch_status=$?
+    case "$fetch_status" in
+      0) continue ;;
+      1) rm -f "$f" ;;
+      *) echo "Could not fetch $f from $base" >&2; return 1 ;;
+    esac
+  done
+}
+
+# `harness upgrade --dry-run` (optionally `--to <tag>`): reports the version
+# change and which files would be added, changed, or removed, and flags any
+# locally edited file the real upgrade would refuse to overwrite
+# (require_clean_harness_files), but writes nothing: no file, no
+# HARNESS_VERSION bump, no launcher, no label.
 cmd_upgrade_dry_run() {
-  local current=$1 latest dirty
+  local current=$1 to_version=${2:-} latest dirty base allow_removal=0
 
   dirty=$(dirty_harness_files)
   if [ -n "$dirty" ]; then
@@ -282,38 +369,100 @@ cmd_upgrade_dry_run() {
     done <<< "$dirty"
   fi
 
-  latest=$(latest_harness_version)
-  if [ -z "$latest" ]; then
-    echo "No $(harness_major).Y.Z release tag found at $(harness_tags_url)" >&2
-    exit 1
+  if [ -n "$to_version" ]; then
+    require_known_release "$to_version"
+    latest=$to_version
+    base=$(harness_release_src "$latest")
+    allow_removal=1
+  else
+    latest=$(latest_harness_version)
+    if [ -z "$latest" ]; then
+      echo "No $(harness_major).Y.Z release tag found at $(harness_tags_url)" >&2
+      exit 1
+    fi
+    base=$(harness_src)
   fi
 
   if [ "$current" = "$latest" ]; then
-    echo "Already up to date: $current"
+    if [ -n "$to_version" ]; then
+      echo "Already on $latest"
+    else
+      echo "Already up to date: $current"
+    fi
     exit 0
   fi
 
   echo "Dry run: $current -> $latest: https://github.com/Eschults/harness/releases/tag/$latest"
-  if ! preview_upgrade_files; then
+  if ! preview_upgrade_files "$base" "$allow_removal"; then
     echo "Could not fetch $latest's files to preview; see $HARNESS_README" >&2
     exit 1
   fi
   echo "Nothing written: this was a dry run."
 }
 
+# Real `harness upgrade --to <tag>`: same confirmation and release-notes
+# link as a plain upgrade, but against one named release instead of
+# latest_harness_version, fetched from that exact tag (fetch_release_files)
+# so a downgrade removes a file the target release predates instead of
+# failing on it.
+cmd_upgrade_to() {
+  local current=$1 target=$2 release_notes confirm base
+
+  require_known_release "$target"
+
+  if [ "$current" = "$target" ]; then
+    echo "Already on $target"
+    exit 0
+  fi
+
+  release_notes="https://github.com/Eschults/harness/releases/tag/$target"
+  echo "Upgrading $current -> $target: $release_notes"
+  open "$release_notes" 2>/dev/null || xdg-open "$release_notes" 2>/dev/null || true
+
+  read -rp "Pull in $target now? [y/N] " confirm
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    echo "Skipped. Re-run harness upgrade when you're ready."
+    exit 0
+  fi
+
+  base=$(harness_release_src "$target")
+  fetch_release_files "$base" || exit 1
+  remove_legacy_files
+  if ! grep -qF "$RULES_IMPORT" CLAUDE.md 2>/dev/null; then
+    printf '\n%s\n' "$RULES_IMPORT" >> CLAUDE.md
+  fi
+  echo "Pulled in $(<.claude/HARNESS_VERSION). Review the diff and commit."
+}
+
 cmd_upgrade() {
   require_tools curl jq
   cd_repo_root
 
-  local dry_run=0 arg
-  for arg in "$@"; do
-    case "$arg" in
+  local dry_run=0 to_version=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
       --dry-run) dry_run=1 ;;
+      --to)
+        shift
+        to_version=${1:-}
+        if [ -z "$to_version" ]; then
+          echo "Usage: harness upgrade [--to <tag>] [--dry-run]" >&2
+          exit 1
+        fi
+        ;;
+      --to=*)
+        to_version=${1#--to=}
+        if [ -z "$to_version" ]; then
+          echo "Usage: harness upgrade [--to <tag>] [--dry-run]" >&2
+          exit 1
+        fi
+        ;;
       *)
-        echo "Unknown option: $arg. Usage: harness upgrade [--dry-run]" >&2
+        echo "Unknown option: $1. Usage: harness upgrade [--to <tag>] [--dry-run]" >&2
         exit 1
         ;;
     esac
+    shift
   done
 
   local current latest release_notes confirm
@@ -324,11 +473,16 @@ cmd_upgrade() {
   fi
 
   if [ "$dry_run" -eq 1 ]; then
-    cmd_upgrade_dry_run "$current"
+    cmd_upgrade_dry_run "$current" "$to_version"
     return
   fi
 
   require_clean_harness_files
+
+  if [ -n "$to_version" ]; then
+    cmd_upgrade_to "$current" "$to_version"
+    return
+  fi
 
   # Set by a v1.3.x CLI that just replaced itself with bin/harness, so the confirmed upgrade resumes without re-asking.
   if [ -z "${HARNESS_UPGRADE_CONFIRMED:-}" ]; then

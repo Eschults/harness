@@ -168,6 +168,8 @@ It shows the latest release's notes and, if you confirm, pulls in the updated fi
 
 `harness upgrade --dry-run` previews that same upgrade without writing anything: the version change, which files would be added or changed, and which locally edited files a real upgrade would refuse to overwrite. It exits 0 whether or not there's an upgrade to show.
 
+`harness upgrade --to v1.X.Y` targets a named release instead of the latest, in either direction: rolling back a release that broke something in your repo, or stepping through several one at a time to review each diff separately. It asks the same confirmation and links the same release notes as a plain upgrade, refuses a tag that doesn't exist or is outside the CLI's major (naming the tag), prints "Already on v1.X.Y" and exits 0 if you're already there, and otherwise obeys the same uncommitted-edits check as a plain upgrade. A downgrade past a file's introduction removes that file, so the repo matches the target release's own file set. Combine it with `--dry-run` to preview a rollback before applying it.
+
 Each repo pins its release in `.claude/HARNESS_VERSION` and `harness` runs the CLI from that release, so repos upgrade independently; `harness --version` (or `-v`) prints the one it runs. Installed before the CLI existed? Run your old `bin/harness-upgrade` once to update the files, then once more for how to install the CLI.
 
 ## Uninstalling
