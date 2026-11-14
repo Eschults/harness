@@ -288,5 +288,149 @@ echo "$output" | grep -qF "Unknown option: --bogus" || fail "expected a clear un
 echo "$output" | grep -qF "Usage: harness upgrade" || fail "expected a usage line for the unknown option, got: $output"
 echo "✓ an unknown upgrade option prints a usage line and exits non-zero"
 
+# --- harness upgrade --to <tag> ---
+# Reuses old_src/new_src/extra_file/tags_json from the round trip above:
+# new_src's fixture is v1.9.9 with extra_file, old_src's is v1.0.1 without
+# it, so a --to downgrade/upgrade between them exercises file removal and
+# restoration without any new fixture content.
+
+release_src="$scratch/release_src"
+mkdir -p "$release_src"
+cp -r "$old_src" "$release_src/v1.0.1"
+cp -r "$new_src" "$release_src/v1.9.9"
+export HARNESS_RELEASE_SRC="file://$release_src"
+
+run_upgrade_to() {
+  local dir=$1 to=$2 tags=$3 answer=${4:-y}
+  (
+    cd "$dir" || exit 1
+    printf '%s\n' "$answer" | HARNESS_TAGS_URL="$tags" "$new_src/bin/harness-cli" upgrade --to "$to"
+  )
+}
+
+run_dry_run_to() {
+  local dir=$1 to=$2 tags=$3
+  (
+    cd "$dir" || exit 1
+    HARNESS_TAGS_URL="$tags" "$new_src/bin/harness-cli" upgrade --to "$to" --dry-run </dev/null
+  )
+}
+
+to_repo="$scratch/to-repo"
+git init -q "$to_repo"
+if ! output=$(cd "$to_repo" && HARNESS_SRC="file://$new_src" "$new_src/bin/harness-cli" install 2>&1); then
+  echo "$output" >&2
+  fail "harness install failed priming the --to scratch repo at the newer fixture release"
+fi
+[ "$(cat "$to_repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected the --to scratch repo to start at v1.9.9"
+[ -f "$to_repo/$extra_file" ] || fail "expected the --to scratch repo to start with $extra_file"
+
+to_snapshot() {
+  find "$to_repo" -path "$to_repo/.git" -prune -o -type f -print0 | sort -z | xargs -0 sha256sum
+}
+
+before=$(to_snapshot)
+if output=$(run_upgrade_to "$to_repo" "not-a-tag" "file://$tags_json" 2>&1); then
+  fail "expected harness upgrade --to with a malformed tag to fail, got: $output"
+fi
+echo "$output" | grep -qF "not-a-tag is not a v1.Y.Z release tag" || fail "expected a clear message naming the malformed tag, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected a malformed --to tag to leave every file untouched"
+echo "✓ harness upgrade --to refuses a malformed tag and touches nothing"
+
+before=$(to_snapshot)
+if output=$(run_upgrade_to "$to_repo" "v2.0.0" "file://$tags_json" 2>&1); then
+  fail "expected harness upgrade --to v2.0.0 to fail (a different major), got: $output"
+fi
+echo "$output" | grep -qF "v2.0.0 is not a v1.Y.Z release tag" || fail "expected a clear message naming the cross-major tag, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected a cross-major --to tag to leave every file untouched"
+echo "✓ harness upgrade --to refuses a tag from a newer major and touches nothing"
+
+before=$(to_snapshot)
+if output=$(run_upgrade_to "$to_repo" "v1.4.4" "file://$tags_json" 2>&1); then
+  fail "expected harness upgrade --to v1.4.4 to fail (no such tag), got: $output"
+fi
+echo "$output" | grep -qF "No such release: v1.4.4" || fail "expected a clear message naming the unknown tag, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected an unknown --to tag to leave every file untouched"
+echo "✓ harness upgrade --to refuses a well-formed tag that doesn't exist and touches nothing"
+
+before=$(to_snapshot)
+if ! output=$(run_upgrade_to "$to_repo" "v1.9.9" "file://$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness upgrade --to v1.9.9 failed when already pinned there"
+fi
+echo "$output" | grep -qF "Already on v1.9.9" || fail "expected targeting the pinned release to say so, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected targeting the already-pinned release to leave every file untouched"
+echo "✓ harness upgrade --to the already-pinned release says so and touches nothing"
+
+if ! output=$(run_upgrade_to "$to_repo" "v1.0.1" "file://$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness upgrade --to v1.0.1 failed downgrading from v1.9.9"
+fi
+echo "$output" | grep -qF "Upgrading v1.9.9 -> v1.0.1: https://github.com/Eschults/harness/releases/tag/v1.0.1" || fail "expected the downgrade to report the v1.9.9 -> v1.0.1 transition, got: $output"
+[ "$(cat "$to_repo/.claude/HARNESS_VERSION")" = "v1.0.1" ] || fail "expected .claude/HARNESS_VERSION to read v1.0.1 after downgrading, got $(cat "$to_repo/.claude/HARNESS_VERSION" 2>/dev/null)"
+[ ! -e "$to_repo/$extra_file" ] || fail "expected downgrading to v1.0.1 to remove $extra_file, which v1.0.1 never had"
+for f in "${HARNESS_FILES[@]}"; do
+  cmp -s "$to_repo/$f" "$old_src/$f" || fail "expected $f to match v1.0.1's content after downgrading"
+done
+grep -q "check-harness-upgrade fixture marker" "$to_repo/.claude/harness-rules.md" && fail "expected downgrading to v1.0.1 to drop the v1.9.9 fixture marker"
+echo "✓ harness upgrade --to downgrades to a named older release and removes a file it predates"
+
+if ! output=$(run_upgrade_to "$to_repo" "v1.9.9" "file://$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness upgrade --to v1.9.9 failed upgrading back from v1.0.1"
+fi
+[ "$(cat "$to_repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected .claude/HARNESS_VERSION to read v1.9.9 after upgrading back"
+cmp -s "$to_repo/$extra_file" "$new_src/$extra_file" || fail "expected upgrading back to v1.9.9 to restore $extra_file"
+echo "✓ harness upgrade --to upgrades forward to a named newer release"
+
+before=$(to_snapshot)
+if ! output=$(run_upgrade_to "$to_repo" "v1.0.1" "file://$tags_json" n 2>&1); then
+  echo "$output" >&2
+  fail "harness upgrade --to failed when the user declined"
+fi
+echo "$output" | grep -q "Skipped" || fail "expected a declined --to upgrade to say it skipped, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected a declined --to upgrade to leave every file untouched"
+echo "✓ a declined harness upgrade --to left every file untouched"
+
+(cd "$to_repo" && git add -A && git commit -q -m "settle at v1.9.9")
+printf '\nlocal tweak\n' >> "$to_repo/.claude/harness-rules.md"
+before=$(to_snapshot)
+if output=$(run_upgrade_to "$to_repo" "v1.0.1" "file://$tags_json" 2>&1); then
+  fail "expected harness upgrade --to to refuse with an uncommitted harness-rules.md edit, got: $output"
+fi
+echo "$output" | grep -q "Uncommitted changes" || fail "expected a clear uncommitted-changes message, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected a blocked --to upgrade to leave every file untouched"
+echo "✓ an uncommitted edit blocks harness upgrade --to and leaves it intact"
+(cd "$to_repo" && git checkout -q -- .claude/harness-rules.md)
+
+before=$(to_snapshot)
+if ! output=$(run_dry_run_to "$to_repo" "v1.0.1" "file://$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness upgrade --to v1.0.1 --dry-run failed previewing the downgrade"
+fi
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected harness upgrade --to --dry-run to leave every file untouched"
+echo "$output" | grep -qF "Dry run: v1.9.9 -> v1.0.1: https://github.com/Eschults/harness/releases/tag/v1.0.1" || fail "expected the dry run to report the version transition, got: $output"
+echo "$output" | grep -qF "remove $extra_file" || fail "expected the dry run to list $extra_file as removed, got: $output"
+echo "$output" | grep -qF "change .claude/harness-rules.md" || fail "expected the dry run to list harness-rules.md as changed, got: $output"
+echo "$output" | grep -qF "Nothing written" || fail "expected the dry run to say it wrote nothing, got: $output"
+echo "✓ harness upgrade --to --dry-run previews a downgrade, including a file it would remove, and touches nothing"
+
+before=$(to_snapshot)
+if ! output=$(run_dry_run_to "$to_repo" "v1.9.9" "file://$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness upgrade --to v1.9.9 --dry-run failed on the already-pinned release"
+fi
+echo "$output" | grep -qF "Already on v1.9.9" || fail "expected --to --dry-run on the pinned release to say so, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected --to --dry-run on the pinned release to leave every file untouched"
+echo "✓ harness upgrade --to --dry-run on the already-pinned release says so and touches nothing"
+
 echo
 echo "harness-upgrade round trip: all passed"
