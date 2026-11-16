@@ -201,10 +201,18 @@ main() {
   local version pinned=""
   case "${1:-}" in
     install)
+      if [ $# -gt 2 ]; then
+        echo "Usage: harness install [<version>]" >&2
+        exit 1
+      fi
       cmd_install_version "${2:-}"
       return 0
       ;;
     versions)
+      if [ $# -gt 1 ]; then
+        echo "Usage: harness versions" >&2
+        exit 1
+      fi
       cmd_versions
       return 0
       ;;

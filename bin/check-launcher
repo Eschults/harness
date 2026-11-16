@@ -120,6 +120,18 @@ fi
 echo "$output" | grep -qF "v2.0.0 is not a 1.Y.Z version" || fail "expected a clear cross-major message, got: $output"
 echo "✓ install refuses a version from a newer major"
 
+if output=$(run_launcher "$install_fresh" install v1.4.0 extra 2>&1); then
+  fail "expected install to refuse a trailing argument, got: $output"
+fi
+echo "$output" | grep -qF "Usage: harness install" || fail "expected a usage message for a trailing install argument, got: $output"
+echo "✓ install refuses a trailing argument instead of silently ignoring it"
+
+if output=$(run_launcher "$install_fresh" versions extra 2>&1); then
+  fail "expected versions to refuse a trailing argument, got: $output"
+fi
+echo "$output" | grep -qF "Usage: harness versions" || fail "expected a usage message for a trailing versions argument, got: $output"
+echo "✓ versions refuses a trailing argument instead of silently ignoring it"
+
 # --- versions lists the cache, highlighting the pinned repo's version ---
 output=$(run_launcher "$scratch/pinned" versions 2>&1) || fail "expected versions to succeed, got: $output"
 echo "$output" | grep -qxF "* 1.4.0 (current)" || fail "expected versions to mark the pinned repo's cached version as current, got: $output"

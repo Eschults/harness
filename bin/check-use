@@ -544,6 +544,41 @@ after=$(to_snapshot)
 [ "$before" = "$after" ] || fail "expected a non-404 HTTP error to leave every file untouched, instead of deleting a file that exists at the target release"
 echo "✓ use treats a non-404 HTTP error as a fetch failure, never as a removed file"
 
+# A truncated transfer: curl receives real response headers (so
+# %{http_code} reports 200) but then reports its own failure for a
+# cut-short body via a non-zero exit. That must never be read as "fetched
+# fine" just because the status line looked like success.
+truncated_stub="$scratch/truncated_stub"
+mkdir -p "$truncated_stub"
+cat > "$truncated_stub/curl" <<'STUB'
+#!/usr/bin/env bash
+out="" has_w=0
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  [ "${args[i]}" = "-o" ] && out="${args[i + 1]}"
+  [ "${args[i]}" = "-w" ] && has_w=1
+done
+if [ -z "$out" ] || [ "$has_w" -eq 0 ]; then
+  exec "$REAL_CURL" "$@"
+fi
+printf '%s' "truncated body" > "$out"
+printf '%s' "200"
+exit 18
+STUB
+chmod +x "$truncated_stub/curl"
+
+before=$(to_snapshot)
+if output=$(
+  cd "$to_repo" || exit 1
+  printf 'y\n' | PATH="$truncated_stub:$PATH" REAL_CURL="$real_curl" HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" use 1.0.1 2>&1
+); then
+  fail "expected harness use to fail on a truncated transfer (200 status, non-zero curl exit), got: $output"
+fi
+echo "$output" | grep -qF "Could not fetch" || fail "expected a truncated transfer to be reported as a fetch failure, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected a truncated transfer to leave every file untouched, instead of writing a cut-short file"
+echo "✓ use treats a truncated transfer (200 status, non-zero exit) as a fetch failure, never a success"
+
 # --- label creation (first-time bootstrap only) ---
 
 echo

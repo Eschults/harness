@@ -216,19 +216,21 @@ ensure_harness_labels() {
 # doesn't have the file" and silently drop it. Dropping -f means curl itself
 # exits 0 for a 404 too, so this reads the real HTTP status instead: 0
 # success ($2 holds the fetched content), 1 genuinely missing at this
-# release (HTTP 404), 2 anything else (including a connection failure).
-# %{http_code} is always "000" for a scheme with no real HTTP status — the
-# file:// fixtures this test suite uses, and a request that never reached a
-# server at all — so that case falls back to curl's own exit code: 0 is
-# success, 37 ("couldn't open file") is file:// for a genuinely missing
-# file, anything else is a hard failure. $2 is only ever written on a 0
-# return, so a 1 or 2 never corrupts or deletes a file that fetched fine
-# moments ago; the caller decides what a 1 or 2 means for the file already
-# on disk.
+# release (HTTP 404), 2 anything else (including a connection failure or a
+# transfer that curl reports as failed even once the response headers, and
+# so a status line, already arrived — a cut-short body must never be read
+# as a complete 200). %{http_code} is always "000" for a scheme with no
+# real HTTP status — the file:// fixtures this test suite uses, and a
+# request that never reached a server at all — so that case falls back to
+# curl's own exit code: 0 is success, 37 ("couldn't open file") is file://
+# for a genuinely missing file, anything else is a hard failure. $2 is only
+# ever written on a 0 return, so a 1 or 2 never corrupts or deletes a file
+# that fetched fine moments ago; the caller decides what a 1 or 2 means for
+# the file already on disk.
 fetch_one_release_file() {
   local url=$1 dest=$2 tmp code rc=0
   tmp=$(mktemp) || return 2
-  code=$(curl -sS -o "$tmp" -w '%{http_code}' "$url" 2>/dev/null) || rc=$?
+  code=$(curl -sSL -o "$tmp" -w '%{http_code}' "$url" 2>/dev/null) || rc=$?
   if [ "$code" = "000" ]; then
     if [ "$rc" -eq 0 ]; then
       mv "$tmp" "$dest"
@@ -236,6 +238,13 @@ fetch_one_release_file() {
     fi
     rm -f "$tmp"
     [ "$rc" -eq 37 ] && return 1
+    return 2
+  fi
+  if [ "$rc" -ne 0 ]; then
+    # A real status line arrived (code isn't "000"), but curl still
+    # reported an error — a truncated transfer most likely. Never trust
+    # the body in $tmp just because the status looked like success.
+    rm -f "$tmp"
     return 2
   fi
   case "$code" in
