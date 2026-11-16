@@ -59,11 +59,11 @@ The harness is mostly prose, versioned in your repo where you can read and diff 
 | [`.claude/harness-rules.md`](.claude/harness-rules.md) | The rules every autonomous run follows. |
 | `.claude/HARNESS_VERSION` | The release this repo is pinned to. |
 
-Plus the `harness` CLI, which installs, checks, upgrades and removes them, and can start a run by hand.
+Plus the `harness` CLI, which sets up, checks, switches releases for, and removes them in a repo, keeps a machine-wide CLI version cache, and can start a run by hand.
 
 ## Setup
 
-Install is the `harness` CLI, five files, two routines, four labels, and two repo values. You need `bash`, `git`, `gh`, `curl` and `jq` on `PATH`.
+Setup is the `harness` CLI, five files, two routines, four labels, and two repo values. You need `bash`, `git`, `gh`, `curl` and `jq` on `PATH`.
 
 #### 1. Install the harness
 
@@ -76,7 +76,7 @@ curl -fsSL https://raw.githubusercontent.com/Eschults/harness/v1/install.sh | sh
 Then, from inside your project repo:
 
 ```bash
-harness install
+harness use
 ```
 
 This adds the five files and a one-line `@.claude/harness-rules.md` import to your `CLAUDE.md`, and creates four labels — `claude` (color `D97757`), `risk:low` (`0E8A16`), `risk:medium` (`FBCA04`), `risk:high` (`B60205`) — when `gh` is on `PATH` and authenticated for your repo, leaving any that already exist alone and otherwise skipping the rest, in which case `harness doctor` tells you the commands to create them by hand. Safe to re-run. `harness help` lists every command.
@@ -126,7 +126,7 @@ Commit the harness files and merge them to your default branch, since the routin
 harness doctor
 ```
 
-It checks the files, the `CLAUDE.md` import, the label, the repo values, whether the harness is paused, the default branch, that GitHub Actions and `claude.yml` are enabled, that your pinned release is current, and whether any harness file has drifted from it since install (a warning, since `harness upgrade` would overwrite it). It never prints a secret.
+It checks the files, the `CLAUDE.md` import, the label, the repo values, whether the harness is paused, the default branch, that GitHub Actions and `claude.yml` are enabled, that your pinned release is current, and whether any harness file has drifted from it since you last ran `harness use` (a warning, since the next `harness use` would overwrite it). It never prints a secret.
 
 #### 5. (Optional) Create the "Next to build" routine
 
@@ -158,19 +158,21 @@ Set the trigger to **Schedule** at whatever frequency suits your team, leave **A
 - **`harness stats [--since <N>d]`** (default 30 days) reports what your `claude/` branch pull requests become: opened, merged, closed unmerged, still draft, how many merged with no human pushes, and any later reverted (matching a GitHub "Revert" PR or a `git revert` commit on the default branch) — broken down by risk tier once those labels exist. It reads PR and commit history only, makes no model calls, and never prints a secret.
 - **`harness feedback` shares what you learned with the harness project, only if you opt in.** `harness feedback enable` sets the `HARNESS_FEEDBACK` repo variable, and `harness feedback disable` clears it. `harness feedback --note "<text>"` then previews a public issue on `Eschults/harness`, holding your note, your harness version, and the `harness stats` counts, and files it under your GitHub account only after you confirm at a terminal. It never includes your repo's name or any PR's title, number, or link, though your note goes out as written and your account is visible. `--dry-run` prints the preview and sends nothing, and works before you opt in. Filing refuses without a terminal for both input and output, so a routine won't file one by accident.
 
-## Upgrading
+## Switching releases
 
 ```bash
-harness upgrade
+harness use
 ```
 
 It shows the latest release's notes and, if you confirm, pulls in the updated files. Review the diff and commit it. It refuses to run, and changes nothing, while a harness file has uncommitted edits.
 
-`harness upgrade --dry-run` previews that same upgrade without writing anything: the version change, which files would be added or changed, and which locally edited files a real upgrade would refuse to overwrite. It exits 0 whether or not there's an upgrade to show.
+`harness use v1.X.Y` (the `v` is optional — `1.X.Y` works too) targets a named release instead of the latest, in either direction: rolling back a release that broke something in your repo, or stepping through several one at a time to review each diff separately. It asks the same confirmation and links the same release notes as a plain `use`, refuses a version that doesn't exist or is outside the CLI's major (naming it), prints "Already on 1.X.Y" and exits 0 if you're already there, and otherwise obeys the same uncommitted-edits check. A downgrade past a file's introduction removes that file, so the repo matches the target release's own file set.
 
-`harness upgrade --to v1.X.Y` targets a named release instead of the latest, in either direction: rolling back a release that broke something in your repo, or stepping through several one at a time to review each diff separately. It asks the same confirmation and links the same release notes as a plain upgrade, refuses a tag that doesn't exist or is outside the CLI's major (naming the tag), prints "Already on v1.X.Y" and exits 0 if you're already there, and otherwise obeys the same uncommitted-edits check as a plain upgrade. A downgrade past a file's introduction removes that file, so the repo matches the target release's own file set. Combine it with `--dry-run` to preview a rollback before applying it.
+`harness use [<version>] --dry-run` previews either of the above without writing anything: the version change, which files would be added, changed or removed, and which locally edited files a real `use` would refuse to overwrite. It exits 0 whether or not there's a change to show.
 
-Each repo pins its release in `.claude/HARNESS_VERSION` and `harness` runs the CLI from that release, so repos upgrade independently; `harness --version` (or `-v`) prints the one it runs. Installed before the CLI existed? Run your old `bin/harness-upgrade` once to update the files, then once more for how to install the CLI.
+Each repo pins its release in `.claude/HARNESS_VERSION` and `harness` runs the CLI from that release, so repos switch independently; `harness --version` (or `-v`) prints the one it runs. Installed before the CLI existed? Run your old `bin/harness-upgrade` once to update the files, then once more for how to install the CLI.
+
+`harness install [<version>]` caches a release (latest if you omit the version) in the machine-wide `$HARNESS_HOME` store, without touching any repo — handy to pre-fetch a version, or to warm the cache before going offline. `harness versions` lists everything cached there, marking the one your current repo is pinned to.
 
 ## Uninstalling
 
@@ -191,4 +193,4 @@ It removes the harness files and the `CLAUDE.md` import, leaving the rest of `CL
 
 ## License
 
-[MIT](LICENSE). The CLI and the files it installs are yours to use, edit and redistribute. `harness install` doesn't copy this `LICENSE`, so if you pass the harness files on, carry the copyright and permission notice with them.
+[MIT](LICENSE). The CLI and the files it installs are yours to use, edit and redistribute. `harness use` doesn't copy this `LICENSE`, so if you pass the harness files on, carry the copyright and permission notice with them.

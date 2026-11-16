@@ -26,12 +26,12 @@ tags_json="$scratch/tags.json"
 # v2.0.0 is a newer major, which the v1 launcher must never pick as latest.
 printf '[{"name":"v1.3.1"},{"name":"v1.4.0"},{"name":"v1.9.9"},{"name":"v2.0.0"}]' > "$tags_json"
 
-# A CLI stub that reports which version ran, with what HARNESS_SRC and args.
+# A CLI stub that reports which version ran, with what HARNESS_RELEASE_SRC and args.
 stub_cli() {
   local path=$1 version=$2
   mkdir -p "$(dirname "$path")"
-  # shellcheck disable=SC2016 # $HARNESS_SRC and $* expand when the stub runs, not here
-  printf '#!/usr/bin/env bash\necho "cli %s src=$HARNESS_SRC args=$*"\n' "$version" > "$path"
+  # shellcheck disable=SC2016 # $HARNESS_RELEASE_SRC and $* expand when the stub runs, not here
+  printf '#!/usr/bin/env bash\necho "cli %s src=$HARNESS_RELEASE_SRC args=$*"\n' "$version" > "$path"
 }
 
 stub_cli "$releases/v1.4.0/bin/harness-cli" v1.4.0
@@ -74,7 +74,7 @@ if ! output=$(HARNESS_TAGS_URL="file://$scratch/no-such-tags.json" run_launcher 
   echo "$output" >&2
   fail "expected a repo pinned at v1.4.0 to run the v1.4.0 CLI"
 fi
-[ "$output" = "cli v1.4.0 src=file://$releases/v1.4.0 args=doctor --fire" ] || fail "expected the v1.4.0 CLI with its own release as HARNESS_SRC and the args passed through, got: $output"
+[ "$output" = "cli v1.4.0 src=file://$releases args=doctor --fire" ] || fail "expected the v1.4.0 CLI with the releases base as HARNESS_RELEASE_SRC and the args passed through, got: $output"
 [ -x "$HARNESS_HOME/v1.4.0/harness" ] || fail "expected the v1.4.0 CLI to be cached under \$HARNESS_HOME/v1.4.0"
 echo "✓ a pinned repo runs its pinned CLI version, pointed at that release, with no tag lookup"
 
@@ -94,41 +94,79 @@ echo "$output" | grep -q "^cli v1.4.0 " || fail "expected the cached v1.4.0 CLI,
 mv "$scratch/v1.4.0-offline" "$releases/v1.4.0"
 echo "✓ a downloaded version is reused without fetching it again"
 
-# --- install and upgrade run the latest release in the CLI's major ---
-make_repo "$scratch/fresh"
-if ! output=$(run_launcher "$scratch/fresh" install 2>&1); then
+# --- install is a pure cache operation; it never touches a repo ---
+install_fresh="$scratch/install-fresh"
+make_repo "$install_fresh"
+if ! output=$(run_launcher "$install_fresh" install 2>&1); then
   echo "$output" >&2
-  fail "expected install to run the latest CLI end to end"
+  fail "expected install to cache the latest CLI"
 fi
-[ "$(cat "$scratch/fresh/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected install to pull in the latest v1 release, v1.9.9"
-echo "✓ install runs the latest v1 release (not v2.0.0) and installs its files"
+echo "$output" | grep -qF "Installed 1.9.9 into the harness CLI cache" || fail "expected install to report the version it cached, got: $output"
+[ -x "$HARNESS_HOME/v1.9.9/harness" ] || fail "expected install to cache v1.9.9 under \$HARNESS_HOME"
+[ ! -e "$install_fresh/.claude" ] || fail "expected install to never write to a repo"
+echo "✓ install caches the latest v1 release (not v2.0.0) without touching a repo"
 
-output=$(run_launcher "$scratch/pinned" upgrade 2>&1 </dev/null) || true
-echo "$output" | grep -q "Upgrading v1.4.0 -> v1.9.9" || fail "expected upgrade in a v1.4.0 repo to run the latest CLI, got: $output"
-echo "✓ upgrade runs the latest release, even in a repo pinned older"
+if ! output=$(run_launcher "$install_fresh" install v1.4.0 2>&1); then
+  echo "$output" >&2
+  fail "expected install to cache an explicit version"
+fi
+echo "$output" | grep -qF "Installed 1.4.0 into the harness CLI cache" || fail "expected install to report the explicit version it cached, got: $output"
+[ -x "$HARNESS_HOME/v1.4.0/harness" ] || fail "expected install to cache v1.4.0 under \$HARNESS_HOME"
+echo "✓ install also caches an explicit, bare-versioned release"
 
-# --- upgrade replaces the launcher with the latest release's ---
+if output=$(run_launcher "$install_fresh" install v2.0.0 2>&1); then
+  fail "expected install to refuse a version from a different major, got: $output"
+fi
+echo "$output" | grep -qF "v2.0.0 is not a 1.Y.Z version" || fail "expected a clear cross-major message, got: $output"
+echo "✓ install refuses a version from a newer major"
+
+# --- versions lists the cache, highlighting the pinned repo's version ---
+output=$(run_launcher "$scratch/pinned" versions 2>&1) || fail "expected versions to succeed, got: $output"
+echo "$output" | grep -qxF "* 1.4.0 (current)" || fail "expected versions to mark the pinned repo's cached version as current, got: $output"
+echo "$output" | grep -qxF "  1.9.9" || fail "expected versions to list the other cached release, got: $output"
+echo "✓ versions marks the pinned repo's cached release as current"
+
+versions_outside="$scratch/versions-outside"
+mkdir -p "$versions_outside"
+output=$(cd "$versions_outside" && HARNESS_HOME="$scratch/home-no-versions" "$launcher" versions 2>&1) || fail "expected versions with an empty cache to succeed, got: $output"
+echo "$output" | grep -qF "No harness CLI versions cached yet" || fail "expected a clear empty-cache message, got: $output"
+echo "✓ versions reports clearly when nothing is cached yet"
+
+# --- use runs the latest release in the CLI's major, in either direction ---
+make_repo "$scratch/fresh"
+if ! output=$(run_launcher "$scratch/fresh" use 2>&1); then
+  echo "$output" >&2
+  fail "expected use to bootstrap a fresh repo at the latest CLI end to end"
+fi
+[ "$(cat "$scratch/fresh/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected use to pull in the latest v1 release, v1.9.9"
+echo "✓ use runs the latest v1 release (not v2.0.0) and installs its files"
+
+output=$(run_launcher "$scratch/pinned" use 2>&1 </dev/null) || true
+echo "$output" | grep -q "Switching 1.4.0 -> 1.9.9" || fail "expected use in a v1.4.0 repo to run the latest CLI, got: $output"
+echo "✓ use runs the latest release, even in a repo pinned older"
+
+# --- use replaces the launcher with the latest release's ---
 installed_launcher="$scratch/local-bin/harness"
 mkdir -p "$(dirname "$installed_launcher")"
 cp bin/harness "$installed_launcher"
 printf '\n# check-launcher fixture marker: v1.9.9\n' >> "$releases/v1.9.9/bin/harness"
-output=$(cd "$scratch/pinned" && "$installed_launcher" upgrade 2>&1 </dev/null) || true
-cmp -s "$installed_launcher" "$releases/v1.9.9/bin/harness" || fail "expected upgrade to replace the launcher with the latest release's, got: $output"
+output=$(cd "$scratch/pinned" && "$installed_launcher" use 2>&1 </dev/null) || true
+cmp -s "$installed_launcher" "$releases/v1.9.9/bin/harness" || fail "expected use to replace the launcher with the latest release's, got: $output"
 [ -x "$installed_launcher" ] || fail "expected the updated launcher to stay executable"
-echo "$output" | grep -q "Updated the harness command" || fail "expected upgrade to report updating the launcher, got: $output"
-echo "$output" | grep -q "Upgrading v1.4.0 -> v1.9.9" || fail "expected the upgrade to carry on after updating the launcher, got: $output"
-echo "✓ upgrade replaces the launcher with the latest release's, then carries on"
+echo "$output" | grep -q "Updated the harness command" || fail "expected use to report updating the launcher, got: $output"
+echo "$output" | grep -q "Switching 1.4.0 -> 1.9.9" || fail "expected the use to carry on after updating the launcher, got: $output"
+echo "✓ use replaces the launcher with the latest release's, then carries on"
 
-output=$(cd "$scratch/pinned" && "$installed_launcher" upgrade 2>&1 </dev/null) || true
+output=$(cd "$scratch/pinned" && "$installed_launcher" use 2>&1 </dev/null) || true
 echo "$output" | grep -q "Updated the harness command" && fail "expected no launcher update when it already matches, got: $output"
-echo "✓ upgrade leaves an up-to-date launcher alone"
+echo "✓ use leaves an up-to-date launcher alone"
 
 # A latest release whose bin/harness is a full CLI, not a launcher, must never replace the launcher.
 before=$(cat "$installed_launcher")
 cp "$releases/v1.3.1/bin/harness" "$releases/v1.9.9/bin/harness"
-(cd "$scratch/pinned" && "$installed_launcher" upgrade >/dev/null 2>&1 </dev/null) || true
+(cd "$scratch/pinned" && "$installed_launcher" use >/dev/null 2>&1 </dev/null) || true
 [ "$(cat "$installed_launcher")" = "$before" ] || fail "expected a non-launcher bin/harness to never replace the launcher"
-echo "✓ upgrade never replaces the launcher with something that isn't one"
+echo "✓ use never replaces the launcher with something that isn't one"
 
 # --- a repo pinned before the CLI existed runs the latest CLI ---
 make_repo "$scratch/pre-cli" v1.2.0
@@ -138,13 +176,13 @@ echo "✓ a repo pinned before v1.3.0 runs the latest CLI"
 
 output=$(run_launcher "$scratch/pre-cli" --version 2>"$scratch/stderr") || fail "expected --version in a pre-CLI repo to succeed, got: $output $(<"$scratch/stderr")"
 [ "$output" = "v1.9.9" ] || fail "expected --version to print the CLI that runs, got: $output"
-[ "$(<"$scratch/stderr")" = "Repo pinned at v1.2.0; run harness upgrade to update it." ] || fail "expected the older pin and an upgrade hint on stderr, got: $(<"$scratch/stderr")"
+[ "$(<"$scratch/stderr")" = "Repo pinned at v1.2.0; run harness use to update it." ] || fail "expected the older pin and an upgrade hint on stderr, got: $(<"$scratch/stderr")"
 echo "✓ --version in a repo pinned before v1.3.0 names the latest CLI and the pin"
 
 # --- the CLI answers --version itself, for launchers older than the flag ---
 output=$(cd "$scratch/pinned" && "$HARNESS_HOME/v1.9.9/harness" --version 2>"$scratch/stderr") || fail "expected the CLI to answer --version, got: $output $(<"$scratch/stderr")"
 [ "$output" = "v1.9.9" ] || fail "expected the CLI to read its version from its folder, got: $output"
-[ "$(<"$scratch/stderr")" = "Repo pinned at v1.4.0; run harness upgrade to update it." ] || fail "expected the older pin and an upgrade hint on stderr, got: $(<"$scratch/stderr")"
+[ "$(<"$scratch/stderr")" = "Repo pinned at v1.4.0; run harness use to update it." ] || fail "expected the older pin and an upgrade hint on stderr, got: $(<"$scratch/stderr")"
 output=$(cd "$scratch/fresh" && "$HARNESS_HOME/v1.9.9/harness" -v 2>&1) || fail "expected the CLI to answer -v, got: $output"
 [ "$output" = "v1.9.9" ] || fail "expected no pin note when the pin matches, got: $output"
 if output=$(bin/harness-cli --version 2>&1); then

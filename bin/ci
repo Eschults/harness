@@ -13,7 +13,7 @@ fi
 
 echo "Running shellcheck ($(shellcheck --version | grep ^version:))"
 shellcheck_failed=0
-for f in install.sh bin/ci bin/harness bin/harness-cli bin/harness-upgrade bin/release bin/lib/fetch-files.sh bin/lib/version-check.sh bin/lib/check-helpers.sh bin/check-install-uninstall bin/check-harness-upgrade bin/check-claude-workflow bin/check-release bin/check-doctor bin/check-issue bin/check-pause-resume bin/check-stats bin/check-status bin/check-feedback bin/check-launcher; do
+for f in install.sh bin/ci bin/harness bin/harness-cli bin/harness-upgrade bin/release bin/lib/fetch-files.sh bin/lib/version-check.sh bin/lib/check-helpers.sh bin/check-use bin/check-claude-workflow bin/check-release bin/check-doctor bin/check-issue bin/check-pause-resume bin/check-stats bin/check-status bin/check-feedback bin/check-launcher; do
   if shellcheck_output=$(shellcheck -x "$f" 2>&1); then
     echo "✓ shellcheck: $f"
   else
@@ -25,19 +25,11 @@ done
 [ "$shellcheck_failed" -eq 0 ] || exit 1
 echo
 
-echo "Running the install/uninstall round trip"
-if ./bin/check-install-uninstall; then
-  round_trip_failed=0
+echo "Running the use/uninstall round trip"
+if ./bin/check-use; then
+  use_round_trip_failed=0
 else
-  round_trip_failed=1
-fi
-echo
-
-echo "Running the harness-upgrade round trip"
-if ./bin/check-harness-upgrade; then
-  upgrade_round_trip_failed=0
-else
-  upgrade_round_trip_failed=1
+  use_round_trip_failed=1
 fi
 echo
 
@@ -120,8 +112,7 @@ else
 fi
 
 failed_suites=()
-[ "$round_trip_failed" -eq 0 ] || failed_suites+=("install/uninstall round trip")
-[ "$upgrade_round_trip_failed" -eq 0 ] || failed_suites+=("harness-upgrade round trip")
+[ "$use_round_trip_failed" -eq 0 ] || failed_suites+=("use/uninstall round trip")
 [ "$claude_workflow_failed" -eq 0 ] || failed_suites+=("claude.yml fire step check")
 [ "$release_failed" -eq 0 ] || failed_suites+=("release round trip")
 [ "$doctor_failed" -eq 0 ] || failed_suites+=("harness-doctor check")
