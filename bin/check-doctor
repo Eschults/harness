@@ -117,6 +117,21 @@ printf '%s' "${STUB_CURL_STATUS:-200}"
 STUB
 chmod +x "$stub_bin/curl"
 
+# Stub cmp: defers to the real cmp, except when the local file being compared
+# (cmp's 3rd arg in every `cmp -s "$tmp" "$f"` call site) matches
+# STUB_CMP_UNREADABLE_FILE, where it exits 2 regardless of content -
+# simulating a file cmp can't open without relying on real permission bits,
+# which root (this check's own user) bypasses.
+real_cmp=$(command -v cmp)
+cat > "$stub_bin/cmp" <<'STUB'
+#!/usr/bin/env bash
+if [ -n "${STUB_CMP_UNREADABLE_FILE:-}" ] && [ "$3" = "$STUB_CMP_UNREADABLE_FILE" ]; then
+  exit 2
+fi
+exec "$REAL_CMP" "$@"
+STUB
+chmod +x "$stub_bin/cmp"
+
 # Builds a scratch repo with every HARNESS_FILES entry and the CLAUDE.md
 # import, all copied from this checkout's real content.
 build_healthy_repo() {
@@ -155,6 +170,8 @@ run_doctor() {
     STUB_CURL_BODY="${STUB_CURL_BODY:-}" \
     STUB_CURL_EXIT="${STUB_CURL_EXIT:-0}" \
     REAL_CURL="$real_curl" \
+    STUB_CMP_UNREADABLE_FILE="${STUB_CMP_UNREADABLE_FILE:-}" \
+    REAL_CMP="$real_cmp" \
     CLAUDE_ROUTINE_ID="${CLAUDE_ROUTINE_ID-}" \
     CLAUDE_ROUTINE_TOKEN="${CLAUDE_ROUTINE_TOKEN-}" \
     "$cli" doctor "$@"
@@ -253,6 +270,25 @@ fi
 assert_contains "$output" '⚠ .claude/harness-rules.md differs from the pinned release (v9.9.9); harness use will overwrite it' "edited harness file"
 echo "$output" | grep -q '✗' && fail "expected a harness file that drifted from the pinned release to warn, never fail the run, got: $output"
 echo "✓ an edited harness file warns instead of failing, and names harness use's effect"
+
+# --- a harness file cmp can't read (e.g. unreadable) is not reported as drift ---
+repo="$scratch/release-unreadable"
+build_healthy_repo "$repo"
+echo "v9.9.9" > "$repo/.claude/HARNESS_VERSION"
+release_unreadable_src="$scratch/release-unreadable-src"
+for f in "${HARNESS_FILES[@]}"; do
+  [ "$f" = ".claude/HARNESS_VERSION" ] && continue
+  mkdir -p "$release_unreadable_src/v9.9.9/$(dirname "$f")"
+  cp "$f" "$release_unreadable_src/v9.9.9/$f"
+done
+if ! output=$(HARNESS_RELEASE_SRC="file://$release_unreadable_src" STUB_CMP_UNREADABLE_FILE=".claude/harness-rules.md" run_doctor "$repo"); then
+  echo "$output" >&2
+  fail "expected harness doctor to exit 0 when a harness file can't be compared"
+fi
+assert_contains "$output" '⚠ .claude/harness-rules.md could not be compared with the pinned release (v9.9.9); it could not be read' "unreadable harness file"
+echo "$output" | grep -qF 'differs from the pinned release' && fail "expected a file cmp can't read to warn that it could not be compared, never that it differs, got: $output"
+echo "$output" | grep -q '✗' && fail "expected a file cmp can't read to warn, never fail the run, got: $output"
+echo "✓ a harness file cmp can't read warns that it could not be compared, not that it differs"
 
 # --- pinned release can't be fetched ---
 repo="$scratch/release-unreachable"

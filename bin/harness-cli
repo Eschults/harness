@@ -123,12 +123,14 @@ dirty_harness_files() {
 }
 
 # Lists tracked harness files (except HARNESS_VERSION itself) whose local
-# content differs from the same file at release $1. Fails (non-zero) when a
+# content differs from the same file at release $1, each line tagged "drift"
+# or "unreadable" (cmp exited 2 or higher, e.g. a local file it couldn't open,
+# as opposed to exit 1 for an actual difference). Fails (non-zero) when a
 # file can't be fetched, so the caller can tell "the release is unreachable"
 # apart from "nothing differs". A missing local file is left to the
 # file-presence check and never counted as drifted.
 drifted_harness_files() {
-  local version=$1 f base tmp
+  local version=$1 f base tmp rc
   base=$(harness_release_src "$version")
   # cmp on a fetched file, not a $(...)-captured string: command substitution
   # strips trailing newlines, which would hide a file that differs only by
@@ -142,7 +144,13 @@ drifted_harness_files() {
       rm -f "$tmp"
       return 1
     fi
-    cmp -s "$tmp" "$f" || echo "$f"
+    cmp -s "$tmp" "$f"
+    rc=$?
+    if [ "$rc" -eq 1 ]; then
+      echo "drift $f"
+    elif [ "$rc" -gt 1 ]; then
+      echo "unreadable $f"
+    fi
   done
   rm -f "$tmp"
 }
@@ -1238,8 +1246,12 @@ cmd_doctor() {
     local drifted
     if drifted=$(drifted_harness_files "$pinned"); then
       if [ -n "$drifted" ]; then
-        while IFS= read -r f; do
-          warn "$f differs from the pinned release ($pinned); harness use will overwrite it"
+        while IFS=' ' read -r kind f; do
+          if [ "$kind" = "drift" ]; then
+            warn "$f differs from the pinned release ($pinned); harness use will overwrite it"
+          else
+            warn "$f could not be compared with the pinned release ($pinned); it could not be read"
+          fi
         done <<< "$drifted"
       else
         ok "every harness file matches the pinned release ($pinned)"
