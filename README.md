@@ -170,6 +170,8 @@ It shows the latest release's notes and, if you confirm, pulls in the updated fi
 
 `harness use [<version>] --dry-run` previews either of the above without writing anything: the version change, which files would be added, changed or removed, and which locally edited files a real `use` would refuse to overwrite. It exits 0 whether or not there's a change to show.
 
+`harness upgrade [--dry-run]`, the pre-v1.9 command, still works as a deprecated alias of `harness use` in a repo that already has the harness, and prints a note pointing at `use`. It will be removed in v2.
+
 Each repo pins its release in `.claude/HARNESS_VERSION` and `harness` runs the CLI from that release, so repos switch independently; `harness --version` (or `-v`) prints the one it runs. Installed before the CLI existed? Run your old `bin/harness-upgrade` once to update the files, then once more for how to install the CLI.
 
 `harness install [<version>]` caches a release (latest if you omit the version) in the machine-wide `$HARNESS_HOME` store, without touching any repo — handy to pre-fetch a version, or to warm the cache before going offline. `harness versions` lists everything cached there, marking the one your current repo is pinned to.

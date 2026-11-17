@@ -5,7 +5,9 @@
 # install and versions never touch a repo or exec into a cached CLI: they
 # only manage that $HARNESS_HOME cache directly, here in the launcher. use
 # runs the latest release, since it moves a repo forward or back, and also
-# replaces this launcher with the latest release's.
+# replaces this launcher with the latest release's. upgrade, use's deprecated
+# alias, takes the same path: a v1.3.x CLI hands off to it, and a repo pinned
+# at v1.9.0 only gets the alias from the latest CLI.
 # --version prints the version it would run, since older CLIs don't know their own.
 set -euo pipefail
 

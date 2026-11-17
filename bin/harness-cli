@@ -48,6 +48,7 @@ Commands:
   install [<version>]  Cache a CLI release (latest if omitted) in the machine-wide $HARNESS_HOME store; never touches a repo
   versions         List every release cached in $HARNESS_HOME, marking the one this repo is pinned to
   use [<version>] [--dry-run]  Pull the latest (or a named) release into this repo, first time or switching; --dry-run only previews it
+  upgrade [--dry-run]  Deprecated alias of use for an already set-up repo; removed in v2
   doctor [--fire]  Check this repo's setup end to end; --fire also fires the routine once
   issue <number>   Fire the "Issue to PR" routine for one issue, bypassing GitHub Actions
   pause            Set HARNESS_PAUSED so new claude labels stop starting runs
@@ -403,6 +404,9 @@ cmd_use_dry_run() {
 # from that exact tag (fetch_release_files), so switching to a release
 # that predates a file removes it instead of failing. With no version
 # given, resolves to the latest release.
+# The command name cmd_use's own messages tell the user to re-run.
+USE_COMMAND_NAME=use
+
 cmd_use() {
   require_tools curl jq
   cd_repo_root
@@ -412,12 +416,12 @@ cmd_use() {
     case "$1" in
       --dry-run) dry_run=1 ;;
       -*)
-        echo "Unknown option: $1. Usage: harness use [<version>] [--dry-run]" >&2
+        echo "Unknown option: $1. Usage: harness $USE_COMMAND_NAME [<version>] [--dry-run]" >&2
         exit 1
         ;;
       *)
         if [ -n "$requested" ]; then
-          echo "Usage: harness use [<version>] [--dry-run]" >&2
+          echo "Usage: harness $USE_COMMAND_NAME [<version>] [--dry-run]" >&2
           exit 1
         fi
         requested=$1
@@ -493,7 +497,7 @@ cmd_use() {
 
     read -rp "Pull in ${target#v} now? [y/N] " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-      echo "Skipped. Re-run harness use when you're ready."
+      echo "Skipped. Re-run harness $USE_COMMAND_NAME when you're ready."
       exit 0
     fi
   fi
@@ -1417,15 +1421,26 @@ cmd_version() {
   fi
 }
 
+# Deprecated alias of use, kept for pre-v1.9 scripts and the v1.3.x hand-off; remove in v2.
+cmd_upgrade() {
+  cd_repo_root
+  if [ ! -f .claude/HARNESS_VERSION ]; then
+    echo "The harness isn't set up in this repo, so there is nothing to upgrade; run harness use to set it up." >&2
+    exit 1
+  fi
+  if [ -z "${HARNESS_UPGRADE_CONFIRMED:-}" ]; then
+    echo "harness upgrade is deprecated and will be removed in v2; run harness use instead." >&2
+  fi
+  USE_COMMAND_NAME=upgrade
+  cmd_use "$@"
+}
+
 main() {
   harness_command=${1:-}
   [ $# -gt 0 ] && shift
   case "$harness_command" in
     use) cmd_use "$@" ;;
-    upgrade)
-      echo "harness upgrade is deprecated and will be removed in v2; use harness use instead." >&2
-      cmd_use "$@"
-      ;;
+    upgrade) cmd_upgrade "$@" ;;
     doctor) cmd_doctor "$@" ;;
     issue) cmd_issue "$@" ;;
     pause) cmd_pause ;;

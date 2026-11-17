@@ -229,12 +229,13 @@ if ! output=$(cd "$handoff_repo" && HARNESS_TAGS_URL="file://$tags_json" "$old_s
   echo "$output" >&2
   fail "harness use failed priming the handoff scratch repo"
 fi
-if ! output=$(cd "$handoff_repo" && HARNESS_UPGRADE_CONFIRMED=1 HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" use </dev/null 2>&1); then
+if ! output=$(cd "$handoff_repo" && HARNESS_UPGRADE_CONFIRMED=1 HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" upgrade </dev/null 2>&1); then
   echo "$output" >&2
-  fail "expected a handed-off use to proceed without prompting"
+  fail "expected a handed-off upgrade to proceed without prompting"
 fi
-[ "$(cat "$handoff_repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected the handed-off use to pull in v1.9.9"
-echo "✓ a use handed off by a v1.3.x CLI proceeds without asking again"
+[ "$(cat "$handoff_repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected the handed-off upgrade to pull in v1.9.9"
+echo "$output" | grep -q "deprecated" && fail "expected no deprecation note on a hand-off the user never typed, got: $output"
+echo "✓ an upgrade handed off by a v1.3.x CLI proceeds without asking again or a deprecation note"
 
 # An uncommitted edit to a tracked harness file must block the switch
 # (per issue #90: overwriting it loses work git can never recover) and
@@ -708,10 +709,28 @@ if ! output=$(cd "$uninstall_repo" && PATH="$no_gh_bin" "$new_src/bin/harness-cl
 fi
 echo "✓ re-running uninstall on an already-uninstalled repo still exits cleanly"
 
-output=$(cd "$repo" && HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" upgrade --dry-run </dev/null 2>&1) || true
+if ! output=$(cd "$repo" && HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" upgrade --dry-run </dev/null 2>&1); then
+  echo "$output" >&2
+  fail "expected upgrade --dry-run to succeed in a set-up repo"
+fi
 echo "$output" | grep -q "harness upgrade is deprecated" || fail "expected upgrade to print a deprecation note, got: $output"
-echo "$output" | grep -q "Unknown command" && fail "expected upgrade to run use, got: $output"
+echo "$output" | grep -qE "^(Dry run: |Already on )" || fail "expected upgrade --dry-run to run use's dry run, got: $output"
 echo "✓ upgrade still works as a deprecated alias of use"
+
+if output=$(cd "$repo" && HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" upgrade --bogus </dev/null 2>&1); then
+  fail "expected upgrade --bogus to fail"
+fi
+echo "$output" | grep -qF "Usage: harness upgrade" || fail "expected upgrade's errors to name upgrade, got: $output"
+echo "✓ upgrade's errors name the command the user typed"
+
+not_set_up_repo="$scratch/not-set-up-repo"
+git init -q "$not_set_up_repo"
+if output=$(cd "$not_set_up_repo" && HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" upgrade </dev/null 2>&1); then
+  fail "expected upgrade to refuse in a repo without the harness"
+fi
+echo "$output" | grep -q "run harness use to set it up" || fail "expected upgrade to point at use, got: $output"
+[ "$(find "$not_set_up_repo" -mindepth 1 -maxdepth 1 ! -name .git)" = "" ] || fail "expected upgrade to write nothing in a repo without the harness"
+echo "✓ upgrade refuses, and writes nothing, in a repo without the harness"
 
 if output=$("$new_src/bin/harness-cli" bogus 2>&1); then
   fail "expected an unknown command to fail"

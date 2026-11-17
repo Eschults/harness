@@ -157,6 +157,10 @@ output=$(run_launcher "$scratch/pinned" use 2>&1 </dev/null) || true
 echo "$output" | grep -q "Switching 1.4.0 -> 1.9.9" || fail "expected use in a v1.4.0 repo to run the latest CLI, got: $output"
 echo "✓ use runs the latest release, even in a repo pinned older"
 
+output=$(run_launcher "$scratch/pinned" upgrade 2>&1 </dev/null) || true
+echo "$output" | grep -q "Switching 1.4.0 -> 1.9.9" || fail "expected upgrade in a v1.4.0 repo to run the latest CLI like use, got: $output"
+echo "✓ upgrade, use's deprecated alias, runs the latest release too"
+
 # --- use replaces the launcher with the latest release's ---
 installed_launcher="$scratch/local-bin/harness"
 mkdir -p "$(dirname "$installed_launcher")"
