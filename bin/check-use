@@ -1,0 +1,718 @@
+#!/usr/bin/env bash
+# Functional round trip for `harness use` (first time and switching between
+# named releases) and `harness uninstall`, against fake fixtures, never this
+# repo's real tags or raw content. bin/harness always runs `use` with the
+# latest release's CLI, so this primes a repo with the old fixture's CLI
+# and switches it with the new one's. No model calls.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# shellcheck source=bin/lib/check-helpers.sh
+source bin/lib/check-helpers.sh
+# shellcheck source=bin/harness-cli
+source bin/harness-cli
+
+scratch=$(mktemp -d)
+outside_repo=$(mktemp -d)
+trap 'rm -rf "$scratch" "$outside_repo"' EXIT
+
+release_src="$scratch/release_src"
+old_src="$release_src/v1.0.1"
+new_src="$release_src/v1.9.9"
+tags_json="$scratch/tags.json"
+bad_tags_json="$scratch/bad-tags.json"
+
+build_fixture() {
+  local dir=$1 version=$2
+  mkdir -p "$dir/bin"
+  cp bin/harness-cli "$dir/bin/harness-cli"
+  chmod +x "$dir/bin/harness-cli"
+  for f in "${HARNESS_FILES[@]}"; do
+    mkdir -p "$dir/$(dirname "$f")"
+    cp "$f" "$dir/$f"
+  done
+  echo "$version" > "$dir/.claude/HARNESS_VERSION"
+}
+
+build_fixture "$old_src" "v1.0.1"
+build_fixture "$new_src" "v1.9.9"
+printf '\n<!-- check-use fixture marker: v1.9.9 -->\n' >> "$new_src/.claude/harness-rules.md"
+
+# A file only the newer release's CLI names, to prove `use` fetches with that CLI's list.
+extra_file=".claude/new-fixture-file.txt"
+mkdir -p "$new_src/$(dirname "$extra_file")"
+echo "added in v1.9.9" > "$new_src/$extra_file"
+# Matches only the array element line (trimmed, exact), not the literal's
+# other uses, which `index()` would also catch and wrongly duplicate elsewhere.
+awk -v extra="$extra_file" '
+  { line = $0; gsub(/^[ \t]+|[ \t]+$/, "", line) }
+  line == "\".claude/HARNESS_VERSION\"" { print "  \"" extra "\"" }
+  { print }
+' bin/harness-cli > "$new_src/bin/harness-cli"
+
+# v2.0.0 is a newer major, which this v1 CLI must ignore rather than offer.
+printf '[{"name":"v1.0.1"},{"name":"v1.9.9"},{"name":"v2.0.0"}]' > "$tags_json"
+
+printf '[{"name":"latest"},{"name":"vNext"}]' > "$bad_tags_json"
+
+export HARNESS_RELEASE_SRC="file://$release_src"
+poison_network
+stub_url_openers "$scratch/stub_bin"
+
+# A PATH with every external tool harness-cli use/uninstall can call, gh
+# deliberately left out, so the label-creation tests below stay
+# deterministic whether or not gh happens to be installed and authenticated
+# in the environment running this check.
+no_gh_bin="$scratch/no_gh_bin"
+mkdir -p "$no_gh_bin"
+for cmd in bash dirname mkdir curl grep awk mv rmdir find cat git rm jq sort tail mktemp cmp env; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_gh_bin/$cmd"
+done
+
+# Stub gh for the claude-label tests below: routes on the first two args,
+# answers from env vars the caller sets, and never touches the network or a
+# real repo. `gh label create` calls are appended to $gh_create_log so a
+# test can assert whether `use` left an existing label untouched.
+stub_gh_bin="$scratch/stub_gh_bin"
+mkdir -p "$stub_gh_bin"
+gh_create_log="$scratch/gh-label-create.log"
+cat > "$stub_gh_bin/gh" <<STUBEOF
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "auth status") exit "\${STUB_GH_AUTH_EXIT:-0}" ;;
+  "label list")
+    [ "\${STUB_GH_LABEL_LIST_EXIT:-0}" = 0 ] || exit "\${STUB_GH_LABEL_LIST_EXIT}"
+    printf '%s\n' "\${STUB_GH_LABELS:-}"
+    ;;
+  "label create")
+    echo "\$*" >> "$gh_create_log"
+    exit "\${STUB_GH_LABEL_CREATE_EXIT:-0}"
+    ;;
+  *) exit 1 ;;
+esac
+STUBEOF
+chmod +x "$stub_gh_bin/gh"
+
+# Runs from the given directory, optionally with a version argument and/or
+# an answer to the confirmation prompt (default "y"); the main repo passes
+# a nested directory so the CLI must find the repo root itself.
+run_use() {
+  local dir=$1 version=${2:-} tags=${3:-$tags_json} answer=${4:-y}
+  (
+    cd "$dir" || exit 1
+    if [ -n "$version" ]; then
+      printf '%s\n' "$answer" | HARNESS_TAGS_URL="file://$tags" "$new_src/bin/harness-cli" use "$version"
+    else
+      printf '%s\n' "$answer" | HARNESS_TAGS_URL="file://$tags" "$new_src/bin/harness-cli" use
+    fi
+  )
+}
+
+run_use_dry_run() {
+  local dir=$1 version=${2:-} tags=${3:-$tags_json}
+  (
+    cd "$dir" || exit 1
+    if [ -n "$version" ]; then
+      HARNESS_TAGS_URL="file://$tags" "$new_src/bin/harness-cli" use "$version" --dry-run </dev/null
+    else
+      HARNESS_TAGS_URL="file://$tags" "$new_src/bin/harness-cli" use --dry-run </dev/null
+    fi
+  )
+}
+
+# --- outside a git repo ---
+
+if output=$(cd "$outside_repo" && HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" use 2>&1); then
+  fail "expected harness use to fail outside a git repo"
+fi
+echo "$output" | grep -q "Not inside a git repo" || fail "expected a clear error outside a git repo, got: $output"
+echo "✓ use outside a git repo fails clearly"
+
+# --- first-time bootstrap ---
+
+repo="$scratch/repo"
+git init -q "$repo"
+mkdir -p "$repo/src/nested"
+
+snapshot() {
+  find "$repo" -path "$repo/.git" -prune -o -type f -print0 | sort -z | xargs -0 sha256sum
+}
+
+if ! output=$(cd "$repo/src/nested" && HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" use 1.0.1 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed bootstrapping a fresh repo at an explicit version"
+fi
+[ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v1.0.1" ] || fail "expected the fresh repo to be pinned at v1.0.1"
+for f in "${HARNESS_FILES[@]}"; do
+  [ -f "$repo/$f" ] || fail "expected $f to exist after a first-time harness use"
+done
+[ ! -e "$repo/src/nested/.claude" ] || fail "expected use to write at the repo root, not the working directory"
+echo "✓ use bootstraps a fresh repo at an explicit version, writing at the repo root"
+echo "$output" | grep -qF "https://github.com/Eschults/harness#setup" || fail "expected a first-time use to link to the setup steps, got: $output"
+echo "✓ a first-time use links to the remaining setup steps"
+grep -q "check-use fixture marker" "$repo/.claude/harness-rules.md" && fail "expected the fresh repo to not yet carry the newer fixture's marker"
+
+before=$(snapshot)
+if ! output=$(run_use "$repo/src/nested" "" "$tags_json" n 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed when the user declined"
+fi
+echo "$output" | grep -q "Skipped" || fail "expected a declined use to say it skipped, got: $output"
+after=$(snapshot)
+[ "$before" = "$after" ] || fail "expected a declined use to leave every file untouched"
+echo "✓ a declined use left every file untouched"
+
+if ! output=$(run_use "$repo/src/nested" 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed switching to the fake newer release; check it honors \$HARNESS_TAGS_URL instead of hitting the real GitHub API"
+fi
+echo "$output" | grep -qF "Switching 1.0.1 -> 1.9.9: https://github.com/Eschults/harness/releases/tag/v1.9.9" || fail "expected use to report the 1.0.1 -> 1.9.9 transition with v1.9.9's release notes, got: $output"
+
+[ "$(cat "$repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected .claude/HARNESS_VERSION to read v1.9.9 after switching, got $(cat "$repo/.claude/HARNESS_VERSION" 2>/dev/null)"
+echo "✓ use bumped .claude/HARNESS_VERSION to the new tag"
+
+for f in "${HARNESS_FILES[@]}" "$extra_file"; do
+  cmp -s "$repo/$f" "$new_src/$f" || fail "expected $f to match the fake newer release's content after switching"
+done
+grep -q "check-use fixture marker" "$repo/.claude/harness-rules.md" || fail "expected the newer fixture's marker to show up after switching"
+echo "✓ use pulled every harness file's newer content"
+echo "✓ use fetched $extra_file, which only the newer release's CLI named"
+
+echo "$output" | grep -q "v2.0.0" && fail "expected the v1 CLI to ignore the v2.0.0 tag, got: $output"
+echo "✓ use ignored a tag from a newer major"
+
+before=$(snapshot)
+if ! output=$(run_use "$repo/src/nested" 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed re-running against a repo already on the latest fake release"
+fi
+echo "$output" | grep -q "Already on 1.9.9" || fail "expected a no-op re-run to report already on, got: $output"
+after=$(snapshot)
+[ "$before" = "$after" ] || fail "expected re-running harness use on an up-to-date repo to leave every file untouched"
+echo "✓ re-running use on an up-to-date repo left every file untouched"
+
+before=$(snapshot)
+if output=$(run_use "$repo/src/nested" "" "$bad_tags_json" 2>&1); then
+  fail "expected harness use to fail when no tag at \$HARNESS_TAGS_URL matches vX.Y.Z, got: $output"
+fi
+echo "$output" | grep -q "No 1.Y.Z release tag found" || fail "expected a clear error when no tag matches 1.Y.Z, got: $output"
+after=$(snapshot)
+[ "$before" = "$after" ] || fail "expected a failed tag lookup to leave every file untouched"
+echo "✓ a tags response with no matching vX.Y.Z tag fails clearly and touches nothing"
+
+# A PATH with curl but not jq: the prerequisite check must fire before the
+# first network call (and the "y" below never gets read), naming jq and how
+# to install it, and touching nothing.
+no_jq_bin="$scratch/no_jq_bin"
+mkdir -p "$no_jq_bin"
+for cmd in bash curl; do
+  cmd_path=$(command -v "$cmd") || continue
+  ln -sf "$cmd_path" "$no_jq_bin/$cmd"
+done
+
+before=$(snapshot)
+if output=$(cd "$repo" && PATH="$no_jq_bin" "$new_src/bin/harness-cli" use 2>&1); then
+  fail "expected harness use to fail when jq is missing from PATH"
+fi
+echo "$output" | grep -q "jq not found; install it" || fail "expected a one-line error naming jq and how to install it, got: $output"
+after=$(snapshot)
+[ "$before" = "$after" ] || fail "expected a missing jq to leave every file untouched"
+echo "✓ a PATH without jq fails fast, before any network call, and touches nothing"
+
+# A v1.3.x CLI replaces itself with bin/harness after the user confirms, then
+# hands off with HARNESS_UPGRADE_CONFIRMED=1; the prompt's "y" is already
+# consumed, so the handed-off use must proceed without asking again.
+handoff_repo="$scratch/handoff-repo"
+git init -q "$handoff_repo"
+if ! output=$(cd "$handoff_repo" && HARNESS_TAGS_URL="file://$tags_json" "$old_src/bin/harness-cli" use 1.0.1 >/dev/null 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed priming the handoff scratch repo"
+fi
+if ! output=$(cd "$handoff_repo" && HARNESS_UPGRADE_CONFIRMED=1 HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" use </dev/null 2>&1); then
+  echo "$output" >&2
+  fail "expected a handed-off use to proceed without prompting"
+fi
+[ "$(cat "$handoff_repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected the handed-off use to pull in v1.9.9"
+echo "✓ a use handed off by a v1.3.x CLI proceeds without asking again"
+
+# An uncommitted edit to a tracked harness file must block the switch
+# (per issue #90: overwriting it loses work git can never recover) and
+# leave every file exactly as it was.
+dirty_repo="$scratch/dirty-repo"
+git init -q "$dirty_repo"
+git -C "$dirty_repo" config user.email "check-use@example.com"
+git -C "$dirty_repo" config user.name "check-use"
+if ! output=$(cd "$dirty_repo" && HARNESS_TAGS_URL="file://$tags_json" "$old_src/bin/harness-cli" use 1.0.1 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed priming the dirty-file scratch repo"
+fi
+(cd "$dirty_repo" && git add -A && git commit -q -m "use the harness")
+
+printf '\nlocal tweak\n' >> "$dirty_repo/.claude/harness-rules.md"
+
+dirty_snapshot() {
+  find "$dirty_repo" -path "$dirty_repo/.git" -prune -o -type f -print0 | sort -z | xargs -0 sha256sum
+}
+
+before=$(dirty_snapshot)
+if output=$(run_use "$dirty_repo" 2>&1); then
+  fail "expected harness use to refuse with an uncommitted harness-rules.md edit, got: $output"
+fi
+echo "$output" | grep -q "Uncommitted changes" || fail "expected a clear uncommitted-changes message, got: $output"
+echo "$output" | grep -qF ".claude/harness-rules.md" || fail "expected the message to name the dirty file, got: $output"
+after=$(dirty_snapshot)
+[ "$before" = "$after" ] || fail "expected a blocked use to leave every file untouched"
+echo "✓ an uncommitted edit to a harness file blocks use and leaves it intact"
+
+(cd "$dirty_repo" && git add -A && git commit -q -m "commit the tweak")
+if ! output=$(run_use "$dirty_repo" 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed once the harness-rules.md edit was committed"
+fi
+[ "$(cat "$dirty_repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected use to proceed once the tree was clean"
+echo "✓ committing the edit lets use proceed"
+
+# That switch's own fetched files are now uncommitted (the README tells the
+# user to review and commit them). The check runs before fetching anything,
+# so a repo already on the latest release still gets refused rather than
+# reaching "Already on" with a dirty harness file.
+before=$(dirty_snapshot)
+if output=$(run_use "$dirty_repo" 2>&1); then
+  fail "expected an up-to-date repo with uncommitted harness files to still be refused, got: $output"
+fi
+echo "$output" | grep -q "Uncommitted changes" || fail "expected the uncommitted-changes message even when already on, got: $output"
+after=$(dirty_snapshot)
+[ "$before" = "$after" ] || fail "expected the blocked no-op use to leave every file untouched"
+echo "✓ the dirty check still blocks an already-on repo with uncommitted harness files"
+
+# --- --dry-run ---
+
+# A fresh repo's dry run previews the bootstrap without creating anything.
+fresh_dry_run_repo="$scratch/fresh-dry-run-repo"
+git init -q "$fresh_dry_run_repo"
+
+fresh_dry_run_snapshot() {
+  find "$fresh_dry_run_repo" -path "$fresh_dry_run_repo/.git" -prune -o -type f -print0 | sort -z | xargs -0 sha256sum
+}
+
+before=$(fresh_dry_run_snapshot)
+if ! output=$(run_use_dry_run "$fresh_dry_run_repo" 1.0.1 2>&1); then
+  echo "$output" >&2
+  fail "harness use --dry-run failed previewing a fresh repo's bootstrap"
+fi
+after=$(fresh_dry_run_snapshot)
+[ "$before" = "$after" ] || fail "expected a fresh repo's dry run to leave every file untouched"
+echo "$output" | grep -qF "Dry run: install 1.0.1: https://github.com/Eschults/harness/releases/tag/v1.0.1" || fail "expected the dry run to report a fresh install, got: $output"
+for f in "${HARNESS_FILES[@]}"; do
+  [ "$f" = ".claude/HARNESS_VERSION" ] && continue
+  echo "$output" | grep -qF "add    $f" || fail "expected the dry run to list $f as added, got: $output"
+done
+echo "$output" | grep -qF "Nothing written" || fail "expected the dry run to say it wrote nothing, got: $output"
+echo "✓ a fresh repo's dry run previews the bootstrap and touches nothing"
+
+# A pinned repo's dry run must preview the same transition and file list a
+# real use would apply, without writing anything.
+dry_run_repo="$scratch/dry-run-repo"
+git init -q "$dry_run_repo"
+if ! output=$(cd "$dry_run_repo" && HARNESS_TAGS_URL="file://$tags_json" "$old_src/bin/harness-cli" use 1.0.1 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed priming the dry-run scratch repo"
+fi
+
+dry_run_snapshot() {
+  find "$dry_run_repo" -path "$dry_run_repo/.git" -prune -o -type f -print0 | sort -z | xargs -0 sha256sum
+}
+
+before=$(dry_run_snapshot)
+if ! output=$(run_use_dry_run "$dry_run_repo" 2>&1); then
+  echo "$output" >&2
+  fail "harness use --dry-run failed previewing the fake newer release"
+fi
+after=$(dry_run_snapshot)
+[ "$before" = "$after" ] || fail "expected a dry run to leave every file untouched"
+echo "✓ a dry run touched nothing"
+
+echo "$output" | grep -qF "Dry run: 1.0.1 -> 1.9.9: https://github.com/Eschults/harness/releases/tag/v1.9.9" ||
+  fail "expected the dry run to report the version transition, got: $output"
+echo "$output" | grep -qF "add    $extra_file" || fail "expected the dry run to list $extra_file as added, got: $output"
+echo "$output" | grep -qF "change .claude/harness-rules.md" || fail "expected the dry run to list harness-rules.md as changed, got: $output"
+echo "$output" | grep -qF "Nothing written" || fail "expected the dry run to say it wrote nothing, got: $output"
+[ ! -e "$dry_run_repo/$extra_file" ] || fail "expected the dry run to not create $extra_file"
+echo "✓ a dry run reports the version change and which files would be added or changed"
+
+if ! output=$(run_use "$dry_run_repo" 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed applying the release a prior dry run had previewed"
+fi
+[ "$(cat "$dry_run_repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected the real use to still apply after a preceding dry run"
+echo "✓ the real use still applies after a dry run previewed it"
+
+before=$(dry_run_snapshot)
+if ! output=$(run_use_dry_run "$dry_run_repo" 2>&1); then
+  echo "$output" >&2
+  fail "harness use --dry-run failed on a repo already on the latest release"
+fi
+echo "$output" | grep -q "Already on 1.9.9" || fail "expected the dry run to say already on, got: $output"
+after=$(dry_run_snapshot)
+[ "$before" = "$after" ] || fail "expected a dry run on an up-to-date repo to leave every file untouched"
+echo "✓ a dry run on an up-to-date repo says so and touches nothing"
+
+# dirty_repo is left, from the block above, at v1.9.9 with every harness
+# file uncommitted; a dry run there must flag them, never block.
+before=$(dirty_snapshot)
+if ! output=$(run_use_dry_run "$dirty_repo" 2>&1); then
+  echo "$output" >&2
+  fail "harness use --dry-run failed on a repo with locally edited harness files"
+fi
+echo "$output" | grep -qF "Locally edited" || fail "expected the dry run to flag locally edited files, got: $output"
+echo "$output" | grep -qF ".claude/harness-rules.md" || fail "expected the dry run to name the locally edited file, got: $output"
+after=$(dirty_snapshot)
+[ "$before" = "$after" ] || fail "expected a dry run to leave a dirty repo's files untouched"
+echo "✓ a dry run flags locally edited files instead of refusing to run"
+
+# --- argument parsing ---
+
+if output=$(cd "$repo" && HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" use --bogus </dev/null 2>&1); then
+  fail "expected an unknown use option to fail, got: $output"
+fi
+echo "$output" | grep -qF "Unknown option: --bogus" || fail "expected a clear unknown-option message, got: $output"
+echo "$output" | grep -qF "Usage: harness use" || fail "expected a usage line for the unknown option, got: $output"
+echo "✓ an unknown use option prints a usage line and exits non-zero"
+
+if output=$(cd "$repo" && HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" use 1.0.1 1.9.9 </dev/null 2>&1); then
+  fail "expected two version arguments to fail, got: $output"
+fi
+echo "$output" | grep -qF "Usage: harness use" || fail "expected a usage line for a second version argument, got: $output"
+echo "✓ a second version argument prints a usage line and exits non-zero"
+
+before=$(snapshot)
+if output=$(run_use "$repo/src/nested" "not-a-version" "$tags_json" 2>&1); then
+  fail "expected harness use with a malformed version to fail, got: $output"
+fi
+echo "$output" | grep -qF "not-a-version is not a 1.Y.Z version" || fail "expected a clear message naming the malformed version, got: $output"
+after=$(snapshot)
+[ "$before" = "$after" ] || fail "expected a malformed version to leave every file untouched"
+echo "✓ use refuses a malformed version and touches nothing"
+
+before=$(snapshot)
+if output=$(run_use "$repo/src/nested" "2.0.0" "$tags_json" 2>&1); then
+  fail "expected harness use 2.0.0 to fail (a different major), got: $output"
+fi
+echo "$output" | grep -qF "2.0.0 is not a 1.Y.Z version" || fail "expected a clear message naming the cross-major version, got: $output"
+after=$(snapshot)
+[ "$before" = "$after" ] || fail "expected a cross-major version to leave every file untouched"
+echo "✓ use refuses a version from a newer major and touches nothing"
+
+before=$(snapshot)
+if output=$(run_use "$repo/src/nested" "1.4.4" "$tags_json" 2>&1); then
+  fail "expected harness use 1.4.4 to fail (no such release), got: $output"
+fi
+echo "$output" | grep -qF "No such release: 1.4.4" || fail "expected a clear message naming the unknown version, got: $output"
+after=$(snapshot)
+[ "$before" = "$after" ] || fail "expected an unknown version to leave every file untouched"
+echo "✓ use refuses a well-formed version that doesn't exist and touches nothing"
+
+# --- downgrade and file removal ---
+
+to_repo="$scratch/to-repo"
+git init -q "$to_repo"
+git -C "$to_repo" config user.email "check-use@example.com"
+git -C "$to_repo" config user.name "check-use"
+if ! output=$(cd "$to_repo" && HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" use 1.9.9 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed priming the downgrade scratch repo at the newer fixture release"
+fi
+[ "$(cat "$to_repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected the downgrade scratch repo to start at v1.9.9"
+[ -f "$to_repo/$extra_file" ] || fail "expected the downgrade scratch repo to start with $extra_file"
+
+to_snapshot() {
+  find "$to_repo" -path "$to_repo/.git" -prune -o -type f -print0 | sort -z | xargs -0 sha256sum
+}
+
+before=$(to_snapshot)
+if ! output=$(run_use "$to_repo" "1.9.9" "$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness use 1.9.9 failed when already pinned there"
+fi
+echo "$output" | grep -qF "Already on 1.9.9" || fail "expected targeting the pinned release to say so, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected targeting the already-pinned release to leave every file untouched"
+echo "✓ use on the already-pinned release says so and touches nothing"
+
+if ! output=$(run_use "$to_repo" "1.0.1" "$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness use 1.0.1 failed downgrading from 1.9.9"
+fi
+echo "$output" | grep -qF "Switching 1.9.9 -> 1.0.1: https://github.com/Eschults/harness/releases/tag/v1.0.1" || fail "expected the downgrade to report the 1.9.9 -> 1.0.1 transition, got: $output"
+[ "$(cat "$to_repo/.claude/HARNESS_VERSION")" = "v1.0.1" ] || fail "expected .claude/HARNESS_VERSION to read v1.0.1 after downgrading, got $(cat "$to_repo/.claude/HARNESS_VERSION" 2>/dev/null)"
+[ ! -e "$to_repo/$extra_file" ] || fail "expected downgrading to v1.0.1 to remove $extra_file, which v1.0.1 never had"
+for f in "${HARNESS_FILES[@]}"; do
+  cmp -s "$to_repo/$f" "$old_src/$f" || fail "expected $f to match v1.0.1's content after downgrading"
+done
+grep -q "check-use fixture marker" "$to_repo/.claude/harness-rules.md" && fail "expected downgrading to v1.0.1 to drop the v1.9.9 fixture marker"
+echo "✓ use downgrades to a named older release and removes a file it predates"
+
+if ! output=$(run_use "$to_repo" "1.9.9" "$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness use 1.9.9 failed switching back from 1.0.1"
+fi
+[ "$(cat "$to_repo/.claude/HARNESS_VERSION")" = "v1.9.9" ] || fail "expected .claude/HARNESS_VERSION to read v1.9.9 after switching back"
+cmp -s "$to_repo/$extra_file" "$new_src/$extra_file" || fail "expected switching back to v1.9.9 to restore $extra_file"
+echo "✓ use switches forward to a named newer release"
+
+before=$(to_snapshot)
+if ! output=$(run_use "$to_repo" "1.0.1" "$tags_json" n 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed when the user declined"
+fi
+echo "$output" | grep -q "Skipped" || fail "expected a declined use to say it skipped, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected a declined use to leave every file untouched"
+echo "✓ a declined use left every file untouched"
+
+(cd "$to_repo" && git add -A && git commit -q -m "settle at 1.9.9")
+printf '\nlocal tweak\n' >> "$to_repo/.claude/harness-rules.md"
+before=$(to_snapshot)
+if output=$(run_use "$to_repo" "1.0.1" "$tags_json" 2>&1); then
+  fail "expected harness use to refuse with an uncommitted harness-rules.md edit, got: $output"
+fi
+echo "$output" | grep -q "Uncommitted changes" || fail "expected a clear uncommitted-changes message, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected a blocked use to leave every file untouched"
+echo "✓ an uncommitted edit blocks a downgrade and leaves it intact"
+(cd "$to_repo" && git checkout -q -- .claude/harness-rules.md)
+
+before=$(to_snapshot)
+if ! output=$(run_use_dry_run "$to_repo" "1.0.1" "$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness use 1.0.1 --dry-run failed previewing the downgrade"
+fi
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected a downgrade dry run to leave every file untouched"
+echo "$output" | grep -qF "Dry run: 1.9.9 -> 1.0.1: https://github.com/Eschults/harness/releases/tag/v1.0.1" || fail "expected the dry run to report the version transition, got: $output"
+echo "$output" | grep -qF "remove $extra_file" || fail "expected the dry run to list $extra_file as removed, got: $output"
+echo "$output" | grep -qF "change .claude/harness-rules.md" || fail "expected the dry run to list harness-rules.md as changed, got: $output"
+echo "$output" | grep -qF "Nothing written" || fail "expected the dry run to say it wrote nothing, got: $output"
+echo "✓ a downgrade dry run previews a file it would remove and touches nothing"
+
+before=$(to_snapshot)
+if ! output=$(run_use_dry_run "$to_repo" "1.9.9" "$tags_json" 2>&1); then
+  echo "$output" >&2
+  fail "harness use 1.9.9 --dry-run failed on the already-pinned release"
+fi
+echo "$output" | grep -qF "Already on 1.9.9" || fail "expected the dry run on the pinned release to say so, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected a dry run on the already-pinned release to leave every file untouched"
+echo "✓ a dry run on the already-pinned release says so and touches nothing"
+
+# A non-404 HTTP failure (a transient 500, a 403, a rate limit) must never
+# be read as "this release doesn't have the file": that would silently
+# delete a file that genuinely exists at the target release. Stubs curl
+# for exactly fetch_one_release_file's own shape (-o <file> -w
+# '%{http_code}', no -f) so this is the only call intercepted; every other
+# curl invocation in this same run (the fetch of other files, the tags
+# lookup) falls through to the real curl untouched.
+real_curl=$(command -v curl)
+http_error_stub="$scratch/http_error_stub"
+mkdir -p "$http_error_stub"
+cat > "$http_error_stub/curl" <<'STUB'
+#!/usr/bin/env bash
+out="" has_w=0
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  [ "${args[i]}" = "-o" ] && out="${args[i + 1]}"
+  [ "${args[i]}" = "-w" ] && has_w=1
+done
+if [ -z "$out" ] || [ "$has_w" -eq 0 ]; then
+  exec "$REAL_CURL" "$@"
+fi
+printf '%s' "500: Internal Server Error" > "$out"
+printf '%s' "500"
+STUB
+chmod +x "$http_error_stub/curl"
+
+before=$(to_snapshot)
+if output=$(
+  cd "$to_repo" || exit 1
+  printf 'y\n' | PATH="$http_error_stub:$PATH" REAL_CURL="$real_curl" HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" use 1.0.1 2>&1
+); then
+  fail "expected harness use to fail on a non-404 HTTP error, got: $output"
+fi
+echo "$output" | grep -qF "Could not fetch" || fail "expected a non-404 HTTP error to be reported as a fetch failure, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected a non-404 HTTP error to leave every file untouched, instead of deleting a file that exists at the target release"
+echo "✓ use treats a non-404 HTTP error as a fetch failure, never as a removed file"
+
+# A truncated transfer: curl receives real response headers (so
+# %{http_code} reports 200) but then reports its own failure for a
+# cut-short body via a non-zero exit. That must never be read as "fetched
+# fine" just because the status line looked like success.
+truncated_stub="$scratch/truncated_stub"
+mkdir -p "$truncated_stub"
+cat > "$truncated_stub/curl" <<'STUB'
+#!/usr/bin/env bash
+out="" has_w=0
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  [ "${args[i]}" = "-o" ] && out="${args[i + 1]}"
+  [ "${args[i]}" = "-w" ] && has_w=1
+done
+if [ -z "$out" ] || [ "$has_w" -eq 0 ]; then
+  exec "$REAL_CURL" "$@"
+fi
+printf '%s' "truncated body" > "$out"
+printf '%s' "200"
+exit 18
+STUB
+chmod +x "$truncated_stub/curl"
+
+before=$(to_snapshot)
+if output=$(
+  cd "$to_repo" || exit 1
+  printf 'y\n' | PATH="$truncated_stub:$PATH" REAL_CURL="$real_curl" HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" use 1.0.1 2>&1
+); then
+  fail "expected harness use to fail on a truncated transfer (200 status, non-zero curl exit), got: $output"
+fi
+echo "$output" | grep -qF "Could not fetch" || fail "expected a truncated transfer to be reported as a fetch failure, got: $output"
+after=$(to_snapshot)
+[ "$before" = "$after" ] || fail "expected a truncated transfer to leave every file untouched, instead of writing a cut-short file"
+echo "✓ use treats a truncated transfer (200 status, non-zero exit) as a fetch failure, never a success"
+
+# --- label creation (first-time bootstrap only) ---
+
+echo
+echo "--- label creation ---"
+
+all_label_names=(claude "risk:low" "risk:medium" "risk:high")
+
+run_fresh_use() {
+  local dir=$1
+  shift
+  (cd "$dir" && PATH="$stub_gh_bin:$no_gh_bin" HARNESS_TAGS_URL="file://$tags_json" "$@" "$new_src/bin/harness-cli" use 1.0.1)
+}
+
+label_create_dir="$scratch/label-create"
+git init -q "$label_create_dir"
+: > "$gh_create_log"
+if ! output=$(run_fresh_use "$label_create_dir" env STUB_GH_LABELS="" 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed while creating the harness labels"
+fi
+for name in "${all_label_names[@]}"; do
+  grep -qF "label create $name" "$gh_create_log" 2>/dev/null || fail "expected harness use to call gh label create $name when it is missing, got log: $(cat "$gh_create_log" 2>/dev/null)"
+done
+grep -qF "D97757" "$gh_create_log" 2>/dev/null || fail "expected harness use to create the claude label with color D97757"
+grep -qF "0E8A16" "$gh_create_log" 2>/dev/null || fail "expected harness use to create the risk:low label with color 0E8A16"
+grep -qF "FBCA04" "$gh_create_log" 2>/dev/null || fail "expected harness use to create the risk:medium label with color FBCA04"
+grep -qF "B60205" "$gh_create_log" 2>/dev/null || fail "expected harness use to create the risk:high label with color B60205"
+echo "$output" | grep -q "label" && fail "expected the Next message to drop the labels step once use creates all of them, got: $output"
+echo "✓ harness use creates the claude and risk labels and drops the step from the Next message"
+
+label_exists_dir="$scratch/label-exists"
+git init -q "$label_exists_dir"
+: > "$gh_create_log"
+if ! output=$(run_fresh_use "$label_exists_dir" env STUB_GH_LABELS="$(printf '%s\n' "${all_label_names[@]}")" 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed when every harness label already exists"
+fi
+[ -s "$gh_create_log" ] && fail "expected harness use to leave existing harness labels untouched, but it called gh label create"
+echo "$output" | grep -q "label" && fail "expected the Next message to drop the labels step when every label already exists, got: $output"
+echo "✓ harness use leaves existing harness labels untouched"
+
+label_partial_dir="$scratch/label-partial"
+git init -q "$label_partial_dir"
+: > "$gh_create_log"
+if ! output=$(run_fresh_use "$label_partial_dir" env STUB_GH_LABELS="$(printf 'claude\nrisk:low\nrisk:medium\n')" 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed when only risk:high is missing"
+fi
+grep -qF "label create risk:high" "$gh_create_log" 2>/dev/null || fail "expected harness use to create the one missing label (risk:high), got log: $(cat "$gh_create_log" 2>/dev/null)"
+grep -qF "label create claude" "$gh_create_log" 2>/dev/null && fail "expected harness use to leave the already-existing claude label alone"
+echo "$output" | grep -q "label" && fail "expected the Next message to drop the labels step once use creates the one missing label, got: $output"
+echo "✓ harness use creates only the missing label, leaving the rest alone"
+
+label_no_gh_dir="$scratch/label-no-gh"
+git init -q "$label_no_gh_dir"
+if ! output=$(cd "$label_no_gh_dir" && PATH="$no_gh_bin" HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" use 1.0.1 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed when gh is missing"
+fi
+echo "$output" | grep -q "labels" || fail "expected the Next message to still list the labels step when gh is missing, got: $output"
+echo "✓ harness use skips the harness labels when gh is missing, and says so in the Next message"
+
+label_auth_fail_dir="$scratch/label-auth-fail"
+git init -q "$label_auth_fail_dir"
+: > "$gh_create_log"
+if ! output=$(run_fresh_use "$label_auth_fail_dir" env STUB_GH_AUTH_EXIT=1 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed when gh is not authenticated"
+fi
+[ -s "$gh_create_log" ] && fail "expected harness use to skip label creation when gh is not authenticated, but it called gh label create"
+echo "$output" | grep -q "labels" || fail "expected the Next message to still list the labels step when gh is not authenticated, got: $output"
+echo "✓ harness use skips the harness labels when gh is not authenticated, and says so in the Next message"
+
+label_list_fail_dir="$scratch/label-list-fail"
+git init -q "$label_list_fail_dir"
+: > "$gh_create_log"
+if ! output=$(run_fresh_use "$label_list_fail_dir" env STUB_GH_LABEL_LIST_EXIT=1 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed when gh label list fails"
+fi
+[ -s "$gh_create_log" ] && fail "expected harness use to skip label creation when gh label list fails, but it called gh label create"
+echo "$output" | grep -q "labels" || fail "expected the Next message to still list the labels step when gh label list fails, got: $output"
+echo "✓ harness use skips the harness labels when gh label list fails, and says so in the Next message"
+echo
+
+# --- uninstall ---
+
+uninstall_repo="$scratch/uninstall-repo"
+git init -q "$uninstall_repo"
+original_claude_md="$scratch/original-claude.md"
+printf '# Adopter rules\n\nKeep doing the thing.\n' > "$original_claude_md"
+cp "$original_claude_md" "$uninstall_repo/CLAUDE.md"
+# A pre-CLI use's vendored bin/ scripts, which `use` must clean up.
+for f in "${LEGACY_FILES[@]}"; do
+  mkdir -p "$uninstall_repo/$(dirname "$f")"
+  echo "legacy" > "$uninstall_repo/$f"
+done
+
+if ! output=$(cd "$uninstall_repo" && PATH="$no_gh_bin" HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" use 1.0.1 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed priming the uninstall scratch repo"
+fi
+for f in "${LEGACY_FILES[@]}"; do
+  [ ! -e "$uninstall_repo/$f" ] || fail "expected use to remove the legacy $f"
+done
+[ ! -d "$uninstall_repo/bin" ] || fail "expected bin/ to be removed once the legacy scripts emptied it"
+echo "✓ use removed the pre-CLI bin/ scripts"
+[ "$(grep -cxF '@.claude/harness-rules.md' "$uninstall_repo/CLAUDE.md" || true)" = "1" ] || fail "expected exactly one @.claude/harness-rules.md import line after use"
+echo "✓ use added exactly one CLAUDE.md import line"
+
+if ! output=$(cd "$uninstall_repo" && PATH="$no_gh_bin" "$new_src/bin/harness-cli" uninstall 2>&1); then
+  echo "$output" >&2
+  fail "harness uninstall failed"
+fi
+
+for f in "${HARNESS_FILES[@]}"; do
+  [ ! -e "$uninstall_repo/$f" ] || fail "expected $f to be removed by harness uninstall"
+done
+[ ! -d "$uninstall_repo/.claude/prompts" ] || fail "expected .claude/prompts to be removed once empty"
+
+cmp -s "$uninstall_repo/CLAUDE.md" "$original_claude_md" || fail "expected CLAUDE.md to return to its pre-use content byte for byte"
+echo "✓ uninstall removed every harness file and restored CLAUDE.md"
+
+if ! output=$(cd "$uninstall_repo" && PATH="$no_gh_bin" "$new_src/bin/harness-cli" uninstall 2>&1); then
+  echo "$output" >&2
+  fail "harness uninstall failed on re-run against an already-uninstalled repo"
+fi
+echo "✓ re-running uninstall on an already-uninstalled repo still exits cleanly"
+
+if output=$("$new_src/bin/harness-cli" bogus 2>&1); then
+  fail "expected an unknown command to fail"
+fi
+echo "$output" | grep -q "Usage: harness <command>" || fail "expected an unknown command to print usage, got: $output"
+echo "✓ an unknown command fails with usage"
+
+echo
+echo "use/uninstall round trip: all passed"

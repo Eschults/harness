@@ -202,7 +202,7 @@ printf '[{"name":"v1.2.3"},{"name":"v1.3.0"}]' > "$tags_behind"
 if output=$(HARNESS_TAGS_URL="file://$tags_behind" run_doctor "$repo"); then
   fail "expected harness doctor to fail when the pinned harness version is behind the latest release"
 fi
-assert_contains "$output" '✗ harness is on v1.2.3 but v1.3.0 is the latest release; run harness upgrade' "harness version behind"
+assert_contains "$output" '✗ harness is on v1.2.3 but v1.3.0 is the latest release; run harness use' "harness version behind"
 echo "✓ a pinned harness version behind the latest release fails the check that names it"
 
 # --- harness version lookup fails (offline, rate limit) ---
@@ -250,9 +250,9 @@ if ! output=$(HARNESS_RELEASE_SRC="file://$release_drift_src" run_doctor "$repo"
   echo "$output" >&2
   fail "expected harness doctor to exit 0 when a harness file differs from the pinned release"
 fi
-assert_contains "$output" '⚠ .claude/harness-rules.md differs from the pinned release (v9.9.9); harness upgrade will overwrite it' "edited harness file"
+assert_contains "$output" '⚠ .claude/harness-rules.md differs from the pinned release (v9.9.9); harness use will overwrite it' "edited harness file"
 echo "$output" | grep -q '✗' && fail "expected a harness file that drifted from the pinned release to warn, never fail the run, got: $output"
-echo "✓ an edited harness file warns instead of failing, and names harness upgrade's effect"
+echo "✓ an edited harness file warns instead of failing, and names harness use's effect"
 
 # --- pinned release can't be fetched ---
 repo="$scratch/release-unreachable"
@@ -313,7 +313,7 @@ assert_contains "$output" '✗ CLAUDE.md does not import' "missing import"
 echo "✓ a missing CLAUDE.md import fails the check that names it"
 
 # --- CLAUDE.md import on a line with trailing content ---
-# harness install only checks that the import is present as a substring
+# harness use only checks that the import is present as a substring
 # (grep -qF, no -x), so it never re-appends to a line like this; the doctor
 # check has to agree or it reports a failure its own suggested fix can't clear.
 repo="$scratch/import-trailing-content"
@@ -321,9 +321,9 @@ build_healthy_repo "$repo"
 printf '@.claude/harness-rules.md some trailing note\n' > "$repo/CLAUDE.md"
 if ! output=$(run_doctor "$repo"); then
   echo "$output" >&2
-  fail "expected harness doctor to accept a CLAUDE.md import line harness install itself treats as already present"
+  fail "expected harness doctor to accept a CLAUDE.md import line harness use itself treats as already present"
 fi
-echo "✓ a CLAUDE.md import line harness install already accepts passes the check too"
+echo "✓ a CLAUDE.md import line harness use already accepts passes the check too"
 
 # --- missing label ---
 repo="$scratch/missing-label"

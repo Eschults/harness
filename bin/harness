@@ -2,8 +2,10 @@
 # harness-launcher
 # The harness command: runs the CLI version the current repo pins in
 # .claude/HARNESS_VERSION, downloading each version once into $HARNESS_HOME.
-# install and upgrade run the latest release, since both move a repo forward,
-# and upgrade also replaces this launcher with the latest release's.
+# install and versions never touch a repo or exec into a cached CLI: they
+# only manage that $HARNESS_HOME cache directly, here in the launcher. use
+# runs the latest release, since it moves a repo forward or back, and also
+# replaces this launcher with the latest release's.
 # --version prints the version it would run, since older CLIs don't know their own.
 set -euo pipefail
 
@@ -68,11 +70,36 @@ pinned_version() {
   echo "$(<"$root/.claude/HARNESS_VERSION")"
 }
 
+# Never fails, even under pipefail: find exits non-zero (with its own
+# stderr noise suppressed above) when $HARNESS_HOME doesn't exist yet, a
+# normal "nothing cached" state, not an error worth aborting an unguarded
+# caller like cmd_versions' own `cached=$(cached_versions | sort -rV)`.
+cached_versions() {
+  find "$(harness_home)" -mindepth 2 -maxdepth 2 -name harness -perm -u+x 2>/dev/null |
+    awk -F/ '{ print $(NF - 1) }' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V || true
+}
+
 newest_cached_version() {
   local newest
-  newest=$(find "$(harness_home)" -mindepth 2 -maxdepth 2 -name harness -perm -u+x 2>/dev/null |
-    awk -F/ '{ print $(NF - 1) }' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -1)
+  newest=$(cached_versions | tail -1)
   [ -n "$newest" ] && echo "$newest"
+}
+
+# Validates a bare or v-prefixed user-typed version ($1) against this CLI's
+# own major, returning the internal vX.Y.Z tag form on stdout. Exits 1,
+# naming the original input, on a bad shape or the wrong major; never hits
+# the network, since install/use/versions commands check existence their
+# own way (a real fetch for install/use, the cache listing for versions).
+to_release_tag() {
+  local input=$1 tag major major_bare
+  major=$(harness_major)
+  major_bare=${major#v}
+  tag="v${input#v}"
+  if ! [[ "$tag" =~ ^${major}\.[0-9]+\.[0-9]+$ ]]; then
+    echo "$input is not a $major_bare.Y.Z version" >&2
+    exit 1
+  fi
+  echo "$tag"
 }
 
 ensure_cli() {
@@ -131,15 +158,65 @@ version_line() {
   local version=$1 pinned=$2
   echo "$version"
   if [ -n "$pinned" ] && ! version_at_least "$pinned" "$version"; then
-    echo "Repo pinned at $pinned; run harness upgrade to update it." >&2
+    echo "Repo pinned at $pinned; run harness use to update it." >&2
   fi
+}
+
+# `harness install [<version>]`: a pure $HARNESS_HOME cache operation, never
+# touching a repo and never exec'ing into any cached CLI. With no argument,
+# caches the latest release; existence of an explicit version is checked by
+# the real fetch inside ensure_cli, not a separate tags lookup.
+cmd_install_version() {
+  local requested=$1 version
+  if [ -n "$requested" ]; then
+    version=$(to_release_tag "$requested")
+  else
+    version=$(latest_version)
+  fi
+  ensure_cli "$version"
+  echo "Installed ${version#v} into the harness CLI cache ($(harness_home)/$version)."
+}
+
+# `harness versions`: lists every version cached in $HARNESS_HOME, newest
+# first, marking the one this repo is pinned to (if any) as current. Never
+# touches the network.
+cmd_versions() {
+  local cached pinned v
+  cached=$(cached_versions | sort -rV)
+  if [ -z "$cached" ]; then
+    echo "No harness CLI versions cached yet; run harness install to fetch one."
+    return 0
+  fi
+  pinned=$(pinned_version 2>/dev/null || true)
+  while IFS= read -r v; do
+    if [ -n "$pinned" ] && [ "$v" = "$pinned" ]; then
+      echo "* ${v#v} (current)"
+    else
+      echo "  ${v#v}"
+    fi
+  done <<< "$cached"
 }
 
 main() {
   local version pinned=""
   case "${1:-}" in
-    install) version=$(latest_version) ;;
-    upgrade)
+    install)
+      if [ $# -gt 2 ]; then
+        echo "Usage: harness install [<version>]" >&2
+        exit 1
+      fi
+      cmd_install_version "${2:-}"
+      return 0
+      ;;
+    versions)
+      if [ $# -gt 1 ]; then
+        echo "Usage: harness versions" >&2
+        exit 1
+      fi
+      cmd_versions
+      return 0
+      ;;
+    use)
       version=$(latest_version)
       update_launcher "$version"
       ;;
@@ -147,7 +224,7 @@ main() {
       if version=$(pinned_version); then
         pinned=$version
         if ! is_release_version "$version"; then
-          echo ".claude/HARNESS_VERSION holds '$version', not a vX.Y.Z release; run harness install." >&2
+          echo ".claude/HARNESS_VERSION holds '$version', not a vX.Y.Z release; run harness use." >&2
           exit 1
         fi
         version_at_least "$version" "$HARNESS_FIRST_CLI_VERSION" || version=$(latest_version)
@@ -161,7 +238,11 @@ main() {
     return 0
   fi
   ensure_cli "$version"
-  HARNESS_SRC="${HARNESS_SRC:-$(harness_base)/$version}" exec "$(harness_home)/$version/harness" "$@"
+  # The cached CLI's own harness_release_src() reads HARNESS_RELEASE_SRC as
+  # a base it appends a version to itself (for `use`'s own target, which
+  # may differ from $version here, or for doctor's drift check), so this
+  # propagates harness_base() itself, not harness_base()/$version.
+  HARNESS_RELEASE_SRC="${HARNESS_RELEASE_SRC:-$(harness_base)}" exec "$(harness_home)/$version/harness" "$@"
 }
 
 main "$@"

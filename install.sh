@@ -17,8 +17,8 @@ main() {
   echo "Installed harness to $install_dir/harness"
 
   case ":$PATH:" in
-    *":$install_dir:"*) echo "Next, from inside your project repo: harness install" ;;
-    *) echo "Add $install_dir to your PATH, then from inside your project repo: harness install" ;;
+    *":$install_dir:"*) echo "Next, from inside your project repo: harness use" ;;
+    *) echo "Add $install_dir to your PATH, then from inside your project repo: harness use" ;;
   esac
 }
 
