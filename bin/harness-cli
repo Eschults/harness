@@ -1422,6 +1422,10 @@ main() {
   [ $# -gt 0 ] && shift
   case "$harness_command" in
     use) cmd_use "$@" ;;
+    upgrade)
+      echo "harness upgrade is deprecated and will be removed in v2; use harness use instead." >&2
+      cmd_use "$@"
+      ;;
     doctor) cmd_doctor "$@" ;;
     issue) cmd_issue "$@" ;;
     pause) cmd_pause ;;
