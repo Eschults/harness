@@ -708,6 +708,11 @@ if ! output=$(cd "$uninstall_repo" && PATH="$no_gh_bin" "$new_src/bin/harness-cl
 fi
 echo "✓ re-running uninstall on an already-uninstalled repo still exits cleanly"
 
+output=$(cd "$repo" && HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" upgrade --dry-run </dev/null 2>&1) || true
+echo "$output" | grep -q "harness upgrade is deprecated" || fail "expected upgrade to print a deprecation note, got: $output"
+echo "$output" | grep -q "Unknown command" && fail "expected upgrade to run use, got: $output"
+echo "✓ upgrade still works as a deprecated alias of use"
+
 if output=$("$new_src/bin/harness-cli" bogus 2>&1); then
   fail "expected an unknown command to fail"
 fi

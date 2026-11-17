@@ -216,7 +216,7 @@ main() {
       cmd_versions
       return 0
       ;;
-    use)
+    use | upgrade)
       version=$(latest_version)
       update_launcher "$version"
       ;;
