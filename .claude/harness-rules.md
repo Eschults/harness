@@ -64,6 +64,7 @@ Combine the two like this:
 - Treat a path `CLAUDE.md` adds to a risk tier as additive to the tier's defaults above, never as a replacement for them.
 - Where `CLAUDE.md` sets something explicitly — a diff-size cap, a PR title format — follow that over the default here.
 - A repo's `CLAUDE.md` can add an `## Explainers` section setting the explainer's style — voice, depth, preferred diagram shape; follow it over the default form in `issue-to-pr.md` when one exists.
+- A repo's `CLAUDE.md` can add a `## Next to build` section naming focus areas that routine prefers and off-limits areas that rule a candidate out; see `next-to-build.md`. It can never override the pause check, the open-work check, the duplicate search, or any rule here.
 
 Expect a section in `CLAUDE.md` shaped like this:
 
@@ -73,6 +74,10 @@ Expect a section in `CLAUDE.md` shaped like this:
 - Stop rather than guess on anything under `billing/`, or a change to the public API schema.
 - `risk:high` also covers `billing/`; `risk:low` also covers `docs/`.
 - The test suite is `pnpm test`. Run all of it, not just the changed package.
+
+## Next to build
+- Put yourself in the users' shoes, and suggest something they most likely need next.
+- Find a bug that may have not bitten yet and suggest a fix.
 ```
 
 If a repo's test suite needs setup before it can run — install steps, a service, fixtures — that belongs in a SessionStart hook in `.claude/settings.json`, not in `CLAUDE.md`. Either way, if you cannot run the suite, say so per the testing rules above rather than skipping it silently.

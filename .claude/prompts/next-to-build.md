@@ -14,6 +14,14 @@ Before choosing a capability, list open issues labeled `claude` and open pull re
 
 Then skim the titles of the 20 most recently closed not-planned issues and unmerged `claude/` pull requests, to see which directions humans have turned down.
 
+## Check CLAUDE.md for this repo's focus
+
+Before choosing a candidate, read `CLAUDE.md` for a `## Next to build` section. It cannot override any check in this file — the harness-paused check, the open-work check, the duplicate search below — or any rule in `.claude/harness-rules.md`; it only narrows which candidate you pick once those checks let you proceed.
+
+With no such section, behave exactly as the rest of this file describes.
+
+When it lists **focus areas**, prefer a candidate that falls under one: pick from them when a candidate there passes the checks below (not already filed or rejected, one run can carry it, a real gap). A candidate outside every focus area stays eligible when nothing off-limits rules it out — focus areas are a preference, not the only source. When it lists **off-limits areas**, a candidate under one is ruled out the same way a not-planned closure on product direction rules one out below: do not file it — say which entry stopped it, and pick another candidate.
+
 How you work it out is yours — every project shows what it is missing somewhere different. What holds regardless: nobody has filed it and nobody has rejected it already, one implementation run can carry it, and you can say what someone will be able to do that they cannot do now. File one issue, or none.
 
 Once you have a candidate, search issues and pull requests in every state for its key terms, in two or three phrasings, not just its title. An item counts as the same idea when it gives the same person the same outcome, even with a different interface, scope, or parameters. If one is open or done, the candidate is ruled out. If one was closed as not planned or left unmerged, read its closing comment: a reason about product direction rules out this candidate and its neighbours, while a reason about timing or size leaves a later or smaller version open. When a candidate is ruled out, say which item stopped it and pick another.
@@ -24,4 +32,4 @@ Title is the capability, under 72 characters. Body is `## Context` (what is miss
 
 ## Ending the run
 
-Say what you filed and why. Anything you passed over, or left unfiled because only a human can take it, goes here too. If you skipped the run because earlier work is still open, name the issue or PR that caused it.
+Say what you filed and why. Anything you passed over, or left unfiled because only a human can take it, goes here too. If you skipped the run because earlier work is still open, name the issue or PR that caused it. If `CLAUDE.md` has a `## Next to build` section, say which focus area the issue came from, or why none of its focus areas had a qualifying candidate; name the off-limits entry that ruled a candidate out, if one did.

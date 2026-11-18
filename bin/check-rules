@@ -675,6 +675,14 @@ CHECKS = [
         "harness-rules.md's 'This repo's additions' should still document that CLAUDE.md can add an `## Explainers` style section",
     ),
     (
+        "harness-rules-documents-next-to-build-section",
+        "A repo's `CLAUDE.md` can add a `## Next to build` section naming focus areas that routine prefers and off-limits areas that "
+        "rule a candidate out; see `next-to-build.md`. It can never override the pause check, the open-work check, the duplicate "
+        "search, or any rule here." in HARNESS_RULES,
+        "harness-rules.md's 'This repo's additions' should still document the CLAUDE.md `## Next to build` section and that it can "
+        "never override the pause/open-work/duplicate-search checks or the rules",
+    ),
+    (
         "review-refreshes-stale-explainer",
         "If a fix changes code an explainer describes, update the explainer in the same commit." in ISSUE_TO_PR,
         "issue-to-pr.md should still require refreshing an explainer in the same commit when a review fix changes the code it describes",
@@ -718,6 +726,17 @@ CHECKS = [
         "next-to-build-timing-or-size-rejection-stays-open",
         "a reason about timing or size leaves a later or smaller version open" in NEXT_TO_BUILD,
         "next-to-build.md should still limit the neighbouring-ideas ban to product-direction rejections",
+    ),
+    (
+        "next-to-build-reads-claude-md-focus-section",
+        "Before choosing a candidate, read `CLAUDE.md` for a `## Next to build` section." in NEXT_TO_BUILD,
+        "next-to-build.md should still require reading CLAUDE.md for a `## Next to build` section before choosing a candidate",
+    ),
+    (
+        "next-to-build-focus-section-subordinate-to-checks",
+        "It cannot override any check in this file — the harness-paused check, the open-work check, the duplicate search below — or any rule in `.claude/harness-rules.md`"
+        in NEXT_TO_BUILD,
+        "next-to-build.md should still say the CLAUDE.md focus section can never override the pause check, the open-work check, the duplicate search, or the harness rules",
     ),
     (
         "next-to-build-candidate-search-before-create",

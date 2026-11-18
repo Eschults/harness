@@ -143,6 +143,8 @@ Read CLAUDE.md and .claude/prompts/next-to-build.md, and follow both exactly.
 
 Set the trigger to **Schedule** at whatever frequency suits your team, leave **Auto-fix pull requests** off (it opens no PRs), and turn **Notifications** on. It needs no workflow and no second token.
 
+Add a `## Next to build` section to your `CLAUDE.md` to steer it toward focus areas or away from off-limits ones; see [This repo's additions](.claude/harness-rules.md#this-repos-additions).
+
 ## Worth knowing
 
 - **A green workflow run means "session started"**, not "PR opened". The workflow comments the session URL on the issue, or the reason it could not start one.
