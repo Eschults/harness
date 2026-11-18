@@ -76,7 +76,7 @@ Expect a section in `CLAUDE.md` shaped like this:
 - The test suite is `pnpm test`. Run all of it, not just the changed package.
 
 ## Next to build
-- Focus on onboarding and performance this quarter.
+- Put yourself in the users' shoes, and suggest something they most likely need next.
 - Never propose anything under `billing/`, or a new CLI command.
 ```
 
