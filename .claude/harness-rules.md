@@ -77,7 +77,7 @@ Expect a section in `CLAUDE.md` shaped like this:
 
 ## Next to build
 - Put yourself in the users' shoes, and suggest something they most likely need next.
-- Never propose anything under `billing/`, or a new CLI command.
+- Find a bug that may have not bitten yet and suggest a fix.
 ```
 
 If a repo's test suite needs setup before it can run — install steps, a service, fixtures — that belongs in a SessionStart hook in `.claude/settings.json`, not in `CLAUDE.md`. Either way, if you cannot run the suite, say so per the testing rules above rather than skipping it silently.
