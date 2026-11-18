@@ -20,7 +20,7 @@ Before choosing a candidate, read `CLAUDE.md` for a `## Next to build` section. 
 
 With no such section, behave exactly as the rest of this file describes.
 
-When it lists **focus areas**, prefer a candidate that falls under one: pick from them when a candidate there passes the checks below (not already filed or rejected, one run can carry it, a real gap). When it lists **off-limits areas**, a candidate under one is ruled out the same way a not-planned closure on product direction rules one out below: do not file it.
+When it lists **focus areas**, prefer a candidate that falls under one: pick from them when a candidate there passes the checks below (not already filed or rejected, one run can carry it, a real gap). A candidate outside every focus area stays eligible when nothing off-limits rules it out — focus areas are a preference, not the only source. When it lists **off-limits areas**, a candidate under one is ruled out the same way a not-planned closure on product direction rules one out below: do not file it — say which entry stopped it, and pick another candidate.
 
 How you work it out is yours — every project shows what it is missing somewhere different. What holds regardless: nobody has filed it and nobody has rejected it already, one implementation run can carry it, and you can say what someone will be able to do that they cannot do now. File one issue, or none.
 

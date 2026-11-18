@@ -675,6 +675,14 @@ CHECKS = [
         "harness-rules.md's 'This repo's additions' should still document that CLAUDE.md can add an `## Explainers` style section",
     ),
     (
+        "harness-rules-documents-next-to-build-section",
+        "A repo's `CLAUDE.md` can add a `## Next to build` section naming focus areas that routine prefers and off-limits areas that "
+        "rule a candidate out; see `next-to-build.md`. It can never override the pause check, the open-work check, the duplicate "
+        "search, or any rule here." in HARNESS_RULES,
+        "harness-rules.md's 'This repo's additions' should still document the CLAUDE.md `## Next to build` section and that it can "
+        "never override the pause/open-work/duplicate-search checks or the rules",
+    ),
+    (
         "review-refreshes-stale-explainer",
         "If a fix changes code an explainer describes, update the explainer in the same commit." in ISSUE_TO_PR,
         "issue-to-pr.md should still require refreshing an explainer in the same commit when a review fix changes the code it describes",
