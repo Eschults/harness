@@ -720,6 +720,17 @@ CHECKS = [
         "next-to-build.md should still limit the neighbouring-ideas ban to product-direction rejections",
     ),
     (
+        "next-to-build-reads-claude-md-focus-section",
+        "Before choosing a candidate, read `CLAUDE.md` for a `## Next to build` section." in NEXT_TO_BUILD,
+        "next-to-build.md should still require reading CLAUDE.md for a `## Next to build` section before choosing a candidate",
+    ),
+    (
+        "next-to-build-focus-section-subordinate-to-checks",
+        "It cannot override any check in this file — the harness-paused check, the open-work check, the duplicate search below — or any rule in `.claude/harness-rules.md`"
+        in NEXT_TO_BUILD,
+        "next-to-build.md should still say the CLAUDE.md focus section can never override the pause check, the open-work check, the duplicate search, or the harness rules",
+    ),
+    (
         "next-to-build-candidate-search-before-create",
         "search issues and pull requests in every state" in NEXT_TO_BUILD
         and "Create it with the `claude` label" in NEXT_TO_BUILD
