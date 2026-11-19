@@ -792,6 +792,17 @@ CHECKS = [
         "harness-rules.md should still treat a CLAUDE.md risk-tier path addition as additive, never a replacement",
     ),
     (
+        "review-feedback-reclassify-risk-tier-after-push",
+        "Re-classify the risk tier after every push, per [Risk tiers](#risk-tiers) above, and update the label and the description's tier line when it changed."
+        in HARNESS_RULES,
+        "harness-rules.md should still require re-classifying the risk tier after every push and updating the label and description line when it changed",
+    ),
+    (
+        "review-feedback-updates-acceptance-criteria-lines",
+        "Update any acceptance-criteria line in the description whose status or evidence the push changed." in HARNESS_RULES,
+        "harness-rules.md should still require updating any acceptance-criteria line whose status or evidence a push changed",
+    ),
+    (
         "issue-to-pr-classifies-risk-tier-before-opening-pr",
         'Classify and label the PR\'s risk tier per "Labeling the PR\'s risk tier" below.' in ISSUE_TO_PR,
         "issue-to-pr.md should still require classifying and labeling the risk tier before opening the PR",
