@@ -705,7 +705,7 @@ echo "✓ uninstall removed every harness file and restored CLAUDE.md"
 
 for entry in "${HARNESS_LABELS[@]}"; do
   IFS='|' read -r name _ _ <<< "$entry"
-  echo "$output" | grep -qF "$name" || fail "expected uninstall's message to name the $name label, got: $output"
+  echo "$output" | grep -qF "gh label delete \"$name\" --yes" || fail "expected uninstall's message to include a gh label delete command for the $name label, got: $output"
 done
 echo "✓ uninstall's message names every harness label"
 
