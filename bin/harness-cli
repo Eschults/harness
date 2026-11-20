@@ -717,7 +717,7 @@ stats_since_iso() {
 gh_api_get() {
   local out=$1 endpoint=$2 error
   shift 2
-  error=$(gh api "$endpoint" --method GET "$@" 2>&1 >"$out") || { echo "$error" >&2; return 1; }
+  error=$(gh api "$endpoint" --method GET "$@" 2>&1 >"$out") || { stats_progress_clear; echo "$error" >&2; return 1; }
 }
 
 # Pages through a gh api GET endpoint whose response is a bare JSON array,
@@ -867,7 +867,7 @@ collect_stats() {
 
   # Global, not local: the EXIT trap runs after this function's scope is gone.
   stats_scratch=$(mktemp -d)
-  trap 'rm -rf "$stats_scratch"' EXIT
+  trap 'stats_progress_clear; rm -rf "$stats_scratch"' EXIT
 
   local prs_file="$stats_scratch/prs.jsonl" commits_file="$stats_scratch/commits.jsonl"
   stats_progress "Listing pull requests since $stats_window_start..."
@@ -1127,20 +1127,22 @@ cmd_feedback() {
   local usage_line="Usage: harness feedback enable|disable, or harness feedback [<text>] [--stats [--since <N>d]] [--dry-run]"
   case "${1:-}" in
     enable | disable)
-      [ $# -eq 1 ] || { echo "Unexpected argument: $2. $usage_line" >&2; exit 1; }
+      [ $# -eq 1 ] || { echo "Unexpected argument: $2. To send feedback text that starts with \"$1\", quote it: harness feedback \"$*\"" >&2; exit 1; }
       "cmd_feedback_$1"
       return
       ;;
   esac
 
-  local note="" since_days=30 since_given=0 with_stats=0 dry_run=0
+  local note="" since_days=30 since_given=0 with_stats=0 dry_run=0 note_flag_used=0
   local -a note_words=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --note)
         [ $# -ge 2 ] || { echo "$usage_line" >&2; exit 1; }
-        echo "--note is deprecated and removed in v2: pass the text directly, as harness feedback \"<text>\"." >&2
+        echo "--note is deprecated and removed in v2: pass the text directly, as harness feedback \"<text>\" --stats (drop --stats to leave the counts out)." >&2
         note_words+=("$2")
+        note_flag_used=$((note_flag_used + 1))
+        with_stats=1
         shift 2
         ;;
       --stats)
@@ -1157,7 +1159,12 @@ cmd_feedback() {
         dry_run=1
         shift
         ;;
-      -*)
+      --)
+        shift
+        note_words+=("$@")
+        break
+        ;;
+      --?*)
         echo "Unknown option: $1. $usage_line" >&2
         exit 1
         ;;
@@ -1168,6 +1175,10 @@ cmd_feedback() {
     esac
   done
   [[ "$since_days" =~ ^[0-9]+$ ]] || { echo "Invalid --since value: expected <N>d (e.g. 30d)" >&2; exit 1; }
+  if [ "$note_flag_used" -gt 0 ] && [ "${#note_words[@]}" -gt 1 ]; then
+    echo "Give the feedback text once: either harness feedback \"<text>\" or a single --note <text>." >&2
+    exit 1
+  fi
   if [ "$since_given" -eq 1 ] && [ "$with_stats" -eq 0 ]; then
     echo "--since only applies with --stats. $usage_line" >&2
     exit 1

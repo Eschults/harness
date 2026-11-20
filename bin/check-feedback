@@ -147,6 +147,7 @@ for subcmd in enable disable; do
   STUB_GH_OPTED_IN=1 run_harness "$subcmd" --dry-run
   [ "$run_exit" -ne 0 ] || fail "expected $subcmd --dry-run to be refused: $run_output"
   assert_contains "$run_output" "Unexpected argument: --dry-run" "$subcmd stray argument"
+  assert_contains "$run_output" "quote it: harness feedback \"$subcmd --dry-run\"" "$subcmd quoting hint"
   [ ! -s "$calls" ] || fail "expected $subcmd --dry-run to change nothing, got: $(cat "$calls")"
 done
 echo "✓ enable and disable reject stray arguments and change nothing"
@@ -179,7 +180,27 @@ run_harness --note "Rules were unclear on X" --dry-run
 [ "$run_exit" -eq 0 ] || fail "expected the deprecated --note to still work: $run_output"
 assert_contains "$run_output" "--note is deprecated" "--note deprecation"
 assert_contains "$run_output" "Title: Harness feedback: Rules were unclear on X" "--note title"
-echo "✓ the deprecated --note still works and says so"
+assert_contains "$run_output" "## Numbers from the last 30d" "--note keeps stats"
+run_harness --note x --since 7d --dry-run
+[ "$run_exit" -eq 0 ] || fail "expected the old --note x --since 7d form to still work: $run_output"
+assert_contains "$run_output" "## Numbers from the last 7d" "--note with --since"
+for args in "--note a --note b" "--note a extra"; do
+  # shellcheck disable=SC2086
+  run_harness $args --dry-run
+  [ "$run_exit" -ne 0 ] || fail "expected '$args' to be refused: $run_output"
+  assert_contains "$run_output" "Give the feedback text once" "$args"
+done
+echo "✓ the deprecated --note still works as before, stats included, says so, and refuses a second text"
+
+# --- text that starts with a dash ---
+run_harness "- rules were unclear" --dry-run
+[ "$run_exit" -eq 0 ] || fail "expected text starting with a dash to be accepted: $run_output"
+assert_contains "$run_output" "Title: Harness feedback: - rules were unclear" "dash text"
+run_harness --dry-run -- --stats is confusing
+[ "$run_exit" -eq 0 ] || fail "expected words after -- to be taken as text: $run_output"
+assert_contains "$run_output" "Title: Harness feedback: --stats is confusing" "text after --"
+if echo "$run_output" | grep -qF "Numbers from the last"; then fail "expected --stats after -- to be text, not the flag: $run_output"; fi
+echo "✓ text may start with a dash, and everything after -- is text"
 
 # --- --stats dry run: the report holds the note and counts, and nothing that identifies the repo ---
 run_harness "Rules were unclear on X" --stats --dry-run
