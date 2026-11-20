@@ -147,29 +147,66 @@ for subcmd in enable disable; do
   STUB_GH_OPTED_IN=1 run_harness "$subcmd" --dry-run
   [ "$run_exit" -ne 0 ] || fail "expected $subcmd --dry-run to be refused: $run_output"
   assert_contains "$run_output" "Unexpected argument: --dry-run" "$subcmd stray argument"
+  assert_contains "$run_output" "quote it: harness feedback \"$subcmd --dry-run\"" "$subcmd quoting hint"
   [ ! -s "$calls" ] || fail "expected $subcmd --dry-run to change nothing, got: $(cat "$calls")"
 done
 echo "✓ enable and disable reject stray arguments and change nothing"
 
 # --- not opted in: refused, even at a terminal answering yes ---
-run_at_terminal y --note "a lesson"
+run_at_terminal y "a lesson"
 [ "$run_exit" -ne 0 ] || fail "expected a repo that has not opted in to be refused: $run_output"
 assert_contains "$run_output" "has not opted in" "not opted in"
 assert_nothing_filed "not opted in"
 echo "✓ a repo that has not opted in cannot file, even at a terminal answering yes"
 
 # --- dry run before opting in: the owner can read the report first ---
-run_harness --note "a lesson" --dry-run
+run_harness "a lesson" --dry-run
 [ "$run_exit" -eq 0 ] || fail "expected a dry run to work before opting in: $run_output"
 assert_contains "$run_output" "nothing was sent" "dry run before opting in"
 assert_nothing_filed "dry run before opting in"
 export STUB_GH_OPTED_IN=1
 echo "✓ a dry run works before opting in, and sends nothing"
 
-# --- dry run: the report holds the note and counts, and nothing that identifies the repo ---
+# --- without --stats: the note and version only, and no stats lookup at all ---
+STUB_GH_PR_COMMITS_EXIT=1 run_harness Rules were unclear on X --dry-run
+[ "$run_exit" -eq 0 ] || fail "expected a dry run without --stats to skip the stats lookups: $run_output"
+assert_contains "$run_output" "Title: Harness feedback: Rules were unclear on X" "positional words title"
+assert_contains "$run_output" "Harness version: v1.2.3" "no stats version"
+if echo "$run_output" | grep -qF "Numbers from the last"; then fail "expected no stats section without --stats: $run_output"; fi
+echo "✓ without --stats the report holds only the note and version, and fetches no stats"
+
+# --- --note still works, with a deprecation notice ---
 run_harness --note "Rules were unclear on X" --dry-run
+[ "$run_exit" -eq 0 ] || fail "expected the deprecated --note to still work: $run_output"
+assert_contains "$run_output" "--note is deprecated" "--note deprecation"
+assert_contains "$run_output" "Title: Harness feedback: Rules were unclear on X" "--note title"
+assert_contains "$run_output" "## Numbers from the last 30d" "--note keeps stats"
+run_harness --note x --since 7d --dry-run
+[ "$run_exit" -eq 0 ] || fail "expected the old --note x --since 7d form to still work: $run_output"
+assert_contains "$run_output" "## Numbers from the last 7d" "--note with --since"
+for args in "--note a --note b" "--note a extra"; do
+  # shellcheck disable=SC2086
+  run_harness $args --dry-run
+  [ "$run_exit" -ne 0 ] || fail "expected '$args' to be refused: $run_output"
+  assert_contains "$run_output" "Give the feedback text once" "$args"
+done
+echo "✓ the deprecated --note still works as before, stats included, says so, and refuses a second text"
+
+# --- text that starts with a dash ---
+run_harness "- rules were unclear" --dry-run
+[ "$run_exit" -eq 0 ] || fail "expected text starting with a dash to be accepted: $run_output"
+assert_contains "$run_output" "Title: Harness feedback: - rules were unclear" "dash text"
+run_harness --dry-run -- --stats is confusing
+[ "$run_exit" -eq 0 ] || fail "expected words after -- to be taken as text: $run_output"
+assert_contains "$run_output" "Title: Harness feedback: --stats is confusing" "text after --"
+if echo "$run_output" | grep -qF "Numbers from the last"; then fail "expected --stats after -- to be text, not the flag: $run_output"; fi
+echo "✓ text may start with a dash, and everything after -- is text"
+
+# --- --stats dry run: the report holds the note and counts, and nothing that identifies the repo ---
+run_harness "Rules were unclear on X" --stats --dry-run
 [ "$run_exit" -eq 0 ] || fail "expected a dry run to succeed: $run_output"
 assert_contains "$run_output" "Title: Harness feedback: Rules were unclear on X" "dry run title"
+assert_contains "$run_output" "## Numbers from the last 30d" "dry run stats section"
 assert_contains "$run_output" "Harness version: v1.2.3" "dry run version"
 assert_contains "$run_output" "claude/ pull requests: 1 opened, 1 merged, 0 closed unmerged, 0 still draft" "dry run counts"
 assert_contains "$run_output" "Merged with no human pushes: 1/1" "dry run solo count"
@@ -180,16 +217,16 @@ assert_nothing_filed "dry run"
 for private in SECRET-TITLE secret-repo secret-branch acme "#41" "pull/4" project-falcon; do
   if echo "$run_output" | grep -qF -- "$private"; then fail "report leaked '$private': $run_output"; fi
 done
-echo "✓ a dry run prints the note and counts, leaks no repo name, title, number or link, and sends nothing"
+echo "✓ a --stats dry run prints the note and counts, leaks no repo name, title, number or link, and sends nothing"
 
 # --- no terminal: refused, even with a yes piped in ---
 echo y > "$scratch/yes"
-run_stdin="$scratch/yes" run_harness --note "a lesson"
+run_stdin="$scratch/yes" run_harness "a lesson"
 [ "$run_exit" -ne 0 ] || fail "expected filing without a terminal to be refused: $run_output"
 assert_contains "$run_output" "person at a terminal" "no terminal"
 assert_nothing_filed "no terminal"
 export PTY_STDOUT_FILE="$scratch/redirected-preview"
-run_at_terminal y --note "a lesson"
+run_at_terminal y "a lesson"
 unset PTY_STDOUT_FILE
 [ "$run_exit" -ne 0 ] || fail "expected filing with redirected output to be refused: $run_output"
 assert_contains "$run_output" "person at a terminal" "redirected output"
@@ -197,21 +234,22 @@ assert_nothing_filed "redirected output"
 echo "✓ filing without a terminal is refused, even with a yes piped in or only the output redirected"
 
 # --- a failed commit lookup never reaches a report ---
-STUB_GH_PR_COMMITS_EXIT=1 run_at_terminal y --note "a lesson"
+STUB_GH_PR_COMMITS_EXIT=1 run_at_terminal y "a lesson" --stats
 [ "$run_exit" -ne 0 ] || fail "expected a failed commit lookup to stop the filing: $run_output"
 assert_contains "$run_output" "the counts would be wrong" "failed commit lookup"
 assert_nothing_filed "failed commit lookup"
 echo "✓ a failed commit lookup stops the filing instead of publishing wrong counts"
 
 # --- at a terminal: only a yes files, to the harness repo, with no label that could start a run ---
-run_at_terminal y --note "Rules were unclear on X"
+run_at_terminal y "Rules were unclear on X" --stats
 [ "$run_exit" -eq 0 ] || fail "expected a confirmed filing to succeed: $run_output"
+assert_contains "$run_output" "Checking who pushed to merged pull requests: 1/1" "stats progress at a terminal"
 assert_contains "$run_output" "posts publicly on Eschults/harness as some-login" "confirmation warning"
 assert_contains "$(cat "$calls")" "github.com/Eschults/harness" "filed repo"
 assert_contains "$(cat "$calls")" "Rules were unclear on X" "filed body"
 if grep -qF -- "--label" "$calls"; then fail "expected no label on the filed issue, got: $(cat "$calls")"; fi
 for answer in n ""; do
-  run_at_terminal "$answer" --note "Rules were unclear on X"
+  run_at_terminal "$answer" "Rules were unclear on X"
   [ "$run_exit" -eq 0 ] || fail "expected declining to exit cleanly: $run_output"
   assert_contains "$run_output" "Not filed." "declined"
   assert_nothing_filed "declined"
@@ -221,19 +259,22 @@ echo "✓ only a typed yes files the issue, on Eschults/harness, with no label"
 # --- bad input ---
 run_harness --dry-run
 [ "$run_exit" -ne 0 ] || fail "expected a missing note to be refused: $run_output"
-assert_contains "$run_output" "A note is required" "missing note"
-run_harness --note "   " --dry-run
+assert_contains "$run_output" "Feedback text is required" "missing note"
+run_harness "   " --dry-run
 [ "$run_exit" -ne 0 ] || fail "expected a blank note to be refused: $run_output"
 run_harness --bogus
 [ "$run_exit" -ne 0 ] || fail "expected an unknown option to be refused: $run_output"
 assert_contains "$run_output" "Unknown option: --bogus" "unknown option"
-run_harness --note x --since soon --dry-run
+run_harness x --stats --since soon --dry-run
 [ "$run_exit" -ne 0 ] || fail "expected a bad --since to be refused: $run_output"
 assert_contains "$run_output" "Invalid --since value" "bad since"
-echo "✓ a missing or blank note, an unknown option, and a bad --since are refused"
+run_harness x --since 7d --dry-run
+[ "$run_exit" -ne 0 ] || fail "expected --since without --stats to be refused: $run_output"
+assert_contains "$run_output" "--since only applies with --stats" "since without stats"
+echo "✓ a missing or blank note, an unknown option, a bad --since, and --since without --stats are refused"
 
 # --- gh problems ---
-STUB_GH_AUTH_EXIT=1 run_harness --note x --dry-run
+STUB_GH_AUTH_EXIT=1 run_harness x --dry-run
 [ "$run_exit" -ne 0 ] || fail "expected unauthenticated gh to be refused: $run_output"
 assert_contains "$run_output" "gh is not authenticated" "unauthenticated"
 no_gh_bin="$scratch/no_gh_bin"
@@ -242,7 +283,7 @@ for cmd in bash git; do
   ln -sf "$(command -v "$cmd")" "$no_gh_bin/$cmd"
 done
 run_exit=0
-run_output=$(cd "$repo" && PATH="$no_gh_bin" "$cli" feedback --note x --dry-run 2>&1) || run_exit=$?
+run_output=$(cd "$repo" && PATH="$no_gh_bin" "$cli" feedback x --dry-run 2>&1) || run_exit=$?
 [ "$run_exit" -ne 0 ] || fail "expected a missing gh to be refused: $run_output"
 assert_contains "$run_output" "gh not found" "missing gh"
 echo "✓ a missing or unauthenticated gh is reported"
