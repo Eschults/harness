@@ -703,6 +703,15 @@ done
 cmp -s "$uninstall_repo/CLAUDE.md" "$original_claude_md" || fail "expected CLAUDE.md to return to its pre-use content byte for byte"
 echo "✓ uninstall removed every harness file and restored CLAUDE.md"
 
+for entry in "${HARNESS_LABELS[@]}"; do
+  IFS='|' read -r name _ _ <<< "$entry"
+  echo "$output" | grep -qF "gh label delete \"$name\" --yes" || fail "expected uninstall's message to include a gh label delete command for the $name label, got: $output"
+done
+echo "✓ uninstall's message names every harness label"
+
+echo "$output" | grep -qF "HARNESS_PAUSED" || fail "expected uninstall's message to name HARNESS_PAUSED, got: $output"
+echo "✓ uninstall's message names the HARNESS_PAUSED variable"
+
 if ! output=$(cd "$uninstall_repo" && PATH="$no_gh_bin" "$new_src/bin/harness-cli" uninstall 2>&1); then
   echo "$output" >&2
   fail "harness uninstall failed on re-run against an already-uninstalled repo"

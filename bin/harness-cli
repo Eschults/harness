@@ -543,12 +543,19 @@ cmd_uninstall() {
     mv CLAUDE.md.harness-uninstall-tmp CLAUDE.md
   fi
 
+  local entry name label_lines=""
+  for entry in "${HARNESS_LABELS[@]}"; do
+    IFS='|' read -r name _ _ <<< "$entry"
+    label_lines+="  - Delete the label:     gh label delete \"$name\" --yes
+"
+  done
+
   cat <<EOF
 Removed the local harness files. Finish the cleanup on GitHub:
   - Delete the "Issue to PR" and "Next to Build" routines: https://claude.ai/code/routines
-  - Delete the label:     gh label delete claude --yes
-  - Remove the variable:  gh variable delete CLAUDE_ROUTINE_ID
+${label_lines}  - Remove the variable:  gh variable delete CLAUDE_ROUTINE_ID
   - Remove the secret:    gh secret delete CLAUDE_ROUTINE_TOKEN
+  - If you paused it:     gh variable delete HARNESS_PAUSED
   - If you opted in:      gh variable delete HARNESS_FEEDBACK
 The harness command itself stays installed for your other repos.
 EOF
