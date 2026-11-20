@@ -846,32 +846,48 @@ $prs as $all
 JQ
 }
 
+# Overwrites one status line on stderr, only at a terminal, so piped output and logs stay clean.
+stats_progress() {
+  [ -t 2 ] || return 0
+  printf '\r\033[K%s' "$1" >&2
+}
+
+stats_progress_clear() {
+  [ -t 2 ] || return 0
+  printf '\r\033[K' >&2
+}
+
 # Sets stats_window_start, stats_summary, stats_solo, stats_checked, and stats_lookup_failures for the last $1 days.
 collect_stats() {
   local since_days=$1 default_branch
   stats_window_start=$(stats_since_iso "$since_days") || { echo "Could not compute the --since cutoff date." >&2; exit 1; }
+  stats_progress "Looking up the default branch..."
   default_branch=$(gh api 'repos/{owner}/{repo}' --jq .default_branch 2>/dev/null) ||
-    { echo "Could not look up the default branch." >&2; exit 1; }
+    { stats_progress_clear; echo "Could not look up the default branch." >&2; exit 1; }
 
   # Global, not local: the EXIT trap runs after this function's scope is gone.
   stats_scratch=$(mktemp -d)
   trap 'rm -rf "$stats_scratch"' EXIT
 
   local prs_file="$stats_scratch/prs.jsonl" commits_file="$stats_scratch/commits.jsonl"
-  fetch_prs_since "$prs_file" "$stats_window_start" || { echo "Could not list pull requests." >&2; exit 1; }
+  stats_progress "Listing pull requests since $stats_window_start..."
+  fetch_prs_since "$prs_file" "$stats_window_start" || { stats_progress_clear; echo "Could not list pull requests." >&2; exit 1; }
+  stats_progress "Listing commits on $default_branch..."
   paginate_gh_api "$commits_file" 'repos/{owner}/{repo}/commits' -f sha="$default_branch" -f since="$stats_window_start" ||
-    { echo "Could not list commits on $default_branch." >&2; exit 1; }
+    { stats_progress_clear; echo "Could not list commits on $default_branch." >&2; exit 1; }
 
   stats_summary=$(jq -n --slurpfile prs "$prs_file" --slurpfile commits "$commits_file" "$(stats_jq_filter)") ||
-    { echo "Could not summarize pull request data." >&2; exit 1; }
+    { stats_progress_clear; echo "Could not summarize pull request data." >&2; exit 1; }
 
   stats_solo=0
   stats_checked=0
   stats_lookup_failures=0
-  local num solo_status
+  local num solo_status merged_total
+  merged_total=$(jq '.merged_numbers | length' <<< "$stats_summary")
   while IFS= read -r num; do
     [ -n "$num" ] || continue
     stats_checked=$((stats_checked + 1))
+    stats_progress "Checking who pushed to merged pull requests: $stats_checked/$merged_total..."
     solo_status=0
     stats_pr_is_claude_only "$num" 2>/dev/null || solo_status=$?
     case "$solo_status" in
@@ -880,6 +896,7 @@ collect_stats() {
       *) stats_lookup_failures=$((stats_lookup_failures + 1)) ;;
     esac
   done < <(jq -r '.merged_numbers[]' <<< "$stats_summary")
+  stats_progress_clear
 }
 
 cmd_stats() {
