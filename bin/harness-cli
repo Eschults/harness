@@ -56,7 +56,7 @@ Commands:
   status           List what is waiting on a human right now: paused state, open claude issues, open claude/ PRs
   stats [--since <N>d]  Report what claude/ pull requests become (default 30d)
   feedback enable|disable  Opt this repo in or out of sharing feedback with the harness project
-  feedback [--note <text>] [--since <N>d] [--dry-run]  Preview a public feedback issue, then file it if you confirm
+  feedback [<text>] [--stats [--since <N>d]] [--dry-run]  Preview a public feedback issue, then file it if you confirm
   uninstall        Remove the harness files and the CLAUDE.md import
   -v, --version    Print the harness version this repo runs
 
@@ -1084,10 +1084,16 @@ feedback_can_confirm() {
 
 # Repo-identifying data stays out on purpose: counts only, never titles, numbers, or links.
 feedback_report() {
-  local version=$1 since_days=$2 note=$3 summary=$stats_summary
+  local version=$1 note=$2 with_stats=$3 since_days=$4
   printf '%s\n\n' "$note"
-  printf '## Numbers from the last %sd\n\n' "$since_days"
-  printf -- '- Harness version: %s\n' "$version"
+  printf 'Harness version: %s\n' "$version"
+  [ "$with_stats" -eq 1 ] || return 0
+  feedback_stats_section "$since_days"
+}
+
+feedback_stats_section() {
+  local since_days=$1 summary=$stats_summary
+  printf '\n## Numbers from the last %sd\n\n' "$since_days"
   jq -r '"- claude/ pull requests: \(.opened) opened, \(.merged) merged, \(.closed_unmerged) closed unmerged, \(.still_draft) still draft"' <<< "$summary"
   printf -- '- Merged with no human pushes: %s/%s\n' "$stats_solo" "$stats_checked"
   jq -r '"- Reverted: \(.reverts | length)"' <<< "$summary"
@@ -1118,7 +1124,7 @@ cmd_feedback_disable() {
 }
 
 cmd_feedback() {
-  local usage_line="Usage: harness feedback enable|disable, or harness feedback [--note <text>] [--since <N>d] [--dry-run]"
+  local usage_line="Usage: harness feedback enable|disable, or harness feedback [<text>] [--stats [--since <N>d]] [--dry-run]"
   case "${1:-}" in
     enable | disable)
       [ $# -eq 1 ] || { echo "Unexpected argument: $2. $usage_line" >&2; exit 1; }
@@ -1127,30 +1133,46 @@ cmd_feedback() {
       ;;
   esac
 
-  local note="" since_days=30 dry_run=0
+  local note="" since_days=30 since_given=0 with_stats=0 dry_run=0
+  local -a note_words=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --note)
         [ $# -ge 2 ] || { echo "$usage_line" >&2; exit 1; }
-        note=$2
+        echo "--note is deprecated and removed in v2: pass the text directly, as harness feedback \"<text>\"." >&2
+        note_words+=("$2")
         shift 2
+        ;;
+      --stats)
+        with_stats=1
+        shift
         ;;
       --since)
         [ $# -ge 2 ] || { echo "$usage_line" >&2; exit 1; }
         since_days=${2%d}
+        since_given=1
         shift 2
         ;;
       --dry-run)
         dry_run=1
         shift
         ;;
-      *)
+      -*)
         echo "Unknown option: $1. $usage_line" >&2
         exit 1
+        ;;
+      *)
+        note_words+=("$1")
+        shift
         ;;
     esac
   done
   [[ "$since_days" =~ ^[0-9]+$ ]] || { echo "Invalid --since value: expected <N>d (e.g. 30d)" >&2; exit 1; }
+  if [ "$since_given" -eq 1 ] && [ "$with_stats" -eq 0 ]; then
+    echo "--since only applies with --stats. $usage_line" >&2
+    exit 1
+  fi
+  [ "${#note_words[@]}" -eq 0 ] || note="${note_words[*]}"
 
   require_tools gh jq
   cd_repo_root
@@ -1168,20 +1190,22 @@ cmd_feedback() {
     read -rp "What should the harness do differently? " note
   fi
   if [ -z "${note//[[:space:]]/}" ]; then
-    echo "A note is required: the numbers alone don't say what to change. Pass --note <text>." >&2
+    echo "Feedback text is required: pass it as harness feedback \"<text>\", or run harness feedback alone to type it at a prompt." >&2
     exit 1
   fi
 
-  collect_stats "$since_days"
-  if [ "$stats_lookup_failures" -gt 0 ]; then
-    echo "Could not read the commits of $stats_lookup_failures merged pull request(s), so the counts would be wrong. Nothing was sent; try again later." >&2
-    exit 1
+  if [ "$with_stats" -eq 1 ]; then
+    collect_stats "$since_days"
+    if [ "$stats_lookup_failures" -gt 0 ]; then
+      echo "Could not read the commits of $stats_lookup_failures merged pull request(s), so the counts would be wrong. Nothing was sent; try again later." >&2
+      exit 1
+    fi
   fi
 
   local version title body login confirm
   version=$(cat .claude/HARNESS_VERSION 2>/dev/null || echo unknown)
   title="Harness feedback: $(head -n 1 <<< "$note" | cut -c1-60)"
-  body=$(feedback_report "$version" "$since_days" "$note")
+  body=$(feedback_report "$version" "$note" "$with_stats" "$since_days")
 
   echo "Title: $title"
   echo
