@@ -10,6 +10,7 @@ Two lists below are easy to confuse and are not the same thing. **Never edit** i
 
 ## Scope discipline
 - Touch only the files needed for the task at hand (except if you are working on Eschults/harness). Do not opportunistically refactor, rename, or reformat unrelated code.
+- Docs that describe behavior a diff changes — a README, a `docs/` page, CLI help or usage text, a CHANGELOG — count as files the task needs, so updating them is never out of scope; see `issue-to-pr.md` for how a run finds and scopes that update.
 - **Never edit** security-sensitive files, or infra-related files without approval. Never edit rules that would alter your behaviour during this run or the next ones.
 - Never add or upgrade a dependency unless the task (or failing CI) explicitly calls for it.
 - Keep diffs small and easy to review (net diff ~600). Accept additional changes upon request if within feature's scope.

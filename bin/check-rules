@@ -867,9 +867,20 @@ CHECKS = [
     ),
     (
         "issue-to-pr-review-subagent-flags-unmet-criteria",
-        "Also tell it to check the PR description's acceptance-criteria lines against the diff, and flag any criterion marked met "
-        "that the diff does not actually meet." in ISSUE_TO_PR,
+        "Also tell it to check the PR description's acceptance-criteria lines against the diff, flag any criterion marked met "
+        "that the diff does not actually meet, and flag any doc the diff left inaccurate" in ISSUE_TO_PR,
         "issue-to-pr.md should still tell the fresh review subagent to flag any acceptance criterion marked met that the diff does not meet",
+    ),
+    (
+        "issue-to-pr-docs-step-before-acceptance-criteria",
+        "Before the acceptance-criteria check, find the repo's docs that describe the behavior the diff changes and update them "
+        "in the same PR, per \"Updating docs for behavior changes\" below." in ISSUE_TO_PR,
+        "issue-to-pr.md should still carry the docs-update step, before the acceptance-criteria check, in its numbered step list",
+    ),
+    (
+        "issue-to-pr-review-subagent-flags-stale-docs",
+        "and flag any doc the diff left inaccurate, per \"Updating docs for behavior changes\" above." in ISSUE_TO_PR,
+        "issue-to-pr.md should still tell the fresh review subagent to flag any doc the diff left inaccurate",
     ),
     (
         "readme-explains-codeowners-for-risk-high",
