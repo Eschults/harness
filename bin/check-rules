@@ -868,7 +868,7 @@ CHECKS = [
     (
         "issue-to-pr-review-subagent-flags-unmet-criteria",
         "Also tell it to check the PR description's acceptance-criteria lines against the diff, flag any criterion marked met "
-        "that the diff does not actually meet, and flag any doc the diff left inaccurate" in ISSUE_TO_PR,
+        "that the diff does not actually meet" in ISSUE_TO_PR,
         "issue-to-pr.md should still tell the fresh review subagent to flag any acceptance criterion marked met that the diff does not meet",
     ),
     (
