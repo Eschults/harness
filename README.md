@@ -14,7 +14,7 @@ It runs as a [Claude Code routine](https://code.claude.com/docs/en/routines) on 
 
 ## What a run does
 The "Issue to PR" routine delivers most of the building work w/o human intervention, leaving only the last mile to the Engineering team. It:
-- **Creates a PR ready for review**, a draft PR that asks one question a human must answer, or a comment on the issue explaining why there is no PR — checking the issue's acceptance criteria against the diff first and listing each one met or not.
+- **Creates a PR ready for review**, a draft PR that asks one question a human must answer, or a comment on the issue explaining why there is no PR — updating any docs the behavior change affects in the same PR, then checking the issue's acceptance criteria against the diff and listing each one met or not.
 - **Explains the area it changed**, when the PR changes behavior and isn't low-risk: a published page by default, or a Mermaid section in the PR description when it can't publish one, showing how the area works today, what the PR changes, and where to start reading the diff.
 - **Reviews itself before exiting**: a fresh subagent with none of the build session's reasoning runs `/code-review` and `/security-review` on the PR's diff, this session applies the findings and re-runs the tests, and it posts a review listing what it found (blocking issues first), what it fixed (with the commit), and what it left for you, and still calls this a self-review — converting the PR to a draft if a blocking finding stays open.
 - **Hands over cleanly**: drafts and recaps link the session, so an engineer can take it over from claude.ai or with `claude --teleport`.
@@ -27,7 +27,7 @@ The "Next to build" routine runs on a schedule to find the next addition the rep
 Every autonomous run, including Auto-fix sessions, follows [`.claude/harness-rules.md`](.claude/harness-rules.md). One line per section, the agent:
 
 <!-- guardrails:start (one bullet per .claude/harness-rules.md section; see bin/sync-readme) -->
-- **[Scope discipline](.claude/harness-rules.md#scope-discipline)**: Touches only what the task needs, never edits security-sensitive or infra files without approval, and keeps diffs around 600 lines. <!-- rules-fingerprint: 4da36d7365f1 -->
+- **[Scope discipline](.claude/harness-rules.md#scope-discipline)**: Touches only what the task needs, never edits security-sensitive or infra files without approval, and keeps diffs around 600 lines. <!-- rules-fingerprint: aba9f670df27 -->
 - **[Testing](.claude/harness-rules.md#testing)**: Adds a regression test for every fix and tests for every feature, and opens no PR with a failing suite. <!-- rules-fingerprint: 6ef3d72246c5 -->
 - **[Pull requests](.claude/harness-rules.md#pull-requests)**: Never approves, merges, or marks someone else's draft ready, never rewrites commits it did not write, and marks screenshots and explainers as not part of the change. <!-- rules-fingerprint: fc65610b2f07 -->
 - **[Risk tiers](.claude/harness-rules.md#risk-tiers)**: Labels every PR `risk:low`, `risk:medium`, or `risk:high` from what it touches, and never approves or merges regardless of the tier. <!-- rules-fingerprint: 0b84f86240ef -->
