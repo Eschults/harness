@@ -61,6 +61,8 @@ Auto-fix resumes a session to push a fix when a reviewer comments or CI fails on
 
 - Re-classify the risk tier after every push, per [Risk tiers](#risk-tiers) above, and update the label and the description's tier line when it changed.
 - Update any acceptance-criteria line in the description whose status or evidence the push changed.
+- Update the docs that describe behavior the push changed, with the same scope as the first run: only the text that described the changed behavior, and no new doc file.
+- When the push changes code a published explainer describes, update it in the same commit — republish the page, or edit the Mermaid fallback section in the description. When the session cannot update it, add a one-line note at the top of the explainer section or link saying it predates the push.
 
 ## This repo's additions
 `CLAUDE.md` carries this repo's own rules on top of the ones here. A harness upgrade never touches it, so read it alongside this file on every run: it is not optional context, and nothing in it needs restating here.
