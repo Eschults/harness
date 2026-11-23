@@ -803,6 +803,24 @@ CHECKS = [
         "harness-rules.md should still require updating any acceptance-criteria line whose status or evidence a push changed",
     ),
     (
+        "review-feedback-updates-docs-after-push",
+        "Update the docs that describe behavior the push changed, with the same scope as the first run: only the text that "
+        "described the changed behavior, and no new doc file." in HARNESS_RULES,
+        "harness-rules.md should still require updating the docs a push's behavior change affects, with the first run's scope limits",
+    ),
+    (
+        "review-feedback-updates-explainer-after-push",
+        "When the push changes code a published explainer describes, update it in the same commit — republish the page, or edit "
+        "the Mermaid fallback section in the description." in HARNESS_RULES,
+        "harness-rules.md should still require updating a published explainer in the same commit when a push changes code it describes",
+    ),
+    (
+        "review-feedback-explainer-note-when-stale",
+        "When the session cannot update it, add a one-line note at the top of the explainer section or link saying it predates "
+        "the push." in HARNESS_RULES,
+        "harness-rules.md should still require a one-line note when the session cannot update a stale explainer after a push",
+    ),
+    (
         "issue-to-pr-classifies-risk-tier-before-opening-pr",
         'Classify and label the PR\'s risk tier per "Labeling the PR\'s risk tier" below.' in ISSUE_TO_PR,
         "issue-to-pr.md should still require classifying and labeling the risk tier before opening the PR",
