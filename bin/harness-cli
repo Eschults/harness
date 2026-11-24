@@ -791,6 +791,16 @@ stats_pr_is_claude_only() {
 # bin/harness), so a separate file would 404 for anyone but this checkout.
 stats_jq_filter() {
   cat <<'JQ'
+def median(xs):
+  (xs | sort) as $s
+  | ($s | length) as $n
+  | if $n == 0 then null
+    elif ($n % 2) == 1 then $s[($n - 1) / 2]
+    else ($s[$n / 2 - 1] + $s[$n / 2]) / 2
+    end;
+
+def open_to_merge_seconds(pr): (pr.merged_at | fromdate) - (pr.created_at | fromdate);
+
 $prs as $all
 | $commits as $default_commits
 | [$all[] | select(.head.ref | startswith("claude/"))] as $claude
@@ -822,14 +832,17 @@ $prs as $all
     | {number: $pr.number, title: $pr.title, reverted_by: $links}
   ] as $reverts
 | ([$claude[] | (.labels // [])[].name | select(startswith("risk:"))] | unique) as $tiers
+| ([$merged[] | open_to_merge_seconds(.)]) as $merge_times
 | (
     if ($tiers | length) == 0 then null
     else [
       $tiers[] as $tier
+      | ([$merged[] | select(any((.labels // [])[]; .name == $tier)) | open_to_merge_seconds(.)]) as $tier_merge_times
       | {
           tier: $tier,
           opened: ([$claude[] | select(any((.labels // [])[]; .name == $tier))] | length),
-          merged: ([$merged[] | select(any((.labels // [])[]; .name == $tier))] | length)
+          merged: ([$merged[] | select(any((.labels // [])[]; .name == $tier))] | length),
+          median_merge_seconds: (if ($tier_merge_times | length) == 0 then null else (median($tier_merge_times) | round) end)
         }
     ]
     end
@@ -841,7 +854,9 @@ $prs as $all
     still_draft: ($still_draft | length),
     merged_numbers: [$merged[] | .number],
     reverts: $reverts,
-    by_tier: $by_tier
+    by_tier: $by_tier,
+    median_merge_seconds: (if ($merge_times | length) == 0 then null else (median($merge_times) | round) end),
+    longest_merge_seconds: (if ($merge_times | length) == 0 then null else ($merge_times | max) end)
   }
 JQ
 }
@@ -899,6 +914,18 @@ collect_stats() {
   stats_progress_clear
 }
 
+# Echoes "median <age>, longest <age>" from $1 (a stats summary with
+# median_merge_seconds/longest_merge_seconds), or a line saying none merged
+# when both are null.
+stats_time_to_merge_text() {
+  local summary=$1
+  if jq -e '.median_merge_seconds != null' <<< "$summary" >/dev/null; then
+    echo "median $(format_duration_seconds "$(jq -r .median_merge_seconds <<< "$summary")"), longest $(format_duration_seconds "$(jq -r .longest_merge_seconds <<< "$summary")")"
+  else
+    echo "no merged claude/ PRs in the window"
+  fi
+}
+
 cmd_stats() {
   local since_days=30
   while [ $# -gt 0 ]; do
@@ -931,6 +958,7 @@ cmd_stats() {
   echo
   echo "claude/ pull requests: $(jq -r .opened <<< "$summary") opened, $(jq -r .merged <<< "$summary") merged, $(jq -r .closed_unmerged <<< "$summary") closed unmerged, $(jq -r .still_draft <<< "$summary") still draft"
   echo "Merged with no human pushes: $stats_solo/$stats_checked"
+  echo "Time to merge: $(stats_time_to_merge_text "$summary")"
 
   local revert_count
   revert_count=$(jq '.reverts | length' <<< "$summary")
@@ -942,7 +970,14 @@ cmd_stats() {
   if jq -e '.by_tier != null' <<< "$summary" >/dev/null; then
     echo
     echo "By risk tier:"
-    jq -r '.by_tier[] | "  \(.tier): \(.opened) opened, \(.merged) merged"' <<< "$summary"
+    local tier opened merged_count median_seconds
+    while IFS=$'\t' read -r tier opened merged_count median_seconds; do
+      if [ "$merged_count" -eq 0 ]; then
+        echo "  $tier: $opened opened, $merged_count merged, median time to merge: none merged"
+      else
+        echo "  $tier: $opened opened, $merged_count merged, median time to merge: $(format_duration_seconds "$median_seconds")"
+      fi
+    done < <(jq -r '.by_tier[] | [.tier, .opened, .merged, (.median_merge_seconds // 0)] | @tsv' <<< "$summary")
   fi
 }
 
@@ -960,18 +995,9 @@ iso_to_epoch() {
   date -ju -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null
 }
 
-# Renders how long ago ISO-8601 timestamp $1 was, as "<N>d" (one day or
-# more) or "<N>h", against now, or $HARNESS_STATUS_NOW when set (so tests
-# get a deterministic age).
-age_from_iso() {
-  local then_epoch now_epoch seconds days
-  then_epoch=$(iso_to_epoch "$1") || { echo "?"; return; }
-  if [ -n "${HARNESS_STATUS_NOW:-}" ]; then
-    now_epoch=$(iso_to_epoch "$HARNESS_STATUS_NOW") || { echo "?"; return; }
-  else
-    now_epoch=$(date -u +%s)
-  fi
-  seconds=$((now_epoch - then_epoch))
+# Renders a count of seconds as "<N>d" (one day or more) or "<N>h".
+format_duration_seconds() {
+  local seconds=$1 days
   [ "$seconds" -lt 0 ] && seconds=0
   days=$((seconds / 86400))
   if [ "$days" -ge 1 ]; then
@@ -979,6 +1005,20 @@ age_from_iso() {
   else
     echo "$((seconds / 3600))h"
   fi
+}
+
+# Renders how long ago ISO-8601 timestamp $1 was, as "<N>d" (one day or
+# more) or "<N>h", against now, or $HARNESS_STATUS_NOW when set (so tests
+# get a deterministic age).
+age_from_iso() {
+  local then_epoch now_epoch
+  then_epoch=$(iso_to_epoch "$1") || { echo "?"; return; }
+  if [ -n "${HARNESS_STATUS_NOW:-}" ]; then
+    now_epoch=$(iso_to_epoch "$HARNESS_STATUS_NOW") || { echo "?"; return; }
+  else
+    now_epoch=$(date -u +%s)
+  fi
+  format_duration_seconds "$((now_epoch - then_epoch))"
 }
 
 # Shared by cmd_doctor and status_paused_line, so both read HARNESS_PAUSED
@@ -1096,6 +1136,7 @@ feedback_stats_section() {
   printf '\n## Numbers from the last %sd\n\n' "$since_days"
   jq -r '"- claude/ pull requests: \(.opened) opened, \(.merged) merged, \(.closed_unmerged) closed unmerged, \(.still_draft) still draft"' <<< "$summary"
   printf -- '- Merged with no human pushes: %s/%s\n' "$stats_solo" "$stats_checked"
+  printf -- '- Time to merge: %s\n' "$(stats_time_to_merge_text "$summary")"
   jq -r '"- Reverted: \(.reverts | length)"' <<< "$summary"
   # Only the harness's own tiers: a repo's custom risk: label could name a private project.
   jq -r '(.by_tier // [])[] | select(.tier == "risk:low" or .tier == "risk:medium" or .tier == "risk:high") | "- \(.tier): \(.opened) opened, \(.merged) merged"' <<< "$summary"

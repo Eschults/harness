@@ -156,9 +156,10 @@ assert_contains "$output" "Reverted: 2" "happy path revert count"
 assert_contains "$output" "#10 Feat: add x -> https://github.com/o/r/pull/20" "happy path title-match revert"
 assert_contains "$output" "#11 Feat: add y -> https://github.com/o/r/commit/revert-y" "happy path commit-message revert"
 assert_contains "$output" "By risk tier:" "happy path risk tier header"
-assert_contains "$output" "risk:low: 1 opened, 1 merged" "happy path risk:low"
-assert_contains "$output" "risk:medium: 1 opened, 0 merged" "happy path risk:medium"
-assert_contains "$output" "risk:high: 1 opened, 1 merged" "happy path risk:high"
+assert_contains "$output" "risk:low: 1 opened, 1 merged, median time to merge: 0h" "happy path risk:low"
+assert_contains "$output" "risk:medium: 1 opened, 0 merged, median time to merge: none merged" "happy path risk:medium"
+assert_contains "$output" "risk:high: 1 opened, 1 merged, median time to merge: 0h" "happy path risk:high"
+assert_contains "$output" "Time to merge: median 0h, longest 0h" "happy path time to merge (both merges same-day)"
 echo "$output" | grep -qF "too old" && fail "expected a PR created before the cutoff to be excluded, got: $output"
 echo "✓ the happy path reports counts, both revert styles, no-human-pushes, and a risk tier breakdown"
 
@@ -168,9 +169,31 @@ jq -n '[]' > "$fixtures/pulls-page-1.json"
 output=$(run_stats) || fail "expected an empty repo to succeed, got: $output"
 assert_contains "$output" "claude/ pull requests: 0 opened, 0 merged, 0 closed unmerged, 0 still draft" "empty counts"
 assert_contains "$output" "Merged with no human pushes: 0/0" "empty solo count"
+assert_contains "$output" "Time to merge: no merged claude/ PRs in the window" "empty time to merge"
 assert_contains "$output" "Reverted: 0" "empty revert count"
 echo "$output" | grep -qF "By risk tier" && fail "expected no risk tier section when no PR carries a risk label, got: $output"
-echo "✓ no claude/ PRs reports zeroed counts and no risk tier section"
+echo "✓ no claude/ PRs reports zeroed counts, a no-merges time-to-merge line, and no risk tier section"
+
+# --- time to merge: median and longest for an odd count of merged PRs ---
+reset_fixtures
+odd1=$(pr 60 "Feat: odd one" "claude/odd-1" closed 2026-10-02T00:00:00Z false sha-60 2026-10-01T00:00:00Z '[]')
+odd2=$(pr 61 "Feat: odd two" "claude/odd-2" closed 2026-10-04T00:00:00Z false sha-61 2026-10-01T00:00:00Z '[]')
+odd3=$(pr 62 "Feat: odd three" "claude/odd-3" closed 2026-10-06T00:00:00Z false sha-62 2026-10-01T00:00:00Z '[]')
+jq -s '.' <(echo "$odd1") <(echo "$odd2") <(echo "$odd3") > "$fixtures/pulls-page-1.json"
+output=$(run_stats) || fail "expected the odd-count case to succeed, got: $output"
+assert_contains "$output" "Time to merge: median 3d, longest 5d" "odd-count median and longest (1d, 3d, 5d -> median is the middle value)"
+echo "✓ the median and longest time to merge are correct for an odd count of merged PRs"
+
+# --- time to merge: median averages the two middle values for an even count of merged PRs ---
+reset_fixtures
+even1=$(pr 70 "Feat: even one" "claude/even-1" closed 2026-10-02T00:00:00Z false sha-70 2026-10-01T00:00:00Z '[]')
+even2=$(pr 71 "Feat: even two" "claude/even-2" closed 2026-10-03T00:00:00Z false sha-71 2026-10-01T00:00:00Z '[]')
+even3=$(pr 72 "Feat: even three" "claude/even-3" closed 2026-10-11T00:00:00Z false sha-72 2026-10-01T00:00:00Z '[]')
+even4=$(pr 73 "Feat: even four" "claude/even-4" closed 2026-10-12T00:00:00Z false sha-73 2026-10-01T00:00:00Z '[]')
+jq -s '.' <(echo "$even1") <(echo "$even2") <(echo "$even3") <(echo "$even4") > "$fixtures/pulls-page-1.json"
+output=$(run_stats) || fail "expected the even-count case to succeed, got: $output"
+assert_contains "$output" "Time to merge: median 6d, longest 11d" "even-count median averages the two middle values (1d, 2d, 10d, 11d -> median 6d)"
+echo "✓ the median time to merge averages the two middle values for an even count of merged PRs"
 
 # --- a revert PR's title matches two same-titled merged PRs: only the one it
 # actually followed (closest preceding merge) counts as reverted, not both ---

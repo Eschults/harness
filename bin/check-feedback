@@ -210,6 +210,7 @@ assert_contains "$run_output" "## Numbers from the last 30d" "dry run stats sect
 assert_contains "$run_output" "Harness version: v1.2.3" "dry run version"
 assert_contains "$run_output" "claude/ pull requests: 1 opened, 1 merged, 0 closed unmerged, 0 still draft" "dry run counts"
 assert_contains "$run_output" "Merged with no human pushes: 1/1" "dry run solo count"
+assert_contains "$run_output" "Time to merge: median 0h, longest 0h" "dry run time to merge"
 assert_contains "$run_output" "Reverted: 1" "dry run reverts"
 assert_contains "$run_output" "risk:high: 1 opened, 1 merged" "dry run tier"
 assert_contains "$run_output" "nothing was sent" "dry run says so"
