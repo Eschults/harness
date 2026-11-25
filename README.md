@@ -28,7 +28,7 @@ Every autonomous run, including Auto-fix sessions, follows [`.claude/harness-rul
 
 <!-- guardrails:start (one bullet per .claude/harness-rules.md section; see bin/sync-readme) -->
 - **[Scope discipline](.claude/harness-rules.md#scope-discipline)**: Touches only what the task needs, never edits security-sensitive or infra files without approval, and keeps diffs around 600 lines. <!-- rules-fingerprint: aba9f670df27 -->
-- **[Testing](.claude/harness-rules.md#testing)**: Adds a regression test for every fix and tests for every feature, and opens no PR with a failing suite. <!-- rules-fingerprint: 6ef3d72246c5 -->
+- **[Testing](.claude/harness-rules.md#testing)**: Adds a regression test for every fix, proven to fail without it, and tests for every feature, and opens no PR with a failing suite. <!-- rules-fingerprint: ec9d578b07d4 -->
 - **[Pull requests](.claude/harness-rules.md#pull-requests)**: Never approves, merges, or marks someone else's draft ready, never rewrites commits it did not write, and marks screenshots and explainers as not part of the change. <!-- rules-fingerprint: fc65610b2f07 -->
 - **[Risk tiers](.claude/harness-rules.md#risk-tiers)**: Labels every PR `risk:low`, `risk:medium`, or `risk:high` from what it touches, and never approves or merges regardless of the tier. <!-- rules-fingerprint: 0b84f86240ef -->
 - **[Concision](.claude/harness-rules.md#concision)**: Keeps PR descriptions and comments short and bulleted, for a reader catching up on a session they did not watch. <!-- rules-fingerprint: 4b4102135c03 -->

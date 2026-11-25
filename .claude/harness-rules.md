@@ -16,7 +16,7 @@ Two lists below are easy to confuse and are not the same thing. **Never edit** i
 - Keep diffs small and easy to review (net diff ~600). Accept additional changes upon request if within feature's scope.
 
 ## Testing
-- Every bug fix must include a regression test that fails before the fix and passes after it.
+- Every bug fix must include a regression test that fails before the fix and passes after it; the PR description names each regression test and the failure it produced without the fix, one line each.
 - Every new feature must include tests covering the happy path and at least one edge case.
 - Run the repository's full test suite before opening a PR, and do not open a PR with failing tests. If the repository has no test suite, say so in the PR description rather than inventing one or skipping the point silently.
 
