@@ -926,9 +926,9 @@ CHECKS = [
     ),
     (
         "issue-to-pr-test-proof-leaves-no-trace",
-        "Leave no trace of this check in the branch: no reverted commit, no stash entry, nothing this check produced gets pushed."
+        "Leave no trace of this check in the branch: never commit a revert of the fix, and never push a commit this check produced."
         in ISSUE_TO_PR,
-        "issue-to-pr.md should still require the test-proof check to leave no reverted commit, stash entry, or pushed trace",
+        "issue-to-pr.md should still require the test-proof check to leave no committed revert or pushed commit of its own",
     ),
     (
         "issue-to-pr-test-proof-named-in-pr-description",
@@ -943,8 +943,22 @@ CHECKS = [
     ),
     (
         "harness-rules-testing-names-regression-test-proof",
-        "the PR description names each regression test and the failure it produced without the fix, one line each." in HARNESS_RULES,
+        "PR description names each regression test and the failure it produced without the fix, one line each." in HARNESS_RULES,
         "harness-rules.md's Testing section should still require the PR description to name each regression test and its failure without the fix",
+    ),
+    (
+        "harness-rules-testing-regression-test-proof-procedure",
+        "run it against the code without the fix to confirm the failure, then restore the fix and confirm it passes, leaving no "
+        "reverted commit or other trace in the branch." in HARNESS_RULES,
+        "harness-rules.md's Testing section should still tell Auto-fix sessions how to prove a regression test, not just require the proof, "
+        "since Auto-fix never reads issue-to-pr.md",
+    ),
+    (
+        "issue-to-pr-review-subagent-verifies-test-proof",
+        "Also tell it to verify each regression-test-proof line by running that test against the code without the fix, flagging "
+        "one whose test does not actually fail there." in ISSUE_TO_PR,
+        "issue-to-pr.md should still tell the fresh review subagent to re-verify each regression-test-proof line against reality, "
+        "not just trust it",
     ),
     (
         "readme-explains-codeowners-for-risk-high",
