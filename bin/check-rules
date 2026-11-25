@@ -901,6 +901,66 @@ CHECKS = [
         "issue-to-pr.md should still tell the fresh review subagent to flag any doc the diff left inaccurate",
     ),
     (
+        "issue-to-pr-test-proof-step-before-acceptance-criteria",
+        'Before the acceptance-criteria check, prove every test this run added or changed per "Proving a new test actually bites" below.'
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require proving every new or changed test before the acceptance-criteria check",
+    ),
+    (
+        "issue-to-pr-test-proof-bugfix-runs-without-fix",
+        "run the new or changed test file(s) against the code without this run's non-test changes" in ISSUE_TO_PR
+        and "confirm every regression test fails there" in ISSUE_TO_PR,
+        "issue-to-pr.md should still require running new/changed tests against the code without the fix and confirming each regression test fails there",
+    ),
+    (
+        "issue-to-pr-test-proof-feature-lighter-wording",
+        "confirm at least one new test fails when the feature's own code is removed, or say in one line why that check does not apply."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require confirming at least one feature test fails when the feature's code is removed, or saying why not",
+    ),
+    (
+        "issue-to-pr-test-proof-passing-without-fix-not-met",
+        "A regression test that passes without the fix does not meet the Testing rule in `.claude/harness-rules.md`: strengthen it "
+        "until it fails without the fix, or take the Draft outcome, naming why you cannot write one that fails." in ISSUE_TO_PR,
+        "issue-to-pr.md should still treat a regression test that passes without the fix as unmet, requiring a stronger test or a Draft",
+    ),
+    (
+        "issue-to-pr-test-proof-leaves-no-trace",
+        "Leave no trace of this check in the branch: never commit a revert of the fix, and never push a commit this check produced."
+        in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the test-proof check to leave no committed revert or pushed commit of its own",
+    ),
+    (
+        "issue-to-pr-test-proof-named-in-pr-description",
+        "The PR description names each regression test and the failure it produced without the fix, one line each, so the reviewer "
+        "sees the proof without rerunning it themselves." in ISSUE_TO_PR,
+        "issue-to-pr.md should still require the PR description to name each regression test and the failure it produced without the fix",
+    ),
+    (
+        "issue-to-pr-template-required-content-includes-test-proof",
+        "the regression-test proof lines" in ISSUE_TO_PR,
+        "issue-to-pr.md should still list the regression-test proof lines among the required PR content a template can't drop",
+    ),
+    (
+        "harness-rules-testing-names-regression-test-proof",
+        "PR description names each regression test and the failure it produced without the fix, one line each." in HARNESS_RULES,
+        "harness-rules.md's Testing section should still require the PR description to name each regression test and its failure without the fix",
+    ),
+    (
+        "harness-rules-testing-regression-test-proof-procedure",
+        "run it against the code without the fix to confirm the failure, then restore the fix and confirm it passes, leaving no "
+        "reverted commit or other trace in the branch." in HARNESS_RULES,
+        "harness-rules.md's Testing section should still tell Auto-fix sessions how to prove a regression test, not just require the proof, "
+        "since Auto-fix never reads issue-to-pr.md",
+    ),
+    (
+        "issue-to-pr-review-subagent-verifies-test-proof",
+        "Also tell it to verify each regression-test-proof line by running that test against the code without the fix, flagging "
+        "one whose test does not actually fail there." in ISSUE_TO_PR,
+        "issue-to-pr.md should still tell the fresh review subagent to re-verify each regression-test-proof line against reality, "
+        "not just trust it",
+    ),
+    (
         "readme-explains-codeowners-for-risk-high",
         "CODEOWNERS" in README and "risk:high" in README and "Required number of approvals" in README,
         "README.md should still explain requiring two approvals on risk:high via CODEOWNERS and branch protection",
