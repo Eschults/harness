@@ -27,7 +27,7 @@ A re-applied `claude` label often means a run already touched this issue: one th
 - **No open PR found**: proceed exactly as the rest of this file describes, starting from the default branch.
 - **An open PR exists and a human opened it**: open no second PR. Comment its link on the issue, remove the `claude` label, and stop; the rest of this file does not apply to this run.
 - **An open PR exists and an earlier run opened it**: continue on that PR's branch instead of starting from the default branch. Add commits to it; never open a second PR for this issue; never rewrite history on a commit you did not write, per the existing PR rules.
-  - If that PR is a draft holding on a question, read the issue's and the draft PR's comments for the answer before doing anything else.
+  - If that PR is a draft holding on a question, read the issue's comments and the draft PR's comments and reviews for the answer before doing anything else.
     - Answered: implement under that answer, then continue the normal flow below, marking the draft ready for review.
     - Not answered: comment that the question is still open, remove the `claude` label, and stop; do not guess the answer.
   - Otherwise, continue the normal flow below on that branch: check whether the issue's outcome is already done, estimate the diff, build, screenshot if needed, and so on.

@@ -444,7 +444,7 @@ CHECKS = [
     ),
     (
         "continuing-earlier-pr-draft-answer-on-issue-or-pr",
-        "read the issue's and the draft PR's comments for the answer before doing anything else." in ISSUE_TO_PR,
+        "read the issue's comments and the draft PR's comments and reviews for the answer before doing anything else." in ISSUE_TO_PR,
         "issue-to-pr.md should still accept a draft's answer left on the draft PR, not only on the issue",
     ),
     (
