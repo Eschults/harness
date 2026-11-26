@@ -443,6 +443,11 @@ CHECKS = [
         "issue-to-pr.md should still require continuing on the earlier run's PR branch, with no second PR and no history rewrite",
     ),
     (
+        "continuing-earlier-pr-draft-answer-on-issue-or-pr",
+        "read the issue's comments and the draft PR's comments and reviews for the answer before doing anything else." in ISSUE_TO_PR,
+        "issue-to-pr.md should still accept a draft's answer left on the draft PR, not only on the issue",
+    ),
+    (
         "continuing-earlier-pr-draft-question-answered",
         "Answered: implement under that answer, then continue the normal flow below, marking the draft ready for review."
         in ISSUE_TO_PR,
