@@ -185,7 +185,7 @@ Each repo pins its release in `.claude/HARNESS_VERSION` and `harness` runs the C
 harness uninstall
 ```
 
-It removes the harness files and the `CLAUDE.md` import, leaving the rest of `CLAUDE.md` alone, then prints the manual steps left: deleting the routines, the four labels, and the repo values. Review the diff and commit it. The `harness` command stays installed for your other repos; once none use it, delete `~/.local/bin/harness` and `~/.local/share/harness`.
+It removes the harness files and the `CLAUDE.md` import, leaving the rest of `CLAUDE.md` alone, then prints the manual steps left: deleting the routines, the four labels, and the repo values. It refuses, changing nothing, while any harness file has uncommitted edits, the same check `harness use` runs. Review the diff and commit it. The `harness` command stays installed for your other repos; once none use it, delete `~/.local/bin/harness` and `~/.local/share/harness`.
 
 ## Why a routine, not Claude on your runner
 

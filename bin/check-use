@@ -718,6 +718,53 @@ if ! output=$(cd "$uninstall_repo" && PATH="$no_gh_bin" "$new_src/bin/harness-cl
 fi
 echo "✓ re-running uninstall on an already-uninstalled repo still exits cleanly"
 
+# --- uninstall refuses on uncommitted harness files ---
+
+uninstall_dirty_repo="$scratch/uninstall-dirty-repo"
+git init -q "$uninstall_dirty_repo"
+git -C "$uninstall_dirty_repo" config user.email "check-use@example.com"
+git -C "$uninstall_dirty_repo" config user.name "check-use"
+if ! output=$(cd "$uninstall_dirty_repo" && PATH="$no_gh_bin" HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" use 1.9.9 2>&1); then
+  echo "$output" >&2
+  fail "harness use failed priming the uninstall-dirty scratch repo"
+fi
+(cd "$uninstall_dirty_repo" && git add -A && git commit -q -m "use the harness")
+
+uninstall_dirty_snapshot() {
+  find "$uninstall_dirty_repo" -path "$uninstall_dirty_repo/.git" -prune -o -type f -print0 | sort -z | xargs -0 sha256sum
+}
+
+printf '\nlocal tweak\n' >> "$uninstall_dirty_repo/.claude/harness-rules.md"
+before=$(uninstall_dirty_snapshot)
+if output=$(cd "$uninstall_dirty_repo" && PATH="$no_gh_bin" "$new_src/bin/harness-cli" uninstall 2>&1); then
+  fail "expected harness uninstall to refuse with a modified harness-rules.md, got: $output"
+fi
+echo "$output" | grep -q "Uncommitted changes" || fail "expected a clear uncommitted-changes message, got: $output"
+echo "$output" | grep -qF ".claude/harness-rules.md" || fail "expected the message to name the dirty file, got: $output"
+after=$(uninstall_dirty_snapshot)
+[ "$before" = "$after" ] || fail "expected uninstall to leave every file in place when a tracked harness file is modified"
+echo "✓ uninstall refuses a modified tracked harness file and leaves every file in place"
+
+(cd "$uninstall_dirty_repo" && git add .claude/harness-rules.md)
+before=$(uninstall_dirty_snapshot)
+if output=$(cd "$uninstall_dirty_repo" && PATH="$no_gh_bin" "$new_src/bin/harness-cli" uninstall 2>&1); then
+  fail "expected harness uninstall to refuse with a staged harness-rules.md change, got: $output"
+fi
+echo "$output" | grep -q "Uncommitted changes" || fail "expected a clear uncommitted-changes message for a staged change, got: $output"
+after=$(uninstall_dirty_snapshot)
+[ "$before" = "$after" ] || fail "expected uninstall to leave every file in place when a staged change exists"
+echo "✓ uninstall refuses a staged harness file change and leaves every file in place"
+
+(cd "$uninstall_dirty_repo" && git checkout HEAD -- .claude/harness-rules.md)
+if ! output=$(cd "$uninstall_dirty_repo" && PATH="$no_gh_bin" "$new_src/bin/harness-cli" uninstall 2>&1); then
+  echo "$output" >&2
+  fail "harness uninstall failed once the tree was clean"
+fi
+for f in "${HARNESS_FILES[@]}"; do
+  [ ! -e "$uninstall_dirty_repo/$f" ] || fail "expected $f to be removed once the harness files were clean"
+done
+echo "✓ uninstall proceeds exactly as before once the tree is clean"
+
 if ! output=$(cd "$repo" && HARNESS_TAGS_URL="file://$tags_json" "$new_src/bin/harness-cli" upgrade --dry-run </dev/null 2>&1); then
   echo "$output" >&2
   fail "expected upgrade --dry-run to succeed in a set-up repo"
