@@ -521,6 +521,7 @@ cmd_use() {
 
 cmd_uninstall() {
   cd_repo_root
+  require_clean_harness_files
 
   local f
   for f in "${HARNESS_FILES[@]}" "${LEGACY_FILES[@]}"; do
