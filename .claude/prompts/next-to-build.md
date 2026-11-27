@@ -20,7 +20,7 @@ After that skim, look at the 10 most recently merged or closed pull requests who
 
 Treat a correction that recurs across two or more of those pull requests as a candidate. A one-off comment is not one. A recurring candidate still goes through the checks below: the focus and off-limits areas from `CLAUDE.md`, the duplicate search in every state, and the "one run can carry it" test.
 
-When the only fix for a recurring correction is editing `.claude/harness-rules.md` or `CLAUDE.md` — which a run must never edit — file nothing for it. Name it instead in the ending run summary, with the pull request links that show the pattern, as something only a human can take.
+When the only fix for a recurring correction is editing `.claude/harness-rules.md` or `CLAUDE.md`, which a run in an adopter repo must not edit, file nothing for it. Name it instead in the ending run summary, with the pull request links that show the pattern, as something only a human can take.
 
 ## Check CLAUDE.md for this repo's focus
 

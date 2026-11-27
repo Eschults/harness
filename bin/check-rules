@@ -747,11 +747,11 @@ CHECKS = [
     ),
     (
         "next-to-build-rules-only-fix-files-nothing",
-        "When the only fix for a recurring correction is editing `.claude/harness-rules.md` or `CLAUDE.md` — which a run must "
-        "never edit — file nothing for it. Name it instead in the ending run summary, with the pull request links that show "
-        "the pattern, as something only a human can take." in NEXT_TO_BUILD,
-        "next-to-build.md should still file nothing for a recurring correction only fixable by editing the rules, and name it "
-        "in the ending run summary instead",
+        "When the only fix for a recurring correction is editing `.claude/harness-rules.md` or `CLAUDE.md`, which a run in an "
+        "adopter repo must not edit, file nothing for it. Name it instead in the ending run summary, with the pull request "
+        "links that show the pattern, as something only a human can take." in NEXT_TO_BUILD,
+        "next-to-build.md should still file nothing for a recurring correction only fixable by editing the rules in an adopter "
+        "repo, and name it in the ending run summary instead",
     ),
     (
         "next-to-build-reads-claude-md-focus-section",
