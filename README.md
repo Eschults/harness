@@ -20,7 +20,7 @@ The "Issue to PR" routine delivers most of the building work w/o human intervent
 - **Hands over cleanly**: drafts and recaps link the session, so an engineer can take it over from claude.ai or with `claude --teleport`.
 - **Keeps going after it exits**: with Auto-fix on, failing CI and review comments resume the session to push fixes.
 
-The "Next to build" routine runs on a schedule to find the next addition the repo should gain, and creates a `claude`-labeled issue, triggering the build.
+The "Next to build" routine runs on a schedule to find the next addition the repo should gain — including a correction humans made more than once on recent `claude/` pull requests — and creates a `claude`-labeled issue, triggering the build.
 
 ## Guardrails
 

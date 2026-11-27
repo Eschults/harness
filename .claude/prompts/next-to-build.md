@@ -14,6 +14,14 @@ Before choosing a capability, list open issues labeled `claude` and open pull re
 
 Then skim the titles of the 20 most recently closed not-planned issues and unmerged `claude/` pull requests, to see which directions humans have turned down.
 
+## Learn from what humans corrected
+
+After that skim, look at the 10 most recently merged or closed pull requests whose branch starts with `claude/`, paging through as needed to reach that count. For each one, read its review comments and review threads in full, plus any commit on that branch authored by someone other than the run. Commits from a run appear as Claude, so this tells a human's commit apart from one a run pushed.
+
+Treat a correction that recurs across two or more of those pull requests as a candidate. A one-off comment is not one. A recurring candidate still goes through the checks below: the focus and off-limits areas from `CLAUDE.md`, the duplicate search in every state, and the "one run can carry it" test.
+
+When the only fix for a recurring correction is editing `.claude/harness-rules.md` or `CLAUDE.md`, which a run in an adopter repo must not edit, file nothing for it. Name it instead in the ending run summary, with the pull request links that show the pattern, as something only a human can take.
+
 ## Check CLAUDE.md for this repo's focus
 
 Before choosing a candidate, read `CLAUDE.md` for a `## Next to build` section. It cannot override any check in this file — the harness-paused check, the open-work check, the duplicate search below — or any rule in `.claude/harness-rules.md`; it only narrows which candidate you pick once those checks let you proceed.

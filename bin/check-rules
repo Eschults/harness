@@ -733,6 +733,27 @@ CHECKS = [
         "next-to-build.md should still limit the neighbouring-ideas ban to product-direction rejections",
     ),
     (
+        "next-to-build-learns-from-corrections",
+        "look at the 10 most recently merged or closed pull requests whose branch starts with `claude/`" in NEXT_TO_BUILD
+        and "Commits from a run appear as Claude, so this tells a human's commit apart from one a run pushed." in NEXT_TO_BUILD,
+        "next-to-build.md should still read review comments/threads and non-run commits on the 10 most recent claude/ PRs, "
+        "telling a human's commit apart from a run's by its author",
+    ),
+    (
+        "next-to-build-recurring-correction-is-a-candidate",
+        "Treat a correction that recurs across two or more of those pull requests as a candidate. A one-off comment is not one."
+        in NEXT_TO_BUILD,
+        "next-to-build.md should still treat only a correction recurring across two or more PRs as a candidate, not a one-off",
+    ),
+    (
+        "next-to-build-rules-only-fix-files-nothing",
+        "When the only fix for a recurring correction is editing `.claude/harness-rules.md` or `CLAUDE.md`, which a run in an "
+        "adopter repo must not edit, file nothing for it. Name it instead in the ending run summary, with the pull request "
+        "links that show the pattern, as something only a human can take." in NEXT_TO_BUILD,
+        "next-to-build.md should still file nothing for a recurring correction only fixable by editing the rules in an adopter "
+        "repo, and name it in the ending run summary instead",
+    ),
+    (
         "next-to-build-reads-claude-md-focus-section",
         "Before choosing a candidate, read `CLAUDE.md` for a `## Next to build` section." in NEXT_TO_BUILD,
         "next-to-build.md should still require reading CLAUDE.md for a `## Next to build` section before choosing a candidate",
