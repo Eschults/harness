@@ -765,6 +765,13 @@ CHECKS = [
         "next-to-build.md should still say the CLAUDE.md focus section can never override the pause check, the open-work check, the duplicate search, or the harness rules",
     ),
     (
+        "next-to-build-prompt-rules-candidate-needs-a-real-failure",
+        "name the specific failure a current model shows without that text" in NEXT_TO_BUILD
+        and "is not covered by this test" in NEXT_TO_BUILD,
+        "next-to-build.md should still require naming a real model failure before filing a candidate whose main change "
+        "adds text to .claude/prompts/ or .claude/harness-rules.md",
+    ),
+    (
         "next-to-build-candidate-search-before-create",
         "search issues and pull requests in every state" in NEXT_TO_BUILD
         and "Create it with the `claude` label" in NEXT_TO_BUILD

@@ -34,6 +34,10 @@ How you work it out is yours — every project shows what it is missing somewher
 
 Once you have a candidate, search issues and pull requests in every state for its key terms, in two or three phrasings, not just its title. An item counts as the same idea when it gives the same person the same outcome, even with a different interface, scope, or parameters. If one is open or done, the candidate is ruled out. If one was closed as not planned or left unmerged, read its closing comment: a reason about product direction rules out this candidate and its neighbours, while a reason about timing or size leaves a later or smaller version open. When a candidate is ruled out, say which item stopped it and pick another.
 
+## Testing a prompt or rules candidate
+
+When a candidate's main change adds text to `.claude/prompts/` or `.claude/harness-rules.md`, it needs one more test before it counts as a real gap: name the specific failure a current model shows without that text — a past PR, review comment, or run where it went wrong. A candidate that changes code, CLI behaviour, or CI is not covered by this test. If you found no such failure, drop the candidate and say so in the run summary.
+
 ## The issue
 
 Title is the capability, under 72 characters. Body is `## Context` (what is missing and why it matters now), `## Done looks like` (acceptance criteria as a checklist), then the files you expect to change. Create it with the `claude` label, to let the "Issue to PR" routine take over and create a PR without further notice.
