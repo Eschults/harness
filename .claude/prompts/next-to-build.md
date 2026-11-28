@@ -36,7 +36,7 @@ Once you have a candidate, search issues and pull requests in every state for it
 
 ## Testing a prompt or rules candidate
 
-When a candidate's main change adds text to `.claude/prompts/` or `.claude/harness-rules.md`, it needs one more test before it counts as a real gap: name the specific failure a current model shows without that text — a past PR, review comment, or run where it went wrong. A candidate that changes code, CLI behaviour, or CI is not covered by this test. Found no such failure? Drop the candidate and say so in the run summary.
+When a candidate's main change adds text to `.claude/prompts/` or `.claude/harness-rules.md`, it needs one more test before it counts as a real gap: name the specific failure a current model shows without that text — a past PR, review comment, or run where it went wrong. A candidate that changes code, CLI behaviour, or CI is not covered by this test. If you found no such failure, drop the candidate and say so in the run summary.
 
 ## The issue
 
